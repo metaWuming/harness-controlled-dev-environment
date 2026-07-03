@@ -1,0 +1,24 @@
+# 去識別化 denylist — check-no-source-terms.sh 讀本檔(每行一條 extended regex,# 開頭與空行忽略)
+#
+# 本模板抽取自一個私有專案;以下條目是「來源專案的識別詞」,模板內容與 git 史
+# 出現任何一條即 CI 紅 — 防止未來從來源專案 copy 內容時把專案語意帶進模板。
+#
+# 【導入者注意】若你 fork 本模板後不需要這層防護,可刪除本檔 + CI 對應 step;
+# 若你也是從自家私有專案抽模板,把清單換成你家的識別詞。
+activa
+活性界面
+售票
+ecpay
+綠界
+生活歐巴
+威許
+wishmobile
+OPENTIX
+文化幣
+TRADE-VAN
+tix\.
+(^|[^a-z])wuming
+take5 #[0-9]
+PR #[0-9]
+pull/[0-9]
+COMPANY 2026

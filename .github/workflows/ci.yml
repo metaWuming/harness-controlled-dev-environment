@@ -1,0 +1,98 @@
+name: CI
+
+# 品質閘門(L1 通用版):
+#   secret scan(gitleaks 全史)→ typecheck → lint → audit → 文件引用自檢 →
+#   TODOS marker 治理 → 去識別化掃描 → vitest
+#
+# 本模板無 DB / 無框架 build;若你採 Next.js+Prisma 堆疊,把
+# stack/nextjs-prisma/ci-snippets/prisma-ci-steps.yml 的步驟插進來
+# (postgres service + prisma generate + migrate/seed + schema refs check)。
+#
+# 任何一步失敗就擋 PR。建議設 GitHub branch protection:主線分支要求 CI pass 才能 merge。
+
+on:
+  push:
+    branches: [main, develop, 'feature/**']
+  pull_request:
+    branches: [main, develop]
+
+# 同一 PR / branch 的舊 run 自動取消,省 CI 分鐘
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          # fetch-depth: 0 = 全史:gitleaks 全史掃描、check-todos-markers 的 PR merge
+          # 證據查找、check-no-source-terms 的歷史 blob 掃描都需要
+          fetch-depth: 0
+
+      - name: Secret scan (gitleaks)
+        # 常駐秘密掃描:對全 git 歷史跑 gitleaks — 任何密鑰進到 PR 就紅,不等事後健檢。
+        # 誤報放行走 repo 根目錄 .gitleaks.toml(按值精準放行,見該檔原則註解)。
+        # pinned 官方 release binary + sha256 校驗(不用第三方 action,少一個供應鏈依賴;
+        # 升版:改 VERSION + 對照 release 頁 checksums.txt 更新 SHA)。
+        run: |
+          GITLEAKS_VERSION=8.30.1
+          GITLEAKS_SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          curl -sSfL -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          /tmp/gitleaks git --redact --no-banner
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx eslint .
+
+      - name: Dependency audit (high/critical 硬 gate)
+        # --audit-level=high → 只有 high/critical 讓 CI 紅,moderate/low 照樣印在 log
+        # (可見、不擋 — 中低風險 CVE 修復常需 major bump / 等 upstream,不該卡住所有
+        # merge;高風險則必須當下處理)。本模板全 devDeps,不加 --omit=dev。
+        run: npm audit --audit-level=high
+
+      - name: Doc Refs Check
+        # 一致性維護:掃 harness 文件的「檔案引用」是否指向真實存在的檔案。
+        # 新失效引用 → CI 紅,逐條 triage(檔案搬移 → 改路徑;已刪 → 補 superseded 註記)。
+        run: npx tsx scripts/check-doc-refs.ts
+
+      - name: Fetch delivery refs (for TODOS Markers Check)
+        # check-todos-markers 用主線分支的 git 史判 PR merge 證據;pull_request event 下
+        # checkout 是 detached merge ref,顯式 fetch 建 remote-tracking ref(best-effort:
+        # 分支不存在時略過,腳本會退回 HEAD)
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main || echo "note: main ref fetch 略過"
+          git fetch --no-tags origin develop:refs/remotes/origin/develop || echo "note: develop ref fetch 略過(未採 develop 主線則屬正常)"
+
+      - name: TODOS Markers Check
+        # marker 治理:TODOS.md 完成宣稱(✅/完工)必須引用有 merge 證據的 PR 號,
+        # 防打錯號 / 投機性標 ✅。MARKER_SELF_PR 解「同 PR 翻 marker 引用本 PR#」死鎖。
+        env:
+          MARKER_SELF_PR: ${{ github.event.pull_request.number }}
+        run: npx tsx scripts/check-todos-markers.ts
+
+      - name: Source-term scan (de-identification gate)
+        # 去識別化常駐 gate:本模板抽取自私有專案,掃「來源專案識別詞」殘留
+        # (working tree + git 全史)。導入者不需要時可連同 scripts/deny-terms.txt 移除。
+        run: bash scripts/check-no-source-terms.sh
+
+      - name: Test (vitest)
+        run: npx vitest run

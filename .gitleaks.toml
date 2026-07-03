@@ -1,0 +1,22 @@
+# gitleaks 設定 — CI 常駐秘密掃描
+#
+# 掃描入口:CI「Secret scan (gitleaks)」step 對全 git 歷史跑 `gitleaks git`。
+# 本機驗證:repo 根目錄跑 `gitleaks git --redact --no-banner`(自動讀本檔)。
+# 本機 pre-push hook 也會跑(見 scripts/git-hooks/pre-push)。
+#
+# 放行原則:**按「值」精準放行、不開路徑豁免**(路徑豁免會讓該檔未來的真洩漏被靜默吞掉)。
+# 每一條放行都要註明「為什麼這不是機密」;新增誤報放行前先確認值真的是公開/假值。
+
+title = "harness-controlled-dev-environment gitleaks config"
+
+[extend]
+# 繼承 gitleaks 內建預設規則(僅疊加 allowlist,不弱化任何偵測規則)
+useDefault = true
+
+# 誤報放行範例(需要時解除註解;regexTarget 預設 "secret" = 對被抽出的秘密值錨定比對):
+# [[allowlists]]
+# description = "已核實誤報(說明來源與為何非機密)"
+# regexes = [
+#   # 某第三方服務文件公開的沙盒測試值(非機密)
+#   '''^public-sandbox-example-value$''',
+# ]

@@ -1,0 +1,36 @@
+# Dependabot 設定 — 依賴自動更新
+#
+# 目的:依賴漏洞/過期不再靠人記得;Dependabot 每週開 PR、既有 CI
+# (gitleaks + audit gate + 測試)當升級安全網。
+#
+# ⚠️ 若你的開發主線不是預設分支(例如 main=正式、develop=開發主線),
+#    每個 update 條目要加 `target-branch: 'develop'`,否則升級 PR 會開到預設分支。
+#
+# 群組策略:minor + patch 合併成單一群組 PR(防 PR 洪水,一次 CI 驗一批);
+# major 個別開(breaking change 要逐個評估)。
+
+version: 2
+updates:
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: '依賴'
+    groups:
+      minor-and-patch:
+        patterns:
+          - '*'
+        update-types:
+          - 'minor'
+          - 'patch'
+
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'monthly'
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: '依賴'
