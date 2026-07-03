@@ -1,0 +1,88 @@
+# stack/nextjs-prisma/ci-snippets/prisma-ci-steps.yml
+#
+# Prisma 相關的 CI 步驟片段(GitHub Actions)。
+# 這不是一個可獨立執行的 workflow — 是「貼回你主 repo `.github/workflows/ci.yml`」的片段。
+#
+# 貼法:
+#   1. `services:` 段貼進你的 job 定義(與 `runs-on:` 同層)
+#   2. `env:` 段貼進同一個 job 的 env(讓測試 / migrate 指向 service container)
+#   3. `steps:` 段的各 step 依序插入你的 job steps(checkout / setup-node / npm ci 之後)
+#
+# 設計要點:
+#   - 測試用 GitHub Actions 的 postgres service container,每次 CI run 從空 DB
+#     重新 migrate + seed — **不碰任何雲端 DB**,測試髒資料不外洩、也不受共用 DB 干擾
+#   - Prisma client 是 gitignored 的產物,CI 每次重新 `prisma generate`
+#   - lint scope 建議含 scripts/ 與 prisma/(防 scripts 內 raw prisma import 繞過
+#     eslint-rules 的 L2 規則;prisma/seed.ts 的 raw new PrismaClient 也要被 audit)
+
+services:
+  postgres:
+    image: postgres:16
+    env:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: app_test
+    ports:
+      - 5432:5432
+    # 確認 postgres ready 才開始跑後面的步驟
+    options: >-
+      --health-cmd pg_isready
+      --health-interval 5s
+      --health-timeout 5s
+      --health-retries 10
+
+env:
+  # 測試環境 URL 都指向 service container(不是雲端 DB)
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/app_test
+  DIRECT_URL: postgresql://postgres:postgres@localhost:5432/app_test
+  # seed 腳本若會拒絕在 NODE_ENV=production 跑,CI 明示 test
+  NODE_ENV: test
+
+steps:
+  - name: Generate Prisma Client
+    # generated client 是 gitignored,每次 CI 重新 generate
+    run: npx prisma generate
+
+  - name: Wait for postgres
+    # setup-node 後 postgres service 通常已 ready,但多一層保險
+    run: |
+      for i in {1..10}; do
+        if pg_isready -h localhost -p 5432 -U postgres; then
+          echo "Postgres ready"
+          break
+        fi
+        echo "Waiting for postgres... ($i/10)"
+        sleep 2
+      done
+    env:
+      PGPASSWORD: postgres
+
+  - name: Apply migrations
+    # 情況 A(常見):migration 史單純,直接 deploy 即可
+    run: npx prisma migrate deploy
+    # 情況 B:migration 史中有「資料 migration 依賴 seed 資料」→ 改用
+    # stack/nextjs-prisma/scripts/ci-migrate.sh(拆兩段 deploy、中間 seed;
+    # 細節看該腳本註解,使用前先改 gate migration 名與 seed 指令):
+    #   run: bash scripts/ci-migrate.sh
+
+  # - name: Full seed
+  #   # 【placeholder】換成你專案的 seed 指令,例如:
+  #   run: npx tsx prisma/seed.ts
+
+  # - name: Seed test users
+  #   # 【placeholder】若整合測試依賴特定測試帳號,在此建立,例如:
+  #   run: npx tsx scripts/seed-test-users.ts
+
+  - name: Lint(scope 含 scripts/ 與 prisma/)
+    # 防 scripts/ 內 base prisma import、prisma/seed.ts 的 raw new PrismaClient
+    # 繞過 L2 eslint-rules(見 stack/nextjs-prisma/eslint-rules/)
+    run: npx eslint src/ tests/ scripts/ prisma/
+
+  - name: Prisma Schema Refs Check
+    # 守「寫 Prisma 程式碼前必須先確認 schema 有對應 model」的自動化。
+    # 掃 src/ tests/ scripts/ 內所有 prisma.<model>.X(...) / tx.<model>.X(...) 呼叫,
+    # 確認 <model> 對應 prisma/schema.prisma 真實 model declaration。
+    run: npx tsx scripts/check-prisma-schema-refs.ts
+
+  - name: Test(vitest with real DB)
+    run: npx vitest run
