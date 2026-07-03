@@ -1,0 +1,21 @@
+# dependencies
+node_modules/
+
+# env(密鑰一律不進版控)
+.env
+.env.*
+!.env.example
+
+# build / cache
+dist/
+coverage/
+*.tsbuildinfo
+
+# OS / editor
+.DS_Store
+
+# Claude Code 本機設定(含個人授權,不進版控)
+.claude/settings.local.json
+
+# logs
+*.log
