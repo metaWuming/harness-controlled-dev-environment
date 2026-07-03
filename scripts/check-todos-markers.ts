@@ -275,12 +275,16 @@ export function checkTodosMarkers(
   return { violations, advisories, verifiedPrs, totalCompletionPrs };
 }
 
+/** 交付分支候選(依序試 resolve;預設分支非 main/develop 的 repo 請把你的交付分支加進來) */
+const DELIVERY_REF_CANDIDATES = ['origin/main', 'origin/develop', 'main', 'develop'];
+
 /**
  * git IO:從「交付分支」commit subject 建「有 merge 證據的 PR 號集合」。
- * 只認 develop / main 的 ancestry —— **不用 `git log --all`**(會掃未合併 feature 分支的 `(#N)`),
- * **也不預設含 HEAD**(feature 分支 HEAD 含未合併 commit,其 `(#N)` 會假「已交付」)。
- * 交付 ref({origin/main, origin/develop, main, develop} 中 resolve 者)優先;僅當交付 ref 全不存在
- * (罕見:CI 只 fetch 了 PR ref)才退回 HEAD 並印警告。
+ * 只認交付分支的 ancestry —— **不用 `git log --all`**(會掃未合併 feature 分支的 `(#N)`),
+ * **也絕不退回 HEAD**(feature 分支 HEAD 含未合併 commit,其 `(#N)` 會假「已交付」——
+ * Codex review:HEAD fallback 會讓未合併 commit 充當 merge 證據,gate 假綠)。
+ * 候選全不 resolve 時再試 origin/HEAD 偵測預設分支;仍無 → 回空集合(有宣稱時 fail-closed,
+ * 警告訊息指引使用者設定 DELIVERY_REF_CANDIDATES)。
  */
 function buildMergedPrSet(): Set<number> {
   const merged = new Set<number>();
@@ -292,11 +296,30 @@ function buildMergedPrSet(): Set<number> {
       return false;
     }
   };
-  const deliveryRefs = ['origin/main', 'origin/develop', 'main', 'develop'].filter(resolves);
-  const refs = deliveryRefs.length > 0 ? deliveryRefs : resolves('HEAD') ? ['HEAD'] : [];
-  if (refs.length === 0) return merged;
+  const deliveryRefs = DELIVERY_REF_CANDIDATES.filter(resolves);
   if (deliveryRefs.length === 0) {
-    console.warn('⚠️ 找不到 develop/main 交付 ref,退回 HEAD 判 merge 證據(可能含未合併 commit)');
+    // 候選名單全不在 → 試 origin/HEAD 偵測遠端預設分支(涵蓋 master 等非慣例命名)
+    try {
+      const def = execSync('git symbolic-ref --quiet refs/remotes/origin/HEAD', {
+        cwd: REPO_ROOT,
+        encoding: 'utf-8',
+        stdio: 'pipe',
+      })
+        .trim()
+        .replace('refs/remotes/', '');
+      if (def && resolves(def)) deliveryRefs.push(def);
+    } catch {
+      /* origin/HEAD 未設(常見於非 clone 的 repo)→ 走下方空集合路徑 */
+    }
+  }
+  const refs = deliveryRefs;
+  if (refs.length === 0) {
+    console.warn(
+      '⚠️ 找不到任何交付 ref(origin/main / origin/develop / main / develop / origin/HEAD)。' +
+        '不以 HEAD 充當 merge 證據(未合併 commit 會假交付)——若 TODOS 有完成宣稱將直接失效。' +
+        '請把你的交付分支加進 scripts/check-todos-markers.ts 的 DELIVERY_REF_CANDIDATES。'
+    );
+    return merged;
   }
   let log = '';
   try {
