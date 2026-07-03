@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+#
+# scripts/git-hooks/pre-push — 偵測 push 程式碼到 develop / main 並要求確認
+#
+# 機器化教訓:Admin push 保護分支會 bypass branch protection,訊息看起來像錯誤
+# 但其實已成功。原則:
+#   - 文件改動可直接 push(零風險時可接受)
+#   - 程式碼改動嚴禁直接 push 保護分支 —— 一定走 feature 分支 + PR + CI pass
+#
+# Hook 行為:
+#   - push target 不是 develop / main → 直接放行(feature/* 都正常)
+#   - push target 是 develop / main 但 commits 全是 doc 改動 → 直接放行
+#   - push target 是 develop / main 且 commits 含 code 檔 → 要求打字 yes 確認
+#
+# 緊急逃生:`git push --no-verify` 跳過本 hook
+#
+# Opt-in:`npm run setup-hooks` 才會啟用(設 git config core.hooksPath)
+
+set -e
+
+# Git 透過 stdin 傳 "<local-ref> <local-sha> <remote-ref> <remote-sha>" 給 pre-push
+# 一行對應一個被 push 的 branch。我們關心 remote-ref。
+
+# 「code 檔案」pattern SSOT(抽在 code-pattern.sh,與 pre-commit 共用)
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/git-hooks/code-pattern.sh
+. "$HOOK_DIR/code-pattern.sh"
+
+# ── 本機秘密掃描(gitleaks)────────────────────────────────────────────
+# CI 的 gitleaks step 抓到時密鑰已離開本機到 remote —— push 前本機掃才是第一層
+# 縱深。任何分支的 push 都掃(feature 分支的密鑰一樣會離機)。全史掃描一般 repo
+# 約 1-2 秒;誤報放行走 repo 根 .gitleaks.toml(gitleaks 自動讀)。
+# 有 leak → 硬 block(不給互動確認,密鑰永遠不該被 push;修完 history 再來)。
+# binary 不存在 → 提示後放行(graceful degradation,CI 仍會掃)。
+if command -v gitleaks >/dev/null 2>&1; then
+  # 輸出捕捉後失敗時完整印出(吞掉輸出會讓人分不清「真 leak」vs
+  # 「config 壞掉」vs 其他 runtime 錯,而這一步會擋下所有 push)
+  if ! gitleaks_out=$(gitleaks git --redact --no-banner 2>&1); then
+    {
+      echo ""
+      echo "✗ gitleaks 失敗,擋下 push(可能偵測到密鑰,或設定/執行錯誤——細節如下)"
+      echo "$gitleaks_out"
+      echo ""
+      echo "   誤報 → 按值加進 .gitleaks.toml allowlist 再 push"
+      echo "   緊急逃生:\`git push --no-verify\`(CI 仍會掃到並擋 PR)"
+    } >&2
+    exit 1
+  fi
+else
+  echo "ℹ️  本機未裝 gitleaks,略過 push 前秘密掃描(CI 仍會掃)。安裝:brew install gitleaks" >&2
+fi
+
+z40='0000000000000000000000000000000000000000'
+
+triggered=0
+# Accumulator:multi-ref push 時把所有 triggered branch 的警告聚合,最後只 prompt
+# 一次,避免每個 branch 印 prompt 但只一個 read 對應的「yes 確認哪個」歧義。
+WARNING_BUFFER=""
+
+append_warning() {
+  WARNING_BUFFER="${WARNING_BUFFER}${1}
+"
+}
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # 跳過刪除 branch 的 push
+  if [ "$local_sha" = "$z40" ]; then
+    continue
+  fi
+
+  # 只關心 push 到 develop / main
+  case "$remote_ref" in
+    refs/heads/develop|refs/heads/main) ;;
+    *) continue ;;
+  esac
+
+  branch_name="${remote_ref#refs/heads/}"
+
+  # 算 push 範圍內動到的檔案
+  # - 一般 push:remote_sha..local_sha
+  # - 新 branch push(remote_sha = z40):新建 develop / main 是罕見且高風險的事
+  #   一律 fail-closed 要求確認
+  # - force-push 或 stale remote(remote_sha object 不在本機):git diff 會 fail,
+  #   `|| true` silently empty 等於放行 → 改成 fail-closed
+  # Note:GitHub UI squash-merge 後 sync push 也會出現 diff 含整 feature 的檔
+  #   案,hook 會 trigger 但 user 知道是 sync,輸入 yes 即可(設計接受 UX)
+  if [ "$remote_sha" = "$z40" ]; then
+    triggered=1
+    append_warning ""
+    append_warning "⚠️  偵測到新建 origin/$branch_name(remote 端不存在),這是罕見操作"
+    append_warning "   為避免 force-push / 重建 protected branch 繞過 hook,要求確認"
+    continue
+  fi
+
+  if ! changed=$(git diff --name-only "$remote_sha..$local_sha" 2>&1); then
+    triggered=1
+    append_warning ""
+    append_warning "⚠️  無法 diff $remote_sha..$local_sha(可能是 force-push 或 stale remote)"
+    append_warning "   為避免 silently 放行 code 改動,要求確認"
+    append_warning "   git diff 訊息:$changed"
+    continue
+  fi
+
+  if [ -z "$changed" ]; then
+    continue
+  fi
+
+  # grep 出 code 檔案
+  code_files=$(echo "$changed" | grep -E "$CODE_PATTERN" || true)
+
+  if [ -z "$code_files" ]; then
+    # 全是 doc / markdown / html → 放行
+    continue
+  fi
+
+  triggered=1
+  append_warning ""
+  append_warning "⚠️  偵測到 push 程式碼到 origin/$branch_name"
+  append_warning "   程式碼改動應該走 feature/* 分支 + PR + CI,直接 push 會 bypass branch protection。"
+  append_warning ""
+  append_warning "   含 code 檔案:"
+  while IFS= read -r line; do
+    [ -n "$line" ] && append_warning "     - $line"
+  done <<< "$code_files"
+done
+
+if [ "$triggered" = "1" ]; then
+  # 一次顯示所有 triggered branch 的警告
+  printf '%s' "$WARNING_BUFFER" >&2
+  echo "" >&2
+  echo "若確定要直接 push(eg. 緊急 hotfix),請輸入 yes 確認(其他任何輸入 abort):" >&2
+
+  # 必須從 /dev/tty 讀,因為 stdin 被 git 占用傳 ref 資料
+  if [ ! -t 0 ] && [ ! -r /dev/tty ]; then
+    echo "✗ 非 interactive 環境且 /dev/tty 不可讀,abort。緊急時用 \`git push --no-verify\`" >&2
+    exit 1
+  fi
+  # -t 60:ssh -T 等情境 /dev/tty 可讀但 read 會 hang,60 秒 timeout 自動 abort
+  read -t 60 -r answer < /dev/tty || answer=""
+  if [ "$answer" != "yes" ]; then
+    echo "✗ 取消 push" >&2
+    exit 1
+  fi
+  echo "→ 已確認,繼續 push" >&2
+fi
+
+exit 0

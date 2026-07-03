@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+#
+# scripts/git-hooks/pre-commit — 保護分支(develop / main)程式碼 commit 守衛
+#
+# 機器化「commit 前必重驗 branch」教訓:實務常見「背景 agent / 平行 session 偷移
+# HEAD → commit 落到保護分支」——防線若只有記憶提醒擋不住,本 hook 把它變成機器擋。
+#
+# Hook 行為:
+#   - 當前分支不是 develop / main → 直接放行(feature/* 零摩擦)
+#   - develop / main 上 staged 檔案全是 doc(.md/.html 等非 code)→ 放行
+#     (保留「feature merge 後直接 commit progress/TODOS/LESSONS doc」慣例)
+#   - develop / main 上 staged 含 code 檔 → **直接 block**(不做互動確認——
+#     程式碼 commit 到保護分支沒有正當情境;pre-push 的互動確認是給「push 既有
+#     commit」的罕見情境,commit 當下攔截更早更便宜)
+#   - 例外中的例外:PROTECTED_DOCS 內列的 .md 檔(如「PR-only 的策略文件」)
+#     在保護分支上直接 commit 一樣 block
+#
+# 緊急逃生:`git commit --no-verify` 跳過本 hook
+# Opt-in:`npm run setup-hooks`(設 git config core.hooksPath;已設者自動生效)
+
+set -e
+
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/git-hooks/code-pattern.sh
+. "$HOOK_DIR/code-pattern.sh"
+
+# 受保護的 doc 檔(雖是 .md 但屬 PR-only 禁區,不放行 doc 例外)。
+# 預設空;導入時按需填,例:PROTECTED_DOCS='^PROJECT_VISION\.md$|^docs/GOVERNANCE\.md$'
+# (grep -E pattern,對 staged 相對路徑整串比對)
+PROTECTED_DOCS=''
+
+branch="$(git branch --show-current 2>/dev/null || true)"
+
+# 只在保護分支上作用(detached HEAD → branch 為空 → 放行,rebase 等情境不干擾)
+case "$branch" in
+  develop|main) ;;
+  *) exit 0 ;;
+esac
+
+# staged 檔案清單(--cached = 只看這次 commit 會進去的東西)。換行分隔,與
+# pre-push 同款(含換行的檔名理論上會誤拆,一般專案檔名慣例不含換行,接受)
+staged="$(git diff --cached --name-only)"
+[ -z "$staged" ] && exit 0
+
+blocked=""
+
+# 1) code 檔一律 block
+code_files=$(echo "$staged" | grep -E "$CODE_PATTERN" || true)
+[ -n "$code_files" ] && blocked="$code_files"
+
+# 2) PROTECTED_DOCS 內的 PR-only 文件,.md 也不放行
+if [ -n "$PROTECTED_DOCS" ]; then
+  protected=$(echo "$staged" | grep -E "$PROTECTED_DOCS" || true)
+  if [ -n "$protected" ]; then
+    blocked="${blocked}${blocked:+
+}$protected"
+  fi
+fi
+
+if [ -n "$blocked" ]; then
+  {
+    echo ""
+    echo "✗ 擋下 commit 到 $branch(「commit 前必重驗 branch」機器化)"
+    echo "   程式碼(與 PR-only 保護文件)不能直接 commit 到保護分支——走 feature 分支 + PR。"
+    echo ""
+    echo "   被擋的檔案:"
+    while IFS= read -r line; do
+      [ -n "$line" ] && echo "     - $line"
+    done <<< "$blocked"
+    echo ""
+    echo "   → 修法:\`git checkout -b feature/<名稱>\`(staged 檔案會原封不動跟著過去),再 commit"
+    echo "   → doc 類(progress/TODOS/LESSONS 等 .md)不受影響,可直接 commit"
+    echo "   → 緊急逃生:\`git commit --no-verify\`"
+  } >&2
+  exit 1
+fi
+
+exit 0
