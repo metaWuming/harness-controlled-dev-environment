@@ -31,7 +31,15 @@ if [[ ! -s "$PATTERNS" ]]; then
   exit 0
 fi
 
-EXCLUDES=(':!scripts/deny-terms.txt' ':!package-lock.json')
+# 豁免說明:
+# - deny-terms.txt:denylist 本身必然含這些詞
+# - package-lock.json:雜湊噪音
+# - check-todos-markers.{ts,test.ts}:該工具的本職是解析「PR #N」引用格式,
+#   docstring 與測試 fixture 必然含「PR 井號+數字」這類語法範例(編號皆虛構)——
+#   屬功能性內容非來源專案殘留。其餘 pattern(專案名等)仍應在此兩檔為 0,
+#   若要對它們全量掃,把下兩行豁免暫時移除再跑一次即可。
+EXCLUDES=(':!scripts/deny-terms.txt' ':!package-lock.json'
+  ':!scripts/check-todos-markers.ts' ':!tests/check-todos-markers.test.ts')
 FAIL=0
 
 echo "── [1/3] working tree 掃描 ──"
