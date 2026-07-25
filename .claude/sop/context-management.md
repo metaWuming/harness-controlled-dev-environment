@@ -62,5 +62,5 @@ related: CLAUDE.md Part 2 / .claude/sop/plan-mode-checklist.md
 - ❌ 把「壓縮後的摘要記憶」當 ground truth——**hint 非 truth**,接手 session 起手一律 git 核實
 - ❌ 為了省 context 跳過 progress doc——省下的 token 會用十倍代價在下個 session 重考古
 - ❌ **為了省 context 而 fan-out**:派 subagent 是有成本的,不是免費的 context 節流閥。
-  幾個工具呼叫就能自己做完的事直接做(見 `.claude/agents/` 與 SOP 的委派上限)
+  幾個工具呼叫就能自己做完的事直接做(委派規則見 `CLAUDE.md` 原則 5.5)
 - ❌ **憑「感覺聊很久了」就交棒**:見上方大視窗校準第 2 點,過早交棒是淨損失
