@@ -3,9 +3,11 @@
 // 每週健檢腳本(骨架版)— 「每週手動跑、零維護」的指標 snapshot。
 //
 // 對「會隨時間 drift 的指標」自動快照,讓未來開發者(包含 AI session)有
-// 「上週 vs 本週」對比基準。骨架版只帶兩個通用 collector:
+// 「上週 vs 本週」對比基準。目前三個 collector:
 //   1. TODOS.md P1 open / completed(工作累積趨勢)
 //   2. LESSONS.md 近 7 天新增條目數(教訓產出速率;暴增 = bug 多 / 知識曲線陡)
+//   3. progress.md cost field 加總(**審查是否鈍化** — 交付量沒少但 findings 持續掉,
+//      通常不是程式碼變好而是 review 變走過場)
 //
 // TODO: 按需擴充 collector — 常見候選(照本檔 collector 範式加:pure function 吃
 //   content/fixture + main 只做 IO 編排 + 單一 collector 失敗不連坐):
@@ -55,8 +57,20 @@ export interface HealthReport {
     // raw:'error' = 該 collector 失敗(檔案讀不到等),不連坐其他 metric
     todosP1: { open: number; completed: number; raw?: 'error' };
     lessonsNew: { count: number; entries: string[]; raw?: 'error' };
+    // 審查產出量(「review 是否鈍化」的資料源)。optional:舊 baseline JSON 無此欄。
+    reviewCost?: {
+      sprints: number;
+      totalRounds: number;
+      totalP1: number;
+      totalP2: number;
+      // null = 本週所有 entry 都沒填這欄(舊格式 cost field)→ 與「填了 0」語意不同,不可混用
+      step5Independent: number | null;
+      raw?: 'error';
+    };
     // TODO: 按需擴充 collector(新 metric 一律 optional,舊 baseline JSON 無此欄時
     //   render / trend 都要 guard,避免讀舊檔 crash)
+    //   仍未實作的候選:教訓機器化率(需先在 LESSONS.md 建「已機器化」marker 慣例)、
+    //   記憶歸檔解析漂移(需先固定 archive stub 格式)。見 README 關卡⑫ 的現況說明。
   };
   trend: {
     prevWeekId: string | null;
@@ -104,9 +118,17 @@ export function getMondayOfWeek(date: Date): Date {
  * P1 段邊界:`## P1` heading 至下個 `## ` heading(通常是 `## P2`)。
  * 注意:JavaScript regex 不支援 `\Z` EOF anchor,用 `$(?![\s\S])` lookahead 確認字串結尾
  * —— 否則 `## P1` 是檔案最後一段(無下個 heading)時會 silent 失配回 0/0。
+ *
+ * ⚠️ **必須先剝除 HTML 註解**:TODOS.md 的 P1 段本來就放了一段註解掉的「範例格式」,
+ * 內含 `### 🔴 <標題>`。不剝除的話,**一個全空的 backlog 會被報成 P1 open = 1**——
+ * 假指標比沒指標更糟(2026-07-25 週健檢實跑時抓到)。
+ * 同理剝除 fenced code block:未來若有人把範例改成 ``` 圍籬也不會誤算。
  */
 export function countTodosP1(todosContent: string): { open: number; completed: number } {
-  const p1Match = todosContent.match(/^## P1[^\n]*\n([\s\S]*?)(?=^## |^# |$(?![\s\S]))/m);
+  const cleaned = todosContent
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/^```[\s\S]*?^```/gm, '');
+  const p1Match = cleaned.match(/^## P1[^\n]*\n([\s\S]*?)(?=^## |^# |$(?![\s\S]))/m);
   if (!p1Match) return { open: 0, completed: 0 };
   const p1Section = p1Match[1];
   const open = (p1Section.match(/^### 🔴/gm) ?? []).length;
@@ -139,6 +161,83 @@ export function countLessonsNewEntries(
     }
   }
   return { count: entries.length, entries };
+}
+
+/**
+ * 從 progress.md content 抓 `sinceDate` 起收尾的 sprint,加總其 cost field 數字。
+ *
+ * 回答的問題:**review 是否鈍化?**——同樣的交付量,review 抓到的東西越來越少,
+ * 通常不是「程式碼變好了」而是「review 變成走過場」。這是 harness 用來監測
+ * 自己的指標,不是專案指標。
+ *
+ * 資料源:progress entry 的 cost field(格式見 .claude/memory/progress.md 範本)
+ *   `📊 成本:CC ~Xh / 跨模型 review N rounds / P1 X 個 / P2 X 個 / Step5 獨立發現 X 個`
+ *
+ * 實作注意:
+ * 1. **先剝除 fenced code block** —— progress.md 檔頭的「Entry 格式範本」本身就含一行
+ *    cost field。範本日期是 `YYYY-MM-DD` 佔位符、date parse 會失敗因此「剛好」被擋掉,
+ *    但依賴那個副作用太脆(有人把範本日期改成真日期就破)→ 顯式剝除。
+ * 2. 每個欄位獨立 optional:舊 entry 沒有 `Step5 獨立發現` 欄很正常,不能因此整條丟掉。
+ * 3. `step5Independent` 回 null(不是 0)表示「本週沒有任何 entry 填這欄」——
+ *    與「填了但都是 0」語意完全不同:前者是沒資料,後者是 review 真的沒獨立發現。
+ */
+export function collectReviewCost(
+  progressContent: string,
+  sinceDate: Date
+): {
+  sprints: number;
+  totalRounds: number;
+  totalP1: number;
+  totalP2: number;
+  step5Independent: number | null;
+} {
+  const body = progressContent.replace(/^```[\s\S]*?^```/gm, '');
+
+  // 用 entry 日期標頭切段:從每個 `📅 YYYY-MM-DD` 到下一個(或結尾)
+  const headRe = /📅\s*(\d{4}-\d{2}-\d{2})/g;
+  const heads: { date: Date; start: number }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = headRe.exec(body)) !== null) {
+    const d = new Date(`${m[1]}T00:00:00Z`);
+    if (!Number.isNaN(d.getTime())) heads.push({ date: d, start: m.index });
+  }
+
+  let sprints = 0;
+  let totalRounds = 0;
+  let totalP1 = 0;
+  let totalP2 = 0;
+  let step5Sum = 0;
+  let step5Seen = false;
+
+  for (let i = 0; i < heads.length; i++) {
+    if (heads[i].date < sinceDate) continue;
+    const end = i + 1 < heads.length ? heads[i + 1].start : body.length;
+    const entry = body.slice(heads[i].start, end);
+    const cost = entry.match(/📊[^\n]*/);
+    if (!cost) continue;
+    const line = cost[0];
+
+    sprints++;
+    const rounds = line.match(/(\d+)\s*rounds?/i);
+    if (rounds) totalRounds += Number(rounds[1]);
+    const p1 = line.match(/P1\s*(\d+)/i);
+    if (p1) totalP1 += Number(p1[1]);
+    const p2 = line.match(/P2\s*(\d+)/i);
+    if (p2) totalP2 += Number(p2[1]);
+    const s5 = line.match(/Step\s*5[^0-9]*(\d+)/i);
+    if (s5) {
+      step5Sum += Number(s5[1]);
+      step5Seen = true;
+    }
+  }
+
+  return {
+    sprints,
+    totalRounds,
+    totalP1,
+    totalP2,
+    step5Independent: step5Seen ? step5Sum : null,
+  };
 }
 
 // =====================================================================
@@ -201,6 +300,23 @@ export function formatReportMarkdown(report: HealthReport): string {
       ? 'ERROR(LESSONS.md 讀取失敗)'
       : trendBadge(metrics.lessonsNew.count, trend.diff.lessonsNew);
 
+  // reviewCost:欄位 optional(舊 baseline JSON 無此欄)→ 三態 render,不印誤導數值
+  const rc = metrics.reviewCost;
+  const reviewRows =
+    !rc
+      ? '| 審查產出 | _(本週報告產生時尚無此 collector)_ | |'
+      : rc.raw === 'error'
+        ? '| 審查產出 | ERROR(progress.md 讀取失敗) | |'
+        : rc.sprints === 0
+          ? '| 審查產出 | _本週無 sprint 收尾,不計_ | |'
+          : [
+              `| 本週收尾 sprint 數 | ${rc.sprints} | |`,
+              `| 跨模型 review 總輪數 | ${trendBadge(rc.totalRounds, trend.diff.reviewRounds)} | |`,
+              `| P1 findings 總數 | ${trendBadge(rc.totalP1, trend.diff.reviewP1)} | |`,
+              `| P2 findings 總數 | ${rc.totalP2} | |`,
+              `| Step5 獨立發現數 | ${rc.step5Independent === null ? '_未填(舊格式 cost field)_' : rc.step5Independent} | |`,
+            ].join('\n');
+
   return `# Weekly Health Check — ${weekId}
 
 > 生成時間:${generatedAt}
@@ -214,6 +330,7 @@ export function formatReportMarkdown(report: HealthReport): string {
 | TODOS.md P1 open | ${todosDisplay(metrics.todosP1.open, trend.diff.todosP1Open)} | |
 | TODOS.md P1 completed | ${todosDisplay(metrics.todosP1.completed, trend.diff.todosP1Completed)} | |
 | LESSONS.md 新增(自本週週一 UTC 起) | ${lessonsDisplay} | |
+${reviewRows}
 
 ## LESSONS 新增 detail
 
@@ -223,6 +340,10 @@ ${metrics.lessonsNew.entries.length === 0 ? '_本週區間無新增_' : metrics.
 
 - **P1 open ↑**:工作累積過快,交付節奏可能失衡
 - **LESSONS 暴增**:bug 多 / 知識曲線陡 → 評估是否該開技術 debt sprint
+- **交付量沒少但 P1 findings 持續 ↓**:review 可能在**鈍化**(變成走過場)。
+  先查是不是 review 步驟被跳過 / effort 調太低 / 對手模型換了
+- **Step5 獨立發現連續為 0**:第二道 review 的邊際價值可能已消失,
+  值得開 sprint 討論是否簡化(見 SOP Step 5)。**但要看累積資料,不是單週**
 
 ## 怎麼用
 
@@ -264,6 +385,22 @@ export function runHealthCheck(opts?: {
   } catch {
     lessonsNew = { count: -1, entries: [], raw: 'error' };
   }
+  let reviewCost: NonNullable<HealthReport['metrics']['reviewCost']>;
+  try {
+    reviewCost = collectReviewCost(
+      fs.readFileSync(path.join(repoRoot, '.claude', 'memory', 'progress.md'), 'utf-8'),
+      monday
+    );
+  } catch {
+    reviewCost = {
+      sprints: -1,
+      totalRounds: -1,
+      totalP1: -1,
+      totalP2: -1,
+      step5Independent: null,
+      raw: 'error',
+    };
+  }
 
   // Trend(兩邊都非 error 才 diff,避免 -1 sentinel 假趨勢)
   const prev = loadPreviousWeek(historyDir, weekId);
@@ -276,6 +413,19 @@ export function runHealthCheck(opts?: {
     if (lessonsNew.raw !== 'error' && prev.metrics.lessonsNew?.raw !== 'error' && prev.metrics.lessonsNew) {
       trend.diff.lessonsNew = diffMetric(prev.metrics.lessonsNew.count, lessonsNew.count);
     }
+    // reviewCost:兩週都要「非 error」且「真的有 sprint 收尾」才 diff——
+    // 沒有 sprint 的週全是 0,拿 0 去比會產生「review 大幅下降」的假訊號
+    const prevRc = prev.metrics.reviewCost;
+    if (
+      reviewCost.raw !== 'error' &&
+      prevRc &&
+      prevRc.raw !== 'error' &&
+      reviewCost.sprints > 0 &&
+      prevRc.sprints > 0
+    ) {
+      trend.diff.reviewRounds = diffMetric(prevRc.totalRounds, reviewCost.totalRounds);
+      trend.diff.reviewP1 = diffMetric(prevRc.totalP1, reviewCost.totalP1);
+    }
   }
 
   const report: HealthReport = {
@@ -283,7 +433,7 @@ export function runHealthCheck(opts?: {
     weekStart: monday.toISOString().slice(0, 10),
     weekEnd: now.toISOString().slice(0, 10),
     generatedAt: now.toISOString(),
-    metrics: { todosP1, lessonsNew },
+    metrics: { todosP1, lessonsNew, reviewCost },
     trend,
   };
 

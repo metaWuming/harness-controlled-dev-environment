@@ -3,6 +3,7 @@
 // 驗證:
 //   - countTodosP1:open / completed / boundary(P2 段不被誤算)/ 檔尾無下個 heading
 //   - countLessonsNewEntries:date 過濾 / 警告 entries / 無效日期
+//   - collectReviewCost:fenced 範本剝除 / date 過濾 / 缺欄 / step5 null vs 0
 //   - ISO 週號:跨年(W53 / W01)
 //   - loadPreviousWeek / diffMetric
 //   - formatReportMarkdown:trend badge / collector error render
@@ -14,6 +15,7 @@ import path from 'node:path';
 import {
   countTodosP1,
   countLessonsNewEntries,
+  collectReviewCost,
   getISOWeek,
   formatWeekId,
   getMondayOfWeek,
@@ -97,6 +99,57 @@ describe('countTodosP1', () => {
   });
 });
 
+describe('countTodosP1 — 註解/圍籬內的範例不算真項目', () => {
+  it('P1 段只有註解掉的範例格式 → 0 open(2026-07-25 週健檢實跑抓到的假指標)', () => {
+    // 這正是模板出貨版 TODOS.md 的樣子:P1 段是空的,但放了一段註解掉的範例。
+    // 修正前這裡會回 open=1,讓一個全空 backlog 報成「有 1 個 P1 未完」。
+    const content = `# TODOS
+
+## P1(上線前必做)
+
+<!-- 範例格式:
+
+### 🔴 <標題>
+- **來源**:哪個 review 產生
+-->
+
+## P2
+`;
+    expect(countTodosP1(content)).toEqual({ open: 0, completed: 0 });
+  });
+
+  it('註解外的真項目照算,註解內的不算', () => {
+    const content = `## P1
+
+### 🔴 真的待辦
+
+<!--
+### 🔴 範例
+### ✅ 範例已完成
+-->
+
+### ✅ 真的完成 (#12)
+
+## P2
+`;
+    expect(countTodosP1(content)).toEqual({ open: 1, completed: 1 });
+  });
+
+  it('fenced code block 內的範例也不算', () => {
+    const content = `## P1
+
+\`\`\`markdown
+### 🔴 圍籬內的範例
+\`\`\`
+
+### 🔴 真的待辦
+
+## P2
+`;
+    expect(countTodosP1(content)).toEqual({ open: 1, completed: 0 });
+  });
+});
+
 describe('countLessonsNewEntries', () => {
   it('全部 entries 都在 sinceDate 之前 → 0', () => {
     const content = `# LESSONS
@@ -139,6 +192,91 @@ describe('countLessonsNewEntries', () => {
     const since = new Date('2026-05-18T00:00:00Z');
     const result = countLessonsNewEntries(content, since);
     expect(result.count).toBe(1);
+  });
+});
+
+describe('collectReviewCost', () => {
+  const SINCE = new Date('2026-05-18T00:00:00Z');
+
+  it('無 entry → 全 0,step5 為 null(無資料 ≠ 填了 0)', () => {
+    const r = collectReviewCost('# 開發進度\n\n(尚無 entry)\n', SINCE);
+    expect(r).toEqual({
+      sprints: 0,
+      totalRounds: 0,
+      totalP1: 0,
+      totalP2: 0,
+      step5Independent: null,
+    });
+  });
+
+  it('fenced code block 內的「Entry 格式範本」不被算成 sprint', () => {
+    // 這是本 collector 最重要的一條:progress.md 檔頭本來就有一份含 cost field 的範本。
+    // 刻意把範本日期寫成「真日期」——若實作只靠 YYYY-MM-DD 佔位符 parse 失敗來擋,這條會紅。
+    const content = [
+      '# 開發進度',
+      '',
+      '## Entry 格式範本',
+      '',
+      '```markdown',
+      '📅 2026-05-20 ⓝ — **標題**',
+      '> 📊 成本:CC ~9h / 跨模型 review 99 rounds / P1 99 個 / P2 99 個',
+      '```',
+      '',
+      '<!-- entry 從這裡開始 -->',
+      '',
+    ].join('\n');
+    const r = collectReviewCost(content, SINCE);
+    expect(r.sprints).toBe(0);
+    expect(r.totalRounds).toBe(0);
+  });
+
+  it('多個 entry 加總,sinceDate 之前的不計', () => {
+    const content = [
+      '📅 2026-05-20 ② — **本週 B**',
+      '> 📊 成本:CC ~3h / 跨模型 review 2 rounds / P1 1 個 / P2 4 個 / Step5 獨立發現 2 個',
+      '',
+      '📅 2026-05-19 ① — **本週 A**',
+      '> 📊 成本:CC ~5h / 跨模型 review 3 rounds / P1 2 個 / P2 1 個 / Step5 獨立發現 1 個',
+      '',
+      '📅 2026-05-10 ⓪ — **上上週,不該被計入**',
+      '> 📊 成本:CC ~1h / 跨模型 review 7 rounds / P1 7 個 / P2 7 個 / Step5 獨立發現 7 個',
+      '',
+    ].join('\n');
+    const r = collectReviewCost(content, SINCE);
+    expect(r.sprints).toBe(2);
+    expect(r.totalRounds).toBe(5);
+    expect(r.totalP1).toBe(3);
+    expect(r.totalP2).toBe(5);
+    expect(r.step5Independent).toBe(3);
+  });
+
+  it('舊格式 cost field(無 Step5 欄)→ 其他欄照算,step5 為 null', () => {
+    const content = [
+      '📅 2026-05-20 ① — **舊格式**',
+      '> 📊 成本:CC ~4h / 跨模型 review 2 rounds / P1 1 個 / P2 3 個',
+      '',
+    ].join('\n');
+    const r = collectReviewCost(content, SINCE);
+    expect(r.sprints).toBe(1);
+    expect(r.totalRounds).toBe(2);
+    expect(r.totalP1).toBe(1);
+    expect(r.step5Independent).toBeNull();
+  });
+
+  it('Step5 明確填 0 → 回 0 而非 null(有資料,且資料顯示無獨立發現)', () => {
+    const content = [
+      '📅 2026-05-20 ① — **第二道 review 沒抓到新東西**',
+      '> 📊 成本:CC ~4h / 跨模型 review 1 rounds / P1 0 個 / P2 0 個 / Step5 獨立發現 0 個',
+      '',
+    ].join('\n');
+    const r = collectReviewCost(content, SINCE);
+    expect(r.step5Independent).toBe(0);
+  });
+
+  it('entry 有日期標頭但沒有 cost field → 不計入 sprints(避免灌水分母)', () => {
+    const content = ['📅 2026-05-20 ① — **忘了寫 cost field**', '> 改動:一些事', ''].join('\n');
+    const r = collectReviewCost(content, SINCE);
+    expect(r.sprints).toBe(0);
   });
 });
 

@@ -68,23 +68,51 @@
 | "重構 X" | "確保重構前後測試都通過" |
 | "寫篇貼文" | "寫一篇能引導讀者點擊目標連結的貼文,字數 200-300 字" |
 
-多步驟任務先說簡短計畫:
-
-```
-1. [步驟] → 驗證:[檢查方式]
-2. [步驟] → 驗證:[檢查方式]
-3. [步驟] → 驗證:[檢查方式]
-```
+多步驟任務先說簡短計畫（列步驟即可）。
 
 **核心洞察**:強的成功標準讓 LLM 能自己 loop 到完成;弱的標準("讓它能 work")會一直需要使用者澄清。
 
 > "LLMs are exceptionally good at looping until they meet specific goals.
 > Don't tell it what to do, give it success criteria and watch it go." — Andrej Karpathy
 
-### 原則 5:Checkpoint(重要步驟後要確認)
+> ⚠️ **2026-07-25 為 Claude Opus 5 校準**:原本這裡有「1. [步驟] → 驗證:[檢查方式]」的逐步驗證模板,**已移除**。
+> Anthropic 的 Opus 5 prompting 指南明講:Opus 5 本來就會驗證自己做的東西,提示詞裡再掛顯式驗證步驟會造成
+> **過度驗證**——燒 token 但品質不會更好(原文:"instructions like these cause over-verification on
+> Claude Opus 5, and removing them reduces wasted tokens with no loss in quality")。
+> **保留「定義成功標準」(上面那張表)——那是好的;拿掉的是「每一步再額外掛一個驗證動作」。**
+> 專案的機器 gate(typecheck / lint / test / CI / code review)照跑,那是 harness 層,不是提示詞層的自我驗證。
 
-多步驟任務每完成一個 phase,簡短說明:做了什麼、驗了什麼、還剩什麼。
-不能描述當前狀態就不繼續。搞不清楚就停下來重新陳述。
+### 原則 5:Checkpoint(階段回報)
+
+多步驟任務每完成一個 phase,簡短說明**做了什麼、還剩什麼**。搞不清楚當前狀態就停下來重新陳述。
+
+回報節奏(2026-07-25 為 Opus 5 校準——Opus 5 預設就話多,要指定形狀而不是叫它多報):
+- **第一次動工具前**:一句話說要做什麼
+- **中途**:只在有重要發現或改變方向時才說,不要每個 tool call 都播報
+- **收尾**:第一句先講結果(發生什麼／找到什麼),細節放後面
+
+### 原則 5.4:思考力道與 thinking(2026-07-25 為 Opus 5 新增)
+
+- **effort 是成本桿,不是品質旋鈕。** 低 effort 該大方用——只要品質撐得住。
+  每個 SOP 步驟的建議值標在 `.claude/sop/plan-mode-checklist.md`,完整策略見 `docs/EFFORT.md`
+- **review 的準確度在較低 effort 仍然撐得住**,所以 Step 4/5 的迭代不必全程開滿;
+  最後一輪再拉高
+- **不要關掉 thinking。** 要省成本就降 effort。關掉會讓工具呼叫洩漏成純文字
+  (那個呼叫不會執行,而且會留在對話史污染後續每一個 turn),在本 harness 這種
+  工具密集流程最容易踩
+- **不要在任何提示詞裡寫「不要思考」「不要推理」**——那類指令會**增加**內部
+  tag 洩漏,不是減少
+
+### 原則 5.5:Subagent 委派 + 任務範圍(2026-07-25 為 Opus 5 新增)
+
+Opus 5 比前代更愛開 subagent、也更愛自行擴張任務範圍。兩條規則:
+
+- **委派**:大型且真正能平行的工作才開 subagent(例:橫跨多檔案的調查)。幾個 tool call 就能自己做完的不要開;
+  **不要用 subagent 檢查自己的工作**;一個 agent 夠就別開好幾個。
+  定義好的 agent 在 `.claude/agents/`(`explore-scoped` 蒐脈絡 / `adversarial-reviewer` 獨立審 diff)
+- **範圍**:交付被要求的範圍,不多不少。routine 判斷自己拍板(原則 8);只有在「不同解讀會導出完全不同的成果」
+  時才問。覺得需求有問題就講一句然後照原樣做完——**不要私自縮小、放大或改寫任務**
+- **自我修正**:只有在「錯誤會改變使用者的程式碼、結論或決定」時才回頭更正先前說法,講一句就好然後繼續做事
 
 ### 原則 6:衝突選邊,不要平均
 
@@ -119,7 +147,10 @@ codebase 裡兩種寫法打架時,選一個(通常選較新 / 測試較多的),�
 - **一律繁體中文**(程式碼註解、文件、對話;變數命名以外)— 導入時可改成你的語言
 - **條列式優先**:能用 bullet 就不要寫段落
 - **附上資料來源**:任何引用、研究、報告標明出處(URL / 檔名 / 頁碼 / 行號)
-- **避免廢話**:直接給答案和重點
+- **避免廢話**:直接給答案和重點。免責和但書寫短一點,篇幅花在正題上;要解釋時先給高層次摘要,除非明說要深入
+- **寫進檔案的文件(plan file / handoff / 報告)長度配合任務需要**:該講的講完,但不要用填充段落、重複的摘要、
+  樣板套話撐篇幅。這跟對話精簡是兩件事,兩邊都要顧(2026-07-25 為 Opus 5 新增——Opus 5 寫到磁碟的檔案
+  比前代明顯更長,而且調低 effort 不會可靠縮短它,只能靠提示詞)
 
 ### 任務啟動流程
 - **開始任務前收集背景**——範圍模糊 / 多種做法 / 涉及既有專案脈絡時必做
@@ -148,9 +179,12 @@ codebase 裡兩種寫法打架時,選一個(通常選較新 / 測試較多的),�
 3. **Go(本地優先)** — feature branch + atomic commits + 每 phase 全綠 gate;**先不 push、不開 PR**
 4. **跨模型 Review** — 對本地 diff 跑對手模型 review,迭代到 0 findings(無對手模型時降級:見 checklist)
    - **4.5 條件式安全關** — 碰安全敏感面(金流/個資/權限/資產轉移/audit trail)時觸發專責安全審;觸發判定先跑 `npx tsx scripts/check-cso-trigger.ts`(機器判定是下限不是上限)
+   - **4.6 條件式視覺關** — diff 碰 UI 檔時觸發;**實際截圖比對** design token,不靠讀碼推論外觀
 5. **同模型 sanity check** — 第二道 review 收尾(cross-model 補強設計層風險)
 6. **Push + PR + CI(最終 gate)** — 審乾淨才對外;CI 綠 → squash merge
 7. **Final** — 更新 progress.md + 收尾通知
+
+每步的建議 effort 標在 checklist 內(見原則 5.4 與 `docs/EFFORT.md`)。
 
 **例外**(不走流程):trivial 改(typo / 單行 rename / 純格式整理)— 直接 commit
 

@@ -4,6 +4,9 @@
   "private": true,
   "description": "AI 協作開發的可控安全環境模板(harness template):前饋 Guides + 回饋 Sensors,開箱即用",
   "license": "MIT",
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "lint": "eslint",
     "test": "vitest run",
@@ -18,10 +21,10 @@
   },
   "devDependencies": {
     "@types/node": "^20",
-    "eslint": "^9",
+    "eslint": "^10.8.0",
     "tsx": "^4.21.0",
     "typescript": "^5",
-    "typescript-eslint": "^8",
+    "typescript-eslint": "^8.65.0",
     "vitest": "^4.1.4"
   }
 }
