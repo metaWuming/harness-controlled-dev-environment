@@ -83,11 +83,15 @@ almost non-overlapping issues is why this SOP runs two independent reviews — a
 ### Quick start
 
 1. Click **Use this template** to create your repo
-2. Walk through [`docs/ADOPTION.md`](docs/ADOPTION.md) — fill in your tech context,
-   your security-sensitive path table, your branch strategy
-3. `npm install && npm run setup-hooks` to enable local git hooks
+2. `npm install && npm run setup-hooks` to enable local git hooks (needs Node ≥ 22.13)
+3. Walk through [`docs/ADOPTION.md`](docs/ADOPTION.md) — fill in your tech context,
+   your effort level, your security-sensitive path table, your branch strategy
 4. Using Next.js + Prisma? Layer on
    [`stack/nextjs-prisma/README.md`](stack/nextjs-prisma/README.md)
+
+Prefer a step-by-step walkthrough with the exact prompt to paste into your coding
+agent? See [`docs/QUICKSTART.md`](docs/QUICKSTART.md) (written in Traditional Chinese,
+like the rest of the harness docs — see the language note below).
 
 ### Design principles
 
@@ -199,10 +203,15 @@ Harness 元件分兩個方向(Fowler / Böckeler 框架):
 
 ### 快速上手
 
+**逐步操作備忘(含要貼給 AI 的那段話、疑難排解)**:
+[`docs/QUICKSTART.md`](docs/QUICKSTART.md) —— 第一次導入建議直接照它走。
+
+濃縮版:
+
 1. 按 **Use this template** 建立你的 repo
-2. 走一遍 [`docs/ADOPTION.md`](docs/ADOPTION.md) 導入 checklist:填技術上下文、
-   填安全敏感路徑表、設分支策略
-3. `npm install && npm run setup-hooks` 啟用本機 git hooks
+2. `npm install && npm run setup-hooks` 啟用本機 git hooks(需 Node ≥ 22.13)
+3. 走一遍 [`docs/ADOPTION.md`](docs/ADOPTION.md) 導入 checklist:填技術上下文、
+   設 effort 力道、填安全敏感路徑表、設分支策略
 4. 用 Next.js+Prisma?照 [`stack/nextjs-prisma/README.md`](stack/nextjs-prisma/README.md)
    疊加 L2 層
 

@@ -6,6 +6,9 @@ type: guide
 # 導入 Checklist(Use this template 之後做這些)
 
 > 按順序走完,每項都很小。全部做完,你的 repo 第一天就有完整防護欄。
+>
+> **還沒建好 repo?** 先看 [`QUICKSTART.md`](QUICKSTART.md) —— 它講「repo 怎麼開、
+> 放哪、第一句話對 AI 說什麼」,那三步做完才輪到本檔。本檔是給 AI 逐項執行的填空清單。
 
 ## 1. 基本識別
 
