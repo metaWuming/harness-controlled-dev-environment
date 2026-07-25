@@ -20,7 +20,7 @@
     "check:no-source-terms": "bash scripts/check-no-source-terms.sh"
   },
   "devDependencies": {
-    "@types/node": "^20",
+    "@types/node": "^26",
     "eslint": "^10.8.0",
     "tsx": "^4.21.0",
     "typescript": "^5",
