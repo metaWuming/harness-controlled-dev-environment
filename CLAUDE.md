@@ -91,12 +91,25 @@
 - **中途**:只在有重要發現或改變方向時才說,不要每個 tool call 都播報
 - **收尾**:第一句先講結果(發生什麼／找到什麼),細節放後面
 
+### 原則 5.4:思考力道與 thinking(2026-07-25 為 Opus 5 新增)
+
+- **effort 是成本桿,不是品質旋鈕。** 低 effort 該大方用——只要品質撐得住。
+  每個 SOP 步驟的建議值標在 `.claude/sop/plan-mode-checklist.md`,完整策略見 `docs/EFFORT.md`
+- **review 的準確度在較低 effort 仍然撐得住**,所以 Step 4/5 的迭代不必全程開滿;
+  最後一輪再拉高
+- **不要關掉 thinking。** 要省成本就降 effort。關掉會讓工具呼叫洩漏成純文字
+  (那個呼叫不會執行,而且會留在對話史污染後續每一個 turn),在本 harness 這種
+  工具密集流程最容易踩
+- **不要在任何提示詞裡寫「不要思考」「不要推理」**——那類指令會**增加**內部
+  tag 洩漏,不是減少
+
 ### 原則 5.5:Subagent 委派 + 任務範圍(2026-07-25 為 Opus 5 新增)
 
 Opus 5 比前代更愛開 subagent、也更愛自行擴張任務範圍。兩條規則:
 
 - **委派**:大型且真正能平行的工作才開 subagent(例:橫跨多檔案的調查)。幾個 tool call 就能自己做完的不要開;
-  **不要用 subagent 檢查自己的工作**;一個 agent 夠就別開好幾個
+  **不要用 subagent 檢查自己的工作**;一個 agent 夠就別開好幾個。
+  定義好的 agent 在 `.claude/agents/`(`explore-scoped` 蒐脈絡 / `adversarial-reviewer` 獨立審 diff)
 - **範圍**:交付被要求的範圍,不多不少。routine 判斷自己拍板(原則 8);只有在「不同解讀會導出完全不同的成果」
   時才問。覺得需求有問題就講一句然後照原樣做完——**不要私自縮小、放大或改寫任務**
 - **自我修正**:只有在「錯誤會改變使用者的程式碼、結論或決定」時才回頭更正先前說法,講一句就好然後繼續做事
@@ -166,9 +179,12 @@ codebase 裡兩種寫法打架時,選一個(通常選較新 / 測試較多的),�
 3. **Go(本地優先)** — feature branch + atomic commits + 每 phase 全綠 gate;**先不 push、不開 PR**
 4. **跨模型 Review** — 對本地 diff 跑對手模型 review,迭代到 0 findings(無對手模型時降級:見 checklist)
    - **4.5 條件式安全關** — 碰安全敏感面(金流/個資/權限/資產轉移/audit trail)時觸發專責安全審;觸發判定先跑 `npx tsx scripts/check-cso-trigger.ts`(機器判定是下限不是上限)
+   - **4.6 條件式視覺關** — diff 碰 UI 檔時觸發;**實際截圖比對** design token,不靠讀碼推論外觀
 5. **同模型 sanity check** — 第二道 review 收尾(cross-model 補強設計層風險)
 6. **Push + PR + CI(最終 gate)** — 審乾淨才對外;CI 綠 → squash merge
 7. **Final** — 更新 progress.md + 收尾通知
+
+每步的建議 effort 標在 checklist 內(見原則 5.4 與 `docs/EFFORT.md`)。
 
 **例外**(不走流程):trivial 改(typo / 單行 rename / 純格式整理)— 直接 commit
 

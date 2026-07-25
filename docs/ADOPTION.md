@@ -24,6 +24,18 @@ type: guide
 - [ ] §4.5 禁區清單:列出 AI 不可擅動的檔案(schema、策略文件、destructive scripts…)
 - [ ] §4.6 Git 規範:填分支策略與合併策略
 
+## 2.5 思考力道與 agent 定義
+
+- [ ] `.claude/settings.json`:`effortLevel` 對齊你的 repo 型態
+      (實作為主 → `xhigh`;文件 / 規劃為主 → `high` 或 `medium`)。
+      出貨值 `high` = 模型原生預設,不改也能跑
+- [ ] 讀一次 [`EFFORT.md`](EFFORT.md):理解「effort 是成本桿不是品質旋鈕」
+      與「**不要關 thinking**」兩條;跑幾個 sprint 後回來重校每步建議值
+- [ ] `.claude/agents/`:兩支預設 agent(`explore-scoped` 蒐脈絡 /
+      `adversarial-reviewer` 獨立審 diff)可直接用;要調語氣或加專屬 agent 就改這裡
+- [ ] 你的專案有 UI → 確認 `CLAUDE.md` §4.2 填了 design token 來源檔,
+      否則 SOP Step 4.6 視覺關沒有對照基準。純後端專案 → 視覺關永遠不觸發,不必設定
+
 ## 3. 安全敏感域路徑表(Step 4.5 安全關的前置)
 
 - [ ] `scripts/cso-trigger.config.ts`:把你專案的安全敏感路徑填進五域

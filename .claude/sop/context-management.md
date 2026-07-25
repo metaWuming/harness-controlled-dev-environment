@@ -27,9 +27,26 @@ related: CLAUDE.md Part 2 / .claude/sop/plan-mode-checklist.md
 |---|---|
 | sprint 已完整收尾(PR merged + doc 更新) | **收尾存檔**(或 sprint SOP Step 7 已涵蓋即不必另跑) |
 | 任務進行中、context 還很充裕 | 繼續做,不要為壓縮而壓縮 |
-| 任務進行中、context 明顯將盡(回應變慢/已被 compact 過一輪且又逼近) | **交棒**——比硬撐到 auto-compact 丟細節好 |
+| 任務進行中、context 明顯將盡(**已被 compact 過一輪且又逼近**) | **交棒**——比硬撐到 auto-compact 丟細節好 |
 | 任務進行中、單次 auto-compact 後仍可續 | 讓 harness 處理,**但先落地三件事**(見下) |
 | 任務卡在等外部(CI/法務/Owner 決策)且短期不回來 | **收尾存檔**(狀態進 repo,誰接都行) |
+
+## ⚠️ 大視窗時代的重新校準
+
+本表最初寫於視窗小得多的年代,判準偏保守。現行模型的視窗已到**百萬 token 級,
+而且是預設值不是選配**,官方也明講**指令遵循、工具呼叫、推理品質在整個視窗內保持一致**
+——不再有「後半段開始退化」這回事。三點要跟著改:
+
+1. **「回應變慢」不再是 context 將盡的訊號。** 回應速度現在主要受 effort 影響
+   (見 `docs/EFFORT.md`),把它當 context 餘量的代理指標會誤判。
+   **唯一可靠的訊號是「已經被 compact 過」**——上表已據此收斂。
+2. **交棒門檻應該往後拉。** 過去「聊很久了、保險起見先交棒」的直覺,現在多半是
+   **過早交棒**:交棒本身有成本(寫 HANDOFF、新 session 重新建立脈絡、
+   接手者要重新 git 核實),在視窗還很寬時付這個成本不划算。
+3. **但「落地三件事」的紀律不變。** 視窗大不代表對話內容是永久的——
+   compact 一樣會發生,檔案一樣是唯一不會被壓掉的東西。
+
+> 📌 **這條校準本身也要被校準。** 模型換代時回來重讀本節,確認前提還成立。
 
 ## Context reset / compact 前必落地三件事
 
@@ -44,3 +61,6 @@ related: CLAUDE.md Part 2 / .claude/sop/plan-mode-checklist.md
 - ❌ context 將盡還開新的大型探索(fan-out agent)——先交棒
 - ❌ 把「壓縮後的摘要記憶」當 ground truth——**hint 非 truth**,接手 session 起手一律 git 核實
 - ❌ 為了省 context 跳過 progress doc——省下的 token 會用十倍代價在下個 session 重考古
+- ❌ **為了省 context 而 fan-out**:派 subagent 是有成本的,不是免費的 context 節流閥。
+  幾個工具呼叫就能自己做完的事直接做(見 `.claude/agents/` 與 SOP 的委派上限)
+- ❌ **憑「感覺聊很久了」就交棒**:見上方大視窗校準第 2 點,過早交棒是淨損失
