@@ -35,6 +35,16 @@ updates:
       # **升 engines.node 時,手動把這個 major 一起升**(兩者是同一個決定的兩面)。
       - dependency-name: '@types/node'
         update-types: ['version-update:semver-major']
+      # `typescript` 的 major 受 **typescript-eslint 的 peer 範圍**節制,不能自己先跑。
+      # 2026-07-25 實測:TS 7.0.2 讓 `npm ci` 直接失敗(不是 lint 壞而已)——
+      #   npm error Conflicting peer dependency: typescript@6.0.3
+      #   npm error   peer typescript@">=4.8.4 <6.1.0" from typescript-eslint@8.65.0
+      # 光關掉 PR 沒用,dependabot 下個週期會再開一次、再燒一輪 CI、再要人判斷一次。
+      # **解除條件**(升 major 前先跑這行確認涵蓋新 major):
+      #   npm view typescript-eslint peerDependencies.typescript
+      # 涵蓋了就把本條移除、同批升 typescript 與 typescript-eslint。minor/patch 不受影響。
+      - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: 'github-actions'
     directory: '/'

@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+#
+# scripts/git-hooks/commit-msg — commit 訊息的去識別化前置檢查
+#
+# 機器化教訓(2026-07-25 實際踩到):去識別化 gate(scripts/check-no-source-terms.sh)
+# 的第 3 段掃「git 全史 commit 訊息」。在這個 repo 工作時,**寫 commit 訊息去描述
+# 「被 denylist 擋下什麼」是很自然的行為**,而描述時很容易把那個詞原樣寫進去 → gate 紅。
+#
+# 為什麼非得是 commit-msg 這個時機:
+#   - commit 前跑 gate:訊息還不存在,**掃不到**(當時本機全綠、CI 才紅,就是這個原因)
+#   - CI 才擋:代價是 amend + `--force-with-lease` + PR 留下 force-push 紀錄
+#     (而且 `git log --all` 會掃所有 ref,遠端舊 commit 不清掉照樣紅)
+#   - commit-msg 擋:訊息還沒定案,**直接改字就好,零代價**
+#   → 對齊模板「keep quality left」原則:越早跑,修得越便宜。
+#
+# Hook 行為:
+#   - 找不到 scripts/deny-terms.txt → **安靜放行**(導入者若照 ADOPTION §6 移除了
+#     去識別化 gate,本 hook 自動變成 no-op,不會壞掉)
+#   - denylist 全註解 / 全空 → 放行
+#   - 訊息(去掉 `#` 註解行後)命中任一 pattern → **block**,印出命中行
+#
+# 與 CI gate 的關係:本 hook 只看「這一則訊息」,是最便宜的第一道;
+# 完整三段掃描(working tree / 全史 blob / 全史訊息)仍以 CI 為準,兩者用同一份 denylist。
+#
+# 緊急逃生:`git commit --no-verify` 跳過本 hook
+# Opt-in:`npm run setup-hooks`(設 git config core.hooksPath;已設者自動生效)
+
+set -uo pipefail
+
+MSG_FILE="${1:-}"
+[[ -z "$MSG_FILE" || ! -f "$MSG_FILE" ]] && exit 0
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+DENY_SRC="$REPO_ROOT/scripts/deny-terms.txt"
+
+# 導入者移除了去識別化 gate → 本 hook 靜默 no-op(與 pre-push 對 gitleaks 的降級同模式)
+[[ -f "$DENY_SRC" ]] || exit 0
+
+PATTERNS="$(mktemp)"
+BODY="$(mktemp)"
+trap 'rm -f "$PATTERNS" "$BODY"' EXIT
+
+# 去掉註解與空行(空 pattern 會 match 所有行);全空 → 無事可掃
+grep -vE '^[[:space:]]*(#|$)' "$DENY_SRC" > "$PATTERNS" || true
+[[ -s "$PATTERNS" ]] || exit 0
+
+# 去掉 git 自動附加的 `#` 註解行(「# Please enter the commit message...」、
+# 分支/staged 檔案清單等)—— 那些不是使用者寫的訊息內容,掃了會假陽性
+grep -v '^[[:space:]]*#' "$MSG_FILE" > "$BODY" || true
+
+HITS="$(grep -niIE -f "$PATTERNS" "$BODY" 2>/dev/null)"
+rc=$?
+# grep:0=命中、1=乾淨、>1=掃描器錯誤(壞 regex)。錯誤時 FAIL 而非靜默放行。
+if [[ $rc -gt 1 ]]; then
+  echo "❌ commit-msg hook:denylist 掃描器錯誤(grep exit $rc),檢查 scripts/deny-terms.txt regex" >&2
+  exit 1
+fi
+[[ $rc -eq 1 ]] && exit 0
+
+cat >&2 <<EOF
+❌ commit 訊息含來源專案識別詞(去識別化 gate 會擋):
+
+$(echo "$HITS" | sed 's/^/    /')
+
+改掉再 commit。**要描述「被擋的是哪個詞」時,不要把那個詞原樣寫出來** ——
+用「denylist 裡的來源專案名稱」之類的中性描述即可。
+
+denylist:scripts/deny-terms.txt
+逃生(確定是誤報時):git commit --no-verify
+EOF
+exit 1

@@ -240,7 +240,7 @@ codebase 裡兩種寫法打架時,選一個(通常選較新 / 測試較多的),�
 
 - 每完成一個功能模組必須 commit,訊息格式「類別:範圍 — 內容」(類別:功能 / 修復 / 重構 / 文件 / 工具 / 測試)
 - 絕對不 commit `.env` / 任何密鑰
-- **本機 git hooks**(opt-in `npm run setup-hooks`):pre-commit 擋「保護分支上 commit 程式碼」(doc 放行);pre-push 先跑本機 gitleaks(有 leak 硬擋)再做保護分支 code push 確認
+- **本機 git hooks**(opt-in `npm run setup-hooks`):pre-commit 擋「保護分支上 commit 程式碼」(doc 放行);**commit-msg 擋「訊息含去識別化 denylist 詞」**(deny-terms.txt 不在時自動 no-op);pre-push 先跑本機 gitleaks(有 leak 硬擋)再做保護分支 code push 確認
 - 上下文管理判準見 `.claude/sop/context-management.md`
 
 <!-- 填:你的分支策略(例:main = 正式 / develop = 開發主線;feature/xxx、fix/xxx)與合併策略(feature→develop squash;develop→main merge commit) -->

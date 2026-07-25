@@ -51,6 +51,8 @@ type: guide
 
 - [ ] `npm run setup-hooks`(設 `core.hooksPath`,一次即可,clone 的每個人都要跑)
 - [ ] 檢查 `scripts/git-hooks/pre-commit` 的保護分支清單(預設 main/develop)符合你的分支策略
+- [ ] `scripts/git-hooks/commit-msg` 擋「commit 訊息含去識別化 denylist 詞」——
+      你若照 §6 移除了去識別化 gate,本 hook 會自動 no-op(不必特別處理)
 - [ ] 有「PR-only 的策略文件」→ 填進 pre-commit 的 `PROTECTED_DOCS`
 - [ ] (建議)本機裝 gitleaks(`brew install gitleaks`),pre-push 會自動用;沒裝會提示放行
 
