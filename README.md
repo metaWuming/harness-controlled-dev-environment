@@ -37,14 +37,21 @@ Harness components run in two directions (Fowler / Böckeler):
   gets things right the first time
 - **Feedback sensors** — detect errors *after* it acts, so it can self-correct
 
-The template ships 12 gates in four groups:
+The template ships 13 gates in four groups:
 
 | Group | Gates |
 |---|---|
-| **1. Feed-forward guides** (before acting) | ① Three-part conduct rules (`CLAUDE.md`: 8 working principles / collaboration preferences / relaxation rules, with "sensible defaults, owner can veto" D-numbering) ② Plan-Mode 7-step SOP with explicit STOP points (`.claude/sop/plan-mode-checklist.md`) ③ Governed memory layer (`progress.md` / `LESSONS.md` / `TODOS.md` — completion claims must cite a PR number with real merge evidence; CI verifies) |
+| **1. Feed-forward guides** (before acting) | ① Three-part conduct rules (`CLAUDE.md`: working principles / collaboration preferences / relaxation rules, with "sensible defaults, owner can veto" D-numbering) ② Plan-Mode 7-step SOP with explicit STOP points and a per-step **effort budget** (`.claude/sop/plan-mode-checklist.md`, `docs/EFFORT.md`) ③ Governed memory layer (`progress.md` / `LESSONS.md` / `TODOS.md` — completion claims must cite a merged pull-request number with real evidence; CI verifies) |
 | **2. Local feedback** (before code leaves the machine) | ④ Per-phase quality gate (typecheck + lint + tests, incl. custom AST lint rules written for your own failure modes) ⑤ Git hooks in depth (pre-commit protected-branch guard; pre-push local gitleaks — secrets are stopped *before* they leave the machine) ⑥ Four-layer destructive-operation guard (env flag + confirm token + dry-run default + summary) |
-| **3. Review layer** (before pushing) | ⑦ Cross-model adversarial review, iterated to zero findings ⑧ Conditional security review with **machine-decided triggering** (`check-cso-trigger` matches the full change surface — committed+staged+unstaged+untracked — against your sensitive-path table; the machine verdict is a floor, not a ceiling) ⑨ Second review pass (design-level risk, cross-file consistency) — both reviews run on the *local* diff, so the PR opens already clean |
-| **4. Remote & long-term** (after pushing) | ⑩ Always-on CI gates (full-history gitleaks with pinned binary + sha256, dependency audit hard-gate on high/critical, doc-reference integrity, TODOS marker governance, full test suite) ⑪ Weekly health check that also measures **the harness itself** (is review dulling? did lessons get mechanized? is the memory-archive parser drifting?) ⑫ Quarterly retro (archive mechanized lessons, keep the memory lean, scan doc cross-references for drift) |
+| **3. Review layer** (before pushing) | ⑦ Cross-model adversarial review, iterated to zero findings ⑧ Conditional security review with **machine-decided triggering** (`check-cso-trigger` matches the full change surface — committed+staged+unstaged+untracked — against your sensitive-path table; the machine verdict is a floor, not a ceiling) ⑨ **Conditional visual review** — when the diff touches UI, the change must be *rendered and screenshotted*, then checked against your design tokens; inferring appearance from source code does not count ⑩ Second review pass (design-level risk, cross-file consistency) — all reviews run on the *local* diff, so the PR opens already clean |
+| **4. Remote & long-term** (after pushing) | ⑪ Always-on CI gates (least-privilege `GITHUB_TOKEN`, SHA-pinned actions, full-history gitleaks with pinned binary + sha256, dependency audit hard-gate on high/critical, doc-reference integrity, TODOS marker governance, full test suite) ⑫ Weekly health check — three collectors: work backlog, lesson-production rate, and **review-dulling detection** (review rounds and P1 counts per sprint, parsed from progress cost fields) ⑬ Quarterly retro (archive mechanized lessons, keep the memory lean, scan doc cross-references for drift) |
+
+> **On gate ⑫ — what is and isn't implemented.** The weekly health check ships three
+> working collectors. Two further harness-self metrics — *lesson-mechanization rate* and
+> *memory-archive parser drift* — are **specified but deliberately not implemented**: both
+> need a marker convention established in `LESSONS.md` and the archive stubs first, and
+> shipping them before that would produce a number that looks like a measurement but isn't.
+> See the TODO in `scripts/weekly-health-check.ts`.
 
 ### The lesson-to-machine ladder (the soul of this harness)
 
@@ -57,7 +64,7 @@ same ladder:
 3. **Third hit or expected to repeat** → codified into a runbook / SOP
 4. **Still hitting** → **mechanized**: wrapper script, git hook, CI gate, custom lint rule
 
-At least 7 of the 12 gates above are products of this ladder. **The harness was not
+At least 7 of the 13 gates above are products of this ladder. **The harness was not
 designed — it was distilled from mistakes.**
 
 One meta-lesson deserves special mention, verified repeatedly across 8 months of
@@ -69,7 +76,7 @@ almost non-overlapping issues is why this SOP runs two independent reviews — a
 
 | Layer | Content | Where |
 |---|---|---|
-| **L1 generic core** | Conduct rules, SOPs, memory templates, self-check scripts, git hooks, CI security scanning | Repo top-level — works for any stack, any language |
+| **L1 generic core** | Conduct rules, SOPs, effort policy, subagent definitions, memory templates, self-check scripts, git hooks, CI security scanning | Repo top-level — works for any stack, any language |
 | **L2 stack layer** | Next.js + Prisma specific: 4 custom ESLint AST rules, migration guard, CI snippets | [`stack/nextjs-prisma/`](stack/nextjs-prisma/README.md) — opt-in |
 | **L3 project layer** | Your domain knowledge, your sensitive-path table values, your actual lessons | Not shipped — accumulated by each project |
 
@@ -85,7 +92,7 @@ almost non-overlapping issues is why this SOP runs two independent reviews — a
 ### Design principles
 
 - **Dogfooding** — this template eats its own gates: its CI runs gitleaks over full
-  history, runs its own self-check scripts, runs 147 tests, plus a de-identification
+  history, runs its own self-check scripts, runs 156 tests, plus a de-identification
   scan that keeps source-project terms out of the template forever
 - **Degradation paths are written down** — every external tool the SOP references
   (Codex CLI, gstack skills, gbrain) is optional; each reference carries a
@@ -149,14 +156,22 @@ Harness 元件分兩個方向(Fowler / Böckeler 框架):
 - **前饋 Guides**:在 AI 行動**之前**引導它,提高第一次就做對的機率
 - **回饋 Sensors**:在 AI 行動**之後**偵測錯誤,讓它自我修正
 
-模板內建 12 道關卡,分四組:
+模板內建 13 道關卡,分四組:
 
 | 組 | 關卡 |
 |---|---|
-| **一、前饋守則層**(行動前) | ① 三層行為守則(`CLAUDE.md`:8 條工作原則/協作偏好/放寬規則,含「明智預設可否決」D 編號機制) ② Plan Mode 7 步 SOP,每步有明文 STOP point(`.claude/sop/plan-mode-checklist.md`) ③ 有治理的記憶層(`progress.md` / `LESSONS.md` / `TODOS.md`——完成宣稱必須引用有真實 merge 證據的 PR 號,CI 會驗) |
+| **一、前饋守則層**(行動前) | ① 三層行為守則(`CLAUDE.md`:工作原則/協作偏好/放寬規則,含「明智預設可否決」D 編號機制) ② Plan Mode 7 步 SOP,每步有明文 STOP point 與**思考力道預算**(`.claude/sop/plan-mode-checklist.md`、`docs/EFFORT.md`) ③ 有治理的記憶層(`progress.md` / `LESSONS.md` / `TODOS.md`——完成宣稱必須引用有真實 merge 證據的 pull request 編號,CI 會驗) |
 | **二、本機回饋層**(離開機器前) | ④ 每 phase 品質閘門(typecheck + lint + 測試,含為自己失敗模式手寫的 AST lint 規則) ⑤ git hooks 縱深(pre-commit 保護分支守衛;pre-push 本機 gitleaks——密鑰**離機前**就攔) ⑥ destructive 操作四層守衛(環境旗標+確認 token+dry-run 預設+執行摘要) |
-| **三、審查層**(推出去之前) | ⑦ 跨模型對抗審查,迭代到 0 findings ⑧ 條件式安全審查,**觸發判定機器化**(`check-cso-trigger` 對完整變更面〔committed+staged+unstaged+untracked 四源聯集〕比對你的敏感路徑表;機器判定是下限不是上限) ⑨ 第二道審查(設計層風險、跨檔一致性)——兩道審查都對**本地 diff** 做,PR 一開出來就是乾淨版 |
-| **四、遠端與長期層**(推出去之後) | ⑩ CI 常駐閘門(gitleaks 全史掃描〔pinned binary+sha256 校驗〕、依賴稽核 high/critical 硬擋、文件引用完整性、TODOS marker 治理、全套測試) ⑪ 週健檢,連 **harness 自身**也量(審查是否鈍化?教訓有沒有機器化?記憶歸檔解析有沒有漂移?) ⑫ 季 retro(封存已機器化教訓、記憶防膨脹、掃文件交叉引用防漂移) |
+| **三、審查層**(推出去之前) | ⑦ 跨模型對抗審查,迭代到 0 findings ⑧ 條件式安全審查,**觸發判定機器化**(`check-cso-trigger` 對完整變更面〔committed+staged+unstaged+untracked 四源聯集〕比對你的敏感路徑表;機器判定是下限不是上限) ⑨ **條件式視覺審查**——diff 碰 UI 時必須**把畫面跑起來截圖**再對照 design token,**讀程式碼推論外觀不算數** ⑩ 第二道審查(設計層風險、跨檔一致性)——所有審查都對**本地 diff** 做,PR 一開出來就是乾淨版 |
+| **四、遠端與長期層**(推出去之後) | ⑪ CI 常駐閘門(`GITHUB_TOKEN` 最小權限、actions SHA-pin、gitleaks 全史掃描〔pinned binary+sha256 校驗〕、依賴稽核 high/critical 硬擋、文件引用完整性、TODOS marker 治理、全套測試) ⑫ 週健檢——三個 collector:工作累積、教訓產出速率、**審查鈍化偵測**(每 sprint 的 review 輪數與 P1 數,從 progress cost field 解析) ⑬ 季 retro(封存已機器化教訓、記憶防膨脹、掃文件交叉引用防漂移) |
+
+> **關卡⑫ 的實作邊界(誠實揭露)。** 週健檢目前有三個**能跑**的 collector。另外兩個
+> harness 自省指標——*教訓機器化率* 與 *記憶歸檔解析漂移*——是**已規格化但刻意未實作**:
+> 兩者都需要先在 `LESSONS.md` 與 archive stub 建立 marker 慣例,在那之前硬做只會生出
+> 「看起來像量測、其實不是」的數字。見 `scripts/weekly-health-check.ts` 內的 TODO。
+>
+> 這條揭露本身就是本模板原則 7「失敗要大聲說」的自我適用——README 曾把三個指標
+> 都寫成已實作,那是過度宣稱。
 
 ### 教訓 → 機器的升級階梯(本環境的靈魂)
 
@@ -167,7 +182,7 @@ Harness 元件分兩個方向(Fowler / Böckeler 框架):
 3. **第 3 次踩或預期再踩**:寫進 runbook / SOP
 4. **仍會踩**:**機器化**——wrapper 腳本、git hook、CI gate、自訂 lint 規則
 
-上面 12 道關卡至少 7 道是這條階梯的產物。**Harness 不是設計出來的,是從錯誤裡
+上面 13 道關卡至少 7 道是這條階梯的產物。**Harness 不是設計出來的,是從錯誤裡
 蒸餾出來的。**
 
 還有一條反覆驗證的 meta 教訓值得單獨講:**cross-model agreement ≠ correctness**。
@@ -178,7 +193,7 @@ Harness 元件分兩個方向(Fowler / Böckeler 框架):
 
 | 層 | 內容 | 位置 |
 |---|---|---|
-| **L1 通用核心** | 守則、SOP、記憶模板、自檢腳本、git hooks、CI 安全掃描 | repo top-level——任何堆疊、任何語言可用 |
+| **L1 通用核心** | 守則、SOP、effort 策略、subagent 定義、記憶模板、自檢腳本、git hooks、CI 安全掃描 | repo top-level——任何堆疊、任何語言可用 |
 | **L2 堆疊層** | Next.js+Prisma 專用:4 支自訂 ESLint AST 規則、migration 守衛、CI 片段 | [`stack/nextjs-prisma/`](stack/nextjs-prisma/README.md),opt-in |
 | **L3 專案層** | 你的業務知識、敏感路徑表實值、實際累積的教訓 | 不在模板內——由每個專案自己長 |
 
@@ -194,7 +209,7 @@ Harness 元件分兩個方向(Fowler / Böckeler 框架):
 ### 設計原則
 
 - **Dogfooding**:模板自己吃自己的 gate——CI 跑 gitleaks 全史、跑自檢腳本、
-  跑 147 個測試,還多一道去識別化掃描(確保來源專案詞彙永遠進不了模板)
+  跑 156 個測試,還多一道去識別化掃描(確保來源專案詞彙永遠進不了模板)
 - **降級路徑明文化**:SOP 引用的外部工具(Codex CLI、gstack、gbrain)全部
   optional,每個引用旁附「沒有時怎麼辦」([`docs/DEGRADATION.md`](docs/DEGRADATION.md))
   ——流程骨架不依賴任何單一工具
