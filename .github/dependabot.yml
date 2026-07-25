@@ -26,6 +26,15 @@ updates:
         update-types:
           - 'minor'
           - 'patch'
+    ignore:
+      # `@types/node` 的 major 要對齊 **package.json `engines.node` 的下限**,不是追最新。
+      # 理由:types 比 runtime 新 → 程式碼可以 typecheck 過,但那個 API 在實際 runtime
+      # 根本不存在(例:CI 跑 Node 22,裝 @types/node 26 就能寫出 Node 26 才有的 API 而不報錯)。
+      # 這條是「教訓 → 機器」:2026-07-25 dependabot 推了 20 → 26,人工判斷後改釘 ^22,
+      # 為了不靠下次還記得,直接把規則寫進機器。
+      # **升 engines.node 時,手動把這個 major 一起升**(兩者是同一個決定的兩面)。
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: 'github-actions'
     directory: '/'

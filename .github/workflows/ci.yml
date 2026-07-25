@@ -39,7 +39,7 @@ jobs:
         # SHA-pin(不用可變 tag):tag 可被重新指向,SHA 不行 — 這是 Actions 供應鏈
         # 攻擊的標準入口。與下方 gitleaks binary 的 pinned version + sha256 同一套姿態。
         # 升版由 dependabot(github-actions ecosystem,monthly)開 PR 自動改 SHA + 註解 tag。
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # fetch-depth: 0 = 全史:gitleaks 全史掃描、check-todos-markers 的 PR merge
           # 證據查找、check-no-source-terms 的歷史 blob 掃描都需要
@@ -64,7 +64,7 @@ jobs:
         # 否則本機跑得過、CI 紅(或更糟:兩邊行為不同但都綠)。
         # engines 是 >=22.13.0(eslint 10 的實際下限是 ^22.13.0,不是 ^22);
         # setup-node 的 '22' 會解析到 22.x 最新,滿足該下限。
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
           cache: 'npm'
