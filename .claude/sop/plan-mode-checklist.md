@@ -23,9 +23,8 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
 > 在較低 effort 仍撐得住,所以 Step 4/5 的迭代不必全程開滿 ③**不要關 thinking**,
 > 要省成本就降 effort(關掉會讓 tool call 洩漏成純文字並污染後續 turn)。
 >
-> **委派上限**:本流程只有 Step 1 與 Step 5 會用到 subagent,且都有明文上限。
-> 幾個工具呼叫就能自己做完的事**不要委派**;**不要用 subagent 檢查自己的工作**
-> ——那不是 review,是重複計費。定義好的 agent 在 `.claude/agents/`。
+> **委派上限**:本流程只有 Step 1 與 Step 5 會用到 subagent,兩步都標了上限。
+> 委派規則本身見 CLAUDE.md 原則 5.5,這裡不重複。定義好的 agent 在 `.claude/agents/`。
 
 ## Step 1:Plan(寫 plan file) 🎚️ `high`
 
