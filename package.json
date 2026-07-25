@@ -4,6 +4,9 @@
   "private": true,
   "description": "AI 協作開發的可控安全環境模板(harness template):前饋 Guides + 回饋 Sensors,開箱即用",
   "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "lint": "eslint",
     "test": "vitest run",

@@ -14,6 +14,14 @@ coverage/
 # OS / editor
 .DS_Store
 
+# 備份 / 編輯器暫存檔(AI 或工具改檔時常留下,誤 commit 會把舊版連同已修的問題帶回版控;
+# 真要保留舊版走 git,不要靠 .bak 檔)
+*.bak
+*.bak.*
+*.orig
+*.rej
+*~
+
 # Claude Code 本機設定(含個人授權,不進版控)
 .claude/settings.local.json
 
