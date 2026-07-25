@@ -150,6 +150,14 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
 
 - [ ] push 前再跑一次完整本地 gate(把 CI 有、本機 gate 沒有的項目先補齊,
       避免 push 後才被 CI-only 失敗打回)
+      ⚠️ **順序有講究:要在「commit 之後」跑,不是 commit 之前。**
+      有些 gate 掃的是 **commit 訊息 / git 史**(例如去識別化 gate 的第 3 段),
+      commit 前跑它們根本掃不到 —— 會出現「本機全綠、CI 才紅」。
+      2026-07-25 實際踩過:訊息裡描述「被 denylist 擋的詞」時原樣寫了那個詞,
+      本機(commit 前)綠、CI 紅,代價是 amend + `--force-with-lease`
+      (`git log --all` 掃所有 ref,遠端舊 commit 不清掉照樣紅)。
+      已機器化為 `scripts/git-hooks/commit-msg`,但那是 opt-in hook —— 沒跑
+      `npm run setup-hooks` 的環境仍要靠本條紀律
 - [ ] `git push` + 開 feature → 主線 PR(PR 一開即是審過的乾淨版),
       description 對齊 plan(Summary / 完工內容 / Test plan)
 - [ ] 等 CI 綠 → **squash merge** 進開發主線(review 修復 round 壓成單一乾淨 commit)

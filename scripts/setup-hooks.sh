@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #
-# scripts/setup-hooks.sh — opt-in setup for git hooks(pre-commit + pre-push)
+# scripts/setup-hooks.sh — opt-in setup for git hooks(pre-commit + commit-msg + pre-push)
 #
 # 把 git config core.hooksPath 指向 scripts/git-hooks/,一次啟用該目錄內所有 hook:
 #   - pre-commit:保護分支(develop/main)程式碼 commit 守衛
+#   - commit-msg:commit 訊息的去識別化前置檢查(deny-terms.txt 不在時自動 no-op)
 #   - pre-push:本機 gitleaks 秘密掃描 + 保護分支 code push 確認
 # 若使用者已經設了其他 hook manager(husky / lefthook
 # / 其他 path),拒絕覆蓋以免破壞既有工作流。
