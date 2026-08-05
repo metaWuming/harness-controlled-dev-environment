@@ -55,7 +55,7 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
 
       ⚠️ 這跟上面的「關鍵檔案列表」**不是同一件事**:那是**你打算改的檔**,
       這是**會被你的改動影響到的檔**。後者常常**不在 diff 裡**,
-      而**只看 diff 的 review 抓不到它們**——那是最容易漏的一類 finding
+      而**只看 diff 的 review 抓不到它們**——那是容易漏的一類 finding
 - [ ] **起手記憶對抗檢查**:候選主題定了之後、寫 plan 前,先 git 核實推翻 hint
       (記憶層 marker 是 hint 非 truth)。〔若有 gbrain:加跑 `find_contradictions`
       對候選主題抓記憶矛盾;無 gbrain 降級:純 git 核實並於 plan 揭露未做語意檢查〕
@@ -100,11 +100,12 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
 - [ ] 每個 finding 除了 P1/P2,再標**來源(互斥三選一)**:
       `初始 patch 內既有缺陷` / `初始 patch 漏改的外部 consumer` / `baseline 後新增／修改引入`
       (後者含 review fix,**也含 Step 4.5／4.6 觸發後新加的東西**)。
-      判準:**看「造成 finding 的實作首次出現在哪裡」**,不是看風險是不是更早就存在。
-      三者的解法完全不同,混在一起就量不出東西(用途見 `docs/EFFORT.md`〈要做 sweep,先量對東西〉)
+      **判準依 finding 的「成因」、不依「你打算怎麼修」**——完整 precedence 與例外
+      只寫在 `docs/EFFORT.md`〈要做 sweep,先量對東西〉,**這裡不另寫一套**(兩份會漂移)。
+      三者的解法完全不同,混在一起就量不出東西
 - [ ] **prompt 要明確授權對手模型查 diff 以外的受影響處**(「這個不變量在 repo 其他地方
       還有沒有舊說法／其他入口／其他 fixture?」)——不寫它,它就只審你框起來的 diff,
-      而漏改的外部 consumer 正是最貴的那類 finding
+      而漏改的外部 consumer 正是本次量測刻意要區分出來的一類
 - [ ] 每輪 fix commit 訊息標 `修復: <feature> review round N — <finding>(P1/P2)`
 - [ ] **修完一輪、送下一輪之前,把「自己這輪新加的東西」當成一份新 diff 自檢一遍**
       ——這是 `baseline 後新增／修改引入` 那類的直接解法。修法本身沒被審過就送出去,

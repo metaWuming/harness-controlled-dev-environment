@@ -109,9 +109,11 @@ Claude Code 實際可以改 effort 的方式（官方 model-config 文件）：
 |---|---|
 | `/effort`、`/model` 的 slider、`--effort` 啟動旗標 | 整個 session |
 | `effortLevel`（settings 檔） | 專案／使用者預設 |
-| `CLAUDE_CODE_EFFORT_LEVEL` 環境變數 | **優先於以上所有** |
-| **skill frontmatter 的 `effort`** | **該 skill 執行期間**，覆寫 session 值 |
-| **subagent frontmatter 的 `effort`** | **該 subagent 執行期間**，覆寫 session 值 |
+| `CLAUDE_CODE_EFFORT_LEVEL` 環境變數 | **最高優先——連 skill／subagent frontmatter 都蓋不掉它** |
+| **skill frontmatter 的 `effort`** | 該 skill 執行期間覆寫 session 值（**未設上面那個環境變數時**） |
+| **subagent frontmatter 的 `effort`** | 該 subagent 執行期間覆寫 session 值（**未設上面那個環境變數時**） |
+
+⚠️ 具體後果：環境變數設 `low`、skill frontmatter 設 `xhigh`，實際跑的是 **`low`**。
 
 > 💡 **所以 per-step effort 是做得到的**——把某個步驟包成一支帶 `effort:` frontmatter 的 skill，
 > 或交給帶 `effort:` 的 subagent，那一步就會真的跑在你標的力道上。
