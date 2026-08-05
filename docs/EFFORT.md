@@ -21,7 +21,55 @@ Opus 5 起，**effort 是成本與延遲的主要控制桿**，不是「品質�
 對本 harness 特別重要的一句：**review 的準確度在較低 effort 仍然撐得住**
 （原文：accuracy holds at lower effort settings, which supports a fast pass at
 review time and a more thorough pass later）。Step 4 / Step 5 迭代到 0 findings
-是整條流程最燒 token 的地方，這句話直接讓那段成本降下來。
+是整條流程最燒 token 的地方，這句話**支持你去嘗試較低 effort 的 fast pass**
+——是不是真的省下來，要靠下面那組量測回答，不是直接假定。
+
+⚠️ **但這句話講的是「模型單 pass 的準確度」，不等於「review 輪數由 effort 決定」。**
+輪數還混著別的變因，其中一個容易被忽略：**修法本身可能新增待審表面**——
+你為了修 round N 的 finding 而新加的東西（含 Step 4.5／4.6 觸發後才加的守衛），
+round N+1 就得審它。這在不同專案的權重不一樣，**所以才要量**（見下）。
+把「輪數多」直接歸咎於「effort 開太低」，是**還沒被驗證的假說**——別當結論用。
+
+### 要做 sweep，先量對東西
+
+上表說「跑幾個 sprint 後回來重校」——但**要重校就得先有資料**。至少記三項（見 SOP Step 7）：
+
+1. **每輪實際的 model ＋ API effort**（session 當下真正生效的值，**不是** `🎚️` 那個提示）
+2. **baseline SHA**（送第一輪 review 前固定的那個。工作樹要乾淨、初始 patch 已 commit，
+   否則記下的 SHA **根本不含**被審的 diff，那個 baseline 是假的）
+3. **finding 來源分佈**，互斥三選一：
+
+   | 分類 | 意思 |
+   |---|---|
+   | `初始 patch 內既有缺陷` | 缺陷的實作在 baseline 就在裡面 |
+   | `初始 patch 漏改的外部 consumer` | baseline 沒碰到、但受這個不變量影響的別處 |
+   | `baseline 後新增／修改引入` | 實作是 baseline 之後才長出來的（review fix、**也含 Step 4.5／4.6 新加的東西**） |
+
+   **判準：依 finding 的「成因」分，不是依「你打算怎麼修」分**（依序套用，先中先算）：
+
+   1. 這個 finding **由 baseline 之後的 patch 引入** → `baseline 後新增／修改引入`
+   2. 初始 patch **改變了某個不變量，但遺漏既有受影響的 consumer** → `初始 patch 漏改的外部 consumer`
+   3. 其餘由初始 patch 造成的缺陷 → `初始 patch 內既有缺陷`
+
+   ⚠️ **不要用「修法會動到哪裡」分類**——同一個 finding 會因為你選不同修法而換類
+   （例：漏改 consumer 時，回退 producer 只動原處、更新 consumer 就動到別處），
+   那會直接污染 calibration 資料。
+   ⚠️ **與本次 patch 無因果關係的純既有問題不列入這份分佈**（它們是另一回事）。
+   每條只准歸一類；性質（security／test／docs…）另用 secondary tag。
+
+沒有這三項，你只會得到「又是 N 輪」——那個數字**分不出「review 不夠深」和「diff 一直在長」**，
+而這兩者的解法完全相反。
+
+> ⚠️ **這三項目前是人工填、人工讀**：`npm run health:weekly` 的 collector 只解析
+> rounds／P1／P2／Step5 獨立發現，**不讀**這三項。刻意不先機器化——依本模板的
+> 「教訓升級階梯」，沒有資料就先做趨勢圖，等於生出看起來像量測其實不是的數字。
+>
+> **把它當成 3–5 個 sprint 的 calibration window**：跑完那幾個 sprint、有真實分佈了，
+> 再決定 ⑴ 重校上面那張建議值表 ⑵ 要不要擴充 collector 把它機器化
+> ⑶ 或者**看不到足以支持調整建議值的訊號**，就撤掉或重新設計這組量測。
+> ⚠️ 幾個 sprint 的資料**既不能證實「輪數與 effort 有關」也不能證實「無關」**——
+> 若期間 effort 根本沒變異，或任務規模／風險差太多，這批數字就控制不了那些混雜因素。
+> **不要無限期手動標下去**——那是儀式稅。
 
 ## 兩條容易搞混的事
 
@@ -47,6 +95,42 @@ review time and a more thorough pass later）。Step 4 / Step 5 迭代到 0 find
 > ⚠️ **上表是起點不是定論。** 官方要求「依自己的 eval 重跑 sweep」——
 > 跑過幾個 sprint 後，若發現某步在較低 effort 就夠用（或反過來品質掉了），
 > 就改這張表，並把觀察寫進 `.claude/memory/LESSONS.md`。
+
+## ⚠️ 一個容易誤會的前提：`🎚️` 是提示，不是開關
+
+主 session 同一時間只有一個生效的 effort。SOP 每步標的 `🎚️` 是**建議值／審查深度提示**，
+而**本模板沒有把 SOP 步驟包成帶 `effort` frontmatter 的 skill**，所以那些標註**不會自動執行**。
+它們的作用是：① 提醒 AI 自己配速 ② 告訴人「哪一步值得調高」。
+**別讀成「harness 會自動幫我切」，也別以為改了那行字就改了成本或速度。**
+
+Claude Code 實際可以改 effort 的方式（官方 model-config 文件）：
+
+| 方式 | 作用範圍 |
+|---|---|
+| `/effort`、`/model` 的 slider、`--effort` 啟動旗標 | 整個 session |
+| `effortLevel`（settings 檔） | 專案／使用者預設 |
+| `CLAUDE_CODE_EFFORT_LEVEL` 環境變數 | **最高優先——連 skill／subagent frontmatter 都蓋不掉它** |
+| **skill frontmatter 的 `effort`** | 該 skill 執行期間覆寫 session 值（**未設上面那個環境變數時**） |
+| **subagent frontmatter 的 `effort`** | 該 subagent 執行期間覆寫 session 值（**未設上面那個環境變數時**） |
+
+⚠️ 具體後果：環境變數設 `low`、skill frontmatter 設 `xhigh`，實際跑的是 **`low`**。
+
+> 💡 **所以 per-step effort 是做得到的**——把某個步驟包成一支帶 `effort:` frontmatter 的 skill，
+> 或交給帶 `effort:` 的 subagent，那一步就會真的跑在你標的力道上。
+> **本模板目前刻意沒做**（會把 7 步流程綁死成 7 支 skill，彈性反而變差）；
+> 想要的人可以自己包，這是模板留給你的擴充點，不是平台限制。
+
+### 切換本身有成本（prompt cache）
+
+- **改 effort 會讓 message cache 失效。**
+- **換 model 更貴：cache 是按 model 分隔的，換了就沿用不到前一個 model 的 cache prefix。**
+
+程度不同：**改 effort 至少讓 message prefix 失效**（tools／system 那層是否一起失效依模型而異）；
+**換 model 則是整段 prefix 都沿用不到**。context 大的 repo（原始碼 ＋ 幾份長期記錄檔）
+換一次 model 等於重新付費讀一遍——**在追求「更快」的時候切模型，方向是相反的**。
+
+> **結論：主迴圈維持單一模型。** 某一步真要用別的模型，開 subagent，不要中途切主迴圈。
+> 頻繁微調 effort 也一樣——省下的思考成本可能被 cache 重建吃掉。
 
 ## 怎麼設
 
