@@ -45,14 +45,16 @@ round N+1 就得審它。這在不同專案的權重不一樣，**所以才要�
    | `初始 patch 漏改的外部 consumer` | baseline 沒碰到、但受這個不變量影響的別處 |
    | `baseline 後新增／修改引入` | 實作是 baseline 之後才長出來的（review fix、**也含 Step 4.5／4.6 新加的東西**） |
 
-   **判準（依序套用，先中先算，保證互斥）**：
+   **判準：依 finding 的「成因」分，不是依「你打算怎麼修」分**（依序套用，先中先算）：
 
-   1. 造成 finding 的那段實作出現在 **baseline 之後** → `baseline 後新增／修改引入`
-   2. 否則，修它**必須動到 baseline 沒碰過的位置** → `初始 patch 漏改的外部 consumer`
-   3. 其餘 → `初始 patch 內既有缺陷`
+   1. 這個 finding **由 baseline 之後的 patch 引入** → `baseline 後新增／修改引入`
+   2. 初始 patch **改變了某個不變量，但遺漏既有受影響的 consumer** → `初始 patch 漏改的外部 consumer`
+   3. 其餘由初始 patch 造成的缺陷 → `初始 patch 內既有缺陷`
 
-   ⚠️ 「完全缺少某個東西」（少了授權檢查、少了交易邊界）沒有「首次出現的實作」可指——
-   用上面的順序判即可，通常落在第 1 或第 3 類。
+   ⚠️ **不要用「修法會動到哪裡」分類**——同一個 finding 會因為你選不同修法而換類
+   （例：漏改 consumer 時，回退 producer 只動原處、更新 consumer 就動到別處），
+   那會直接污染 calibration 資料。
+   ⚠️ **與本次 patch 無因果關係的純既有問題不列入這份分佈**（它們是另一回事）。
    每條只准歸一類；性質（security／test／docs…）另用 secondary tag。
 
 沒有這三項，你只會得到「又是 N 輪」——那個數字**分不出「review 不夠深」和「diff 一直在長」**，
@@ -63,8 +65,11 @@ round N+1 就得審它。這在不同專案的權重不一樣，**所以才要�
 > 「教訓升級階梯」，沒有資料就先做趨勢圖，等於生出看起來像量測其實不是的數字。
 >
 > **把它當成 3–5 個 sprint 的 calibration window**：跑完那幾個 sprint、有真實分佈了，
-> 再決定 ⑴ 重校上面那張建議值表 ⑵ 要不要擴充 collector 把它機器化 ⑶ 或者證實輪數
-> 跟 effort 無關、就把這組量測撤掉。**不要無限期手動標下去**——那是儀式稅。
+> 再決定 ⑴ 重校上面那張建議值表 ⑵ 要不要擴充 collector 把它機器化
+> ⑶ 或者**看不到足以支持調整建議值的訊號**，就撤掉或重新設計這組量測。
+> ⚠️ 幾個 sprint 的資料**既不能證實「輪數與 effort 有關」也不能證實「無關」**——
+> 若期間 effort 根本沒變異，或任務規模／風險差太多，這批數字就控制不了那些混雜因素。
+> **不要無限期手動標下去**——那是儀式稅。
 
 ## 兩條容易搞混的事
 
@@ -91,17 +96,27 @@ round N+1 就得審它。這在不同專案的權重不一樣，**所以才要�
 > 跑過幾個 sprint 後，若發現某步在較低 effort 就夠用（或反過來品質掉了），
 > 就改這張表，並把觀察寫進 `.claude/memory/LESSONS.md`。
 
-## ⚠️ 一個容易誤會的前提：effort 是 session 層級的**單一**設定
+## ⚠️ 一個容易誤會的前提：`🎚️` 是提示，不是開關
 
-`.claude/settings.json` 的 `effortLevel` 與 session 內的臨時調整，**都是一次一個值、不分步驟**。
-SOP 每步標的 `🎚️` 是**建議值／審查深度提示**——**沒有任何機制會依步驟自動切換它**。
-它的作用是：① 提醒 AI 自己配速 ② 告訴人「哪一步值得手動調高」。
+主 session 同一時間只有一個生效的 effort。SOP 每步標的 `🎚️` 是**建議值／審查深度提示**，
+而**本模板沒有把 SOP 步驟包成帶 `effort` frontmatter 的 skill**，所以那些標註**不會自動執行**。
+它們的作用是：① 提醒 AI 自己配速 ② 告訴人「哪一步值得調高」。
 **別讀成「harness 會自動幫我切」，也別以為改了那行字就改了成本或速度。**
 
-要真的分步調整只有兩條路：
+Claude Code 實際可以改 effort 的方式（官方 model-config 文件）：
 
-1. **手動調**（`/config`，或改 `effortLevel`）——但見下方切換成本。
-2. **把那一步丟給 subagent**——subagent 可以逐次指定 model 與 effort，而且不動主迴圈。
+| 方式 | 作用範圍 |
+|---|---|
+| `/effort`、`/model` 的 slider、`--effort` 啟動旗標 | 整個 session |
+| `effortLevel`（settings 檔） | 專案／使用者預設 |
+| `CLAUDE_CODE_EFFORT_LEVEL` 環境變數 | **優先於以上所有** |
+| **skill frontmatter 的 `effort`** | **該 skill 執行期間**，覆寫 session 值 |
+| **subagent frontmatter 的 `effort`** | **該 subagent 執行期間**，覆寫 session 值 |
+
+> 💡 **所以 per-step effort 是做得到的**——把某個步驟包成一支帶 `effort:` frontmatter 的 skill，
+> 或交給帶 `effort:` 的 subagent，那一步就會真的跑在你標的力道上。
+> **本模板目前刻意沒做**（會把 7 步流程綁死成 7 支 skill，彈性反而變差）；
+> 想要的人可以自己包，這是模板留給你的擴充點，不是平台限制。
 
 ### 切換本身有成本（prompt cache）
 

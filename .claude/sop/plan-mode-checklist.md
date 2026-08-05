@@ -24,8 +24,9 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
 > 的準確度**,**不等於**「輪數由 effort 決定」——見 `docs/EFFORT.md`) ③**不要關 thinking**,
 > 要省成本就降 effort(關掉會讓 tool call 洩漏成純文字並污染後續 turn)。
 >
-> 🔴 **`🎚️` 沒有任何機制在執行它**——effort 是 session 層級的單一設定、不分步驟,
-> 而且切換本身有 prompt cache 成本(換 model 尤其貴)。細節與對策見 `docs/EFFORT.md`。
+> 🔴 **`🎚️` 是提示不是開關**——本模板沒有把步驟包成帶 `effort` frontmatter 的 skill,
+> 所以它不會自動執行(Claude Code 本身支援 skill／subagent frontmatter 覆寫 effort,
+> 是模板沒用、不是做不到)。另外換 model 有 prompt cache 成本。細節見 `docs/EFFORT.md`。
 >
 > **委派上限**:本流程只有 Step 1 與 Step 5 會用到 subagent,兩步都標了上限。
 > 委派規則本身見 CLAUDE.md 原則 5.5,這裡不重複。定義好的 agent 在 `.claude/agents/`。
@@ -197,14 +198,14 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
 - [ ] 更新 `.claude/memory/progress.md` 加 entry(格式見該檔模板)
   - 用 cost field 模板:
     `📊 成本:CC ~Xh / 跨模型 review N rounds / P1 X 個 / P2 X 個 / Step5 獨立發現 X 個`
+    (這一行的 `Step5 獨立發現` 欄由 `npm run health:weekly` 解析成趨勢,見 Step 5)
   - 再記三項(供 `docs/EFFORT.md` 的 sweep 用——**沒有這些就校不了那張建議值表**):
     ① **每輪實際的 model ＋ API effort**(session 當下真正生效的值,不是 `🎚️` 那個提示)
     ② **baseline SHA** ③ **finding 來源分佈**(`初始 patch 內既有缺陷 X` /
     `初始 patch 漏改的外部 consumer X` / `baseline 後新增／修改引入 X`;
-    分類判準與 precedence 見 `docs/EFFORT.md`)
-    ⚠️ 這三項**目前是人工填、人工讀**——`health:weekly` 的 collector 不解析它們,
-    而且它是 3–5 sprint 的 calibration window,不是永久欄位(理由見 `docs/EFFORT.md`)
-    (最後一欄由 `npm run health:weekly` 解析成趨勢,見 Step 5)
+    **分類依 finding 成因、不依修法位置**,判準見 `docs/EFFORT.md`)
+    ⚠️ **這三項是人工填、人工讀**——`health:weekly` 的 collector **不解析**它們,
+    而且它是 3–5 sprint 的 calibration window、不是永久欄位(理由見 `docs/EFFORT.md`)
   - 安全關與視覺關的觸發結果各記一行(`CSO_REQUIRED` / 未觸發 + 理由;視覺關同)
   - 把 Step 1-6 的 checklist 最終狀態貼上去
 - [ ] 更新 TODOS.md(mark 完成的條目 ✅,**完成宣稱必須引用交付 PR 號**——

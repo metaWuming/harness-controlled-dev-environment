@@ -99,7 +99,7 @@ npm install && npm run setup-hooks
 - **take5 / hi5**:全域 skill,直接喊
 - **記憶層**:不用初始化——progress/LESSONS/TODOS 模板已就位,第一個 sprint
   收尾 AI 自然開始寫
-- **effort 分層**:SOP 每步已標建議值(`docs/EFFORT.md`)。⚠️ 那是**提示不是開關**——effort 是 session 層級的單一設定,沒有機制會依步驟自動切換;要分步調整得手動調或改用 subagent。
+- **effort 分層**:SOP 每步已標建議值(`docs/EFFORT.md`)。⚠️ 那是**提示不是開關**——本模板沒把步驟包成帶 `effort` frontmatter 的 skill,所以不會自動生效;要分步生效可自己包 skill／subagent,或手動 `/effort`。
   你只要在 Step 4 決定專案預設值就好
 - **subagent 定義**:`.claude/agents/` 已附兩支(蒐脈絡 / 獨立審 diff);
   委派規則本身在 `CLAUDE.md` 原則 5.5
