@@ -24,10 +24,8 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
 > 的準確度**,**不等於**「輪數由 effort 決定」——見 `docs/EFFORT.md`) ③**不要關 thinking**,
 > 要省成本就降 effort(關掉會讓 tool call 洩漏成純文字並污染後續 turn)。
 >
-> 🔴 **`🎚️` 沒有任何機制在執行它。** effort 是 **session 層級的單一設定,不分步驟**;
-> 這些標註的作用是提醒 AI 自己配速、告訴人哪一步值得手動調高。
-> 而且**切換本身有 cache 成本**(改 effort 讓 message cache 失效;換 model 沿用不到
-> 前一個 model 的 cache prefix)→ **主迴圈維持單一模型**,某步要用別的模型就開 subagent。
+> 🔴 **`🎚️` 沒有任何機制在執行它**——effort 是 session 層級的單一設定、不分步驟,
+> 而且切換本身有 prompt cache 成本(換 model 尤其貴)。細節與對策見 `docs/EFFORT.md`。
 >
 > **委派上限**:本流程只有 Step 1 與 Step 5 會用到 subagent,兩步都標了上限。
 > 委派規則本身見 CLAUDE.md 原則 5.5,這裡不重複。定義好的 agent 在 `.claude/agents/`。
@@ -199,10 +197,13 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
 - [ ] 更新 `.claude/memory/progress.md` 加 entry(格式見該檔模板)
   - 用 cost field 模板:
     `📊 成本:CC ~Xh / 跨模型 review N rounds / P1 X 個 / P2 X 個 / Step5 獨立發現 X 個`
-  - 再記三項(供 `docs/EFFORT.md` 的 sweep 用——**沒有這些就校不了那張表**):
+  - 再記三項(供 `docs/EFFORT.md` 的 sweep 用——**沒有這些就校不了那張建議值表**):
     ① **每輪實際的 model ＋ API effort**(session 當下真正生效的值,不是 `🎚️` 那個提示)
     ② **baseline SHA** ③ **finding 來源分佈**(`初始 patch 內既有缺陷 X` /
-    `初始 patch 漏改的外部 consumer X` / `baseline 後新增／修改引入 X`)
+    `初始 patch 漏改的外部 consumer X` / `baseline 後新增／修改引入 X`;
+    分類判準與 precedence 見 `docs/EFFORT.md`)
+    ⚠️ 這三項**目前是人工填、人工讀**——`health:weekly` 的 collector 不解析它們,
+    而且它是 3–5 sprint 的 calibration window,不是永久欄位(理由見 `docs/EFFORT.md`)
     (最後一欄由 `npm run health:weekly` 解析成趨勢,見 Step 5)
   - 安全關與視覺關的觸發結果各記一行(`CSO_REQUIRED` / 未觸發 + 理由;視覺關同)
   - 把 Step 1-6 的 checklist 最終狀態貼上去

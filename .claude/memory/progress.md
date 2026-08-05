@@ -30,7 +30,9 @@ type: note
 > **⭐ 教訓**:①② 編號列出(可 cross-reference LESSONS.md)。
 > **⏭️ 下一棒候選**(hint 非 truth,起手 git 核實):候選 A / 候選 B。卡外部的事項單獨標出。
 > **收尾**:PR / merge / 文件更新狀態。
-> 📊 成本:CC ~Xh / 跨模型 review N rounds / P1 X 個 / P2 X 個
+> 📊 成本:CC ~Xh / 跨模型 review N rounds / P1 X 個 / P2 X 個 / Step5 獨立發現 X 個
+> 📐 量測(供 `docs/EFFORT.md` 的 sweep;目前**人工填、人工讀**):
+>    每輪 model＋API effort / baseline SHA / 來源分佈(既有缺陷 X・漏改 consumer X・baseline 後引入 X)
 ```
 
 ---

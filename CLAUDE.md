@@ -110,10 +110,9 @@
   每個 SOP 步驟的建議值標在 `.claude/sop/plan-mode-checklist.md`,完整策略見 `docs/EFFORT.md`
 - **review 的準確度在較低 effort 仍然撐得住**,所以 Step 4/5 的迭代不必全程開滿;
   最後一輪再拉高。⚠️ 那句講的是**模型單 pass 的準確度**,**不等於**「review 輪數由 effort
-  決定」——輪數的另一個大變因是「每輪的修法都會長出新表面」,別把兩者混為一談
+  決定」——修法本身也可能新增待審表面。兩者別混為一談;要判因果得先量(見 `docs/EFFORT.md`)
 - 🔴 **effort 是 session 層級的單一設定,不分步驟。** SOP 每步的 `🎚️` 是建議值,
-  **沒有機制會自動切換它**;要分步調整只能手動調或改用 subagent,而**切換本身有 cache 成本**
-  (改 effort 讓 message cache 失效;換 model 沿用不到前一個 model 的 cache prefix,尤其貴)
+  **沒有機制會自動切換它**;而且切換本身有 prompt cache 成本(換 model 尤其貴)
   → **主迴圈維持單一模型**。詳見 `docs/EFFORT.md`
 - **不要關掉 thinking。** 要省成本就降 effort。關掉會讓工具呼叫洩漏成純文字
   (那個呼叫不會執行,而且會留在對話史污染後續每一個 turn),在本 harness 這種

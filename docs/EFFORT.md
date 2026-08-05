@@ -21,11 +21,13 @@ Opus 5 起，**effort 是成本與延遲的主要控制桿**，不是「品質�
 對本 harness 特別重要的一句：**review 的準確度在較低 effort 仍然撐得住**
 （原文：accuracy holds at lower effort settings, which supports a fast pass at
 review time and a more thorough pass later）。Step 4 / Step 5 迭代到 0 findings
-是整條流程最燒 token 的地方，這句話直接讓那段成本降下來。
+是整條流程最燒 token 的地方，這句話**支持你去嘗試較低 effort 的 fast pass**
+——是不是真的省下來，要靠下面那組量測回答，不是直接假定。
 
 ⚠️ **但這句話講的是「模型單 pass 的準確度」，不等於「review 輪數由 effort 決定」。**
-輪數還混著別的變因，而且其中一個在實務上更大：**每一輪的修法都會長出新表面，
-下一輪就在審那些新東西**（包含 Step 4.5／4.6 觸發後才新加的守衛）。
+輪數還混著別的變因，其中一個容易被忽略：**修法本身可能新增待審表面**——
+你為了修 round N 的 finding 而新加的東西（含 Step 4.5／4.6 觸發後才加的守衛），
+round N+1 就得審它。這在不同專案的權重不一樣，**所以才要量**（見下）。
 把「輪數多」直接歸咎於「effort 開太低」，是**還沒被驗證的假說**——別當結論用。
 
 ### 要做 sweep，先量對東西
@@ -43,11 +45,26 @@ review time and a more thorough pass later）。Step 4 / Step 5 迭代到 0 find
    | `初始 patch 漏改的外部 consumer` | baseline 沒碰到、但受這個不變量影響的別處 |
    | `baseline 後新增／修改引入` | 實作是 baseline 之後才長出來的（review fix、**也含 Step 4.5／4.6 新加的東西**） |
 
-   判準：**看「造成 finding 的實作首次出現在哪裡」**，不是看風險是不是更早就存在。
+   **判準（依序套用，先中先算，保證互斥）**：
+
+   1. 造成 finding 的那段實作出現在 **baseline 之後** → `baseline 後新增／修改引入`
+   2. 否則，修它**必須動到 baseline 沒碰過的位置** → `初始 patch 漏改的外部 consumer`
+   3. 其餘 → `初始 patch 內既有缺陷`
+
+   ⚠️ 「完全缺少某個東西」（少了授權檢查、少了交易邊界）沒有「首次出現的實作」可指——
+   用上面的順序判即可，通常落在第 1 或第 3 類。
    每條只准歸一類；性質（security／test／docs…）另用 secondary tag。
 
 沒有這三項，你只會得到「又是 N 輪」——那個數字**分不出「review 不夠深」和「diff 一直在長」**，
 而這兩者的解法完全相反。
+
+> ⚠️ **這三項目前是人工填、人工讀**：`npm run health:weekly` 的 collector 只解析
+> rounds／P1／P2／Step5 獨立發現，**不讀**這三項。刻意不先機器化——依本模板的
+> 「教訓升級階梯」，沒有資料就先做趨勢圖，等於生出看起來像量測其實不是的數字。
+>
+> **把它當成 3–5 個 sprint 的 calibration window**：跑完那幾個 sprint、有真實分佈了，
+> 再決定 ⑴ 重校上面那張建議值表 ⑵ 要不要擴充 collector 把它機器化 ⑶ 或者證實輪數
+> 跟 effort 無關、就把這組量測撤掉。**不要無限期手動標下去**——那是儀式稅。
 
 ## 兩條容易搞混的事
 
@@ -91,8 +108,9 @@ SOP 每步標的 `🎚️` 是**建議值／審查深度提示**——**沒有�
 - **改 effort 會讓 message cache 失效。**
 - **換 model 更貴：cache 是按 model 分隔的，換了就沿用不到前一個 model 的 cache prefix。**
 
-context 大的 repo（原始碼 ＋ 幾份長期記錄檔）每切一次等於重新付費讀一遍——
-**在追求「更快」的時候切模型，方向是相反的**。
+程度不同：**改 effort 至少讓 message prefix 失效**（tools／system 那層是否一起失效依模型而異）；
+**換 model 則是整段 prefix 都沿用不到**。context 大的 repo（原始碼 ＋ 幾份長期記錄檔）
+換一次 model 等於重新付費讀一遍——**在追求「更快」的時候切模型，方向是相反的**。
 
 > **結論：主迴圈維持單一模型。** 某一步真要用別的模型，開 subagent，不要中途切主迴圈。
 > 頻繁微調 effort 也一樣——省下的思考成本可能被 cache 重建吃掉。

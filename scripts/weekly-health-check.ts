@@ -341,7 +341,9 @@ ${metrics.lessonsNew.entries.length === 0 ? '_本週區間無新增_' : metrics.
 - **P1 open ↑**:工作累積過快,交付節奏可能失衡
 - **LESSONS 暴增**:bug 多 / 知識曲線陡 → 評估是否該開技術 debt sprint
 - **交付量沒少但 P1 findings 持續 ↓**:review 可能在**鈍化**(變成走過場)。
-  先查是不是 review 步驟被跳過 / effort 調太低 / 對手模型換了
+  先查是不是 review 步驟被跳過 / 對手模型換了 / effort 調太低。
+  ⚠️ **這幾個都是待查方向不是結論**——尤其「effort 調太低」與 finding 數的因果
+  尚未被驗證(見 docs/EFFORT.md)。要判斷得靠 cost field 的來源分佈,不是只看 P1 曲線
 - **Step5 獨立發現連續為 0**:第二道 review 的邊際價值可能已消失,
   值得開 sprint 討論是否簡化(見 SOP Step 5)。**但要看累積資料,不是單週**
 
