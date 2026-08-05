@@ -23,6 +23,32 @@ Opus 5 起，**effort 是成本與延遲的主要控制桿**，不是「品質�
 review time and a more thorough pass later）。Step 4 / Step 5 迭代到 0 findings
 是整條流程最燒 token 的地方，這句話直接讓那段成本降下來。
 
+⚠️ **但這句話講的是「模型單 pass 的準確度」，不等於「review 輪數由 effort 決定」。**
+輪數還混著別的變因，而且其中一個在實務上更大：**每一輪的修法都會長出新表面，
+下一輪就在審那些新東西**（包含 Step 4.5／4.6 觸發後才新加的守衛）。
+把「輪數多」直接歸咎於「effort 開太低」，是**還沒被驗證的假說**——別當結論用。
+
+### 要做 sweep，先量對東西
+
+上表說「跑幾個 sprint 後回來重校」——但**要重校就得先有資料**。至少記三項（見 SOP Step 7）：
+
+1. **每輪實際的 model ＋ API effort**（session 當下真正生效的值，**不是** `🎚️` 那個提示）
+2. **baseline SHA**（送第一輪 review 前固定的那個。工作樹要乾淨、初始 patch 已 commit，
+   否則記下的 SHA **根本不含**被審的 diff，那個 baseline 是假的）
+3. **finding 來源分佈**，互斥三選一：
+
+   | 分類 | 意思 |
+   |---|---|
+   | `初始 patch 內既有缺陷` | 缺陷的實作在 baseline 就在裡面 |
+   | `初始 patch 漏改的外部 consumer` | baseline 沒碰到、但受這個不變量影響的別處 |
+   | `baseline 後新增／修改引入` | 實作是 baseline 之後才長出來的（review fix、**也含 Step 4.5／4.6 新加的東西**） |
+
+   判準：**看「造成 finding 的實作首次出現在哪裡」**，不是看風險是不是更早就存在。
+   每條只准歸一類；性質（security／test／docs…）另用 secondary tag。
+
+沒有這三項，你只會得到「又是 N 輪」——那個數字**分不出「review 不夠深」和「diff 一直在長」**，
+而這兩者的解法完全相反。
+
 ## 兩條容易搞混的事
 
 **① effort 不控制回覆長度。** effort 控的是「想多少」，不是「說多少」。
@@ -47,6 +73,29 @@ review time and a more thorough pass later）。Step 4 / Step 5 迭代到 0 find
 > ⚠️ **上表是起點不是定論。** 官方要求「依自己的 eval 重跑 sweep」——
 > 跑過幾個 sprint 後，若發現某步在較低 effort 就夠用（或反過來品質掉了），
 > 就改這張表，並把觀察寫進 `.claude/memory/LESSONS.md`。
+
+## ⚠️ 一個容易誤會的前提：effort 是 session 層級的**單一**設定
+
+`.claude/settings.json` 的 `effortLevel` 與 session 內的臨時調整，**都是一次一個值、不分步驟**。
+SOP 每步標的 `🎚️` 是**建議值／審查深度提示**——**沒有任何機制會依步驟自動切換它**。
+它的作用是：① 提醒 AI 自己配速 ② 告訴人「哪一步值得手動調高」。
+**別讀成「harness 會自動幫我切」，也別以為改了那行字就改了成本或速度。**
+
+要真的分步調整只有兩條路：
+
+1. **手動調**（`/config`，或改 `effortLevel`）——但見下方切換成本。
+2. **把那一步丟給 subagent**——subagent 可以逐次指定 model 與 effort，而且不動主迴圈。
+
+### 切換本身有成本（prompt cache）
+
+- **改 effort 會讓 message cache 失效。**
+- **換 model 更貴：cache 是按 model 分隔的，換了就沿用不到前一個 model 的 cache prefix。**
+
+context 大的 repo（原始碼 ＋ 幾份長期記錄檔）每切一次等於重新付費讀一遍——
+**在追求「更快」的時候切模型，方向是相反的**。
+
+> **結論：主迴圈維持單一模型。** 某一步真要用別的模型，開 subagent，不要中途切主迴圈。
+> 頻繁微調 effort 也一樣——省下的思考成本可能被 cache 重建吃掉。
 
 ## 怎麼設
 

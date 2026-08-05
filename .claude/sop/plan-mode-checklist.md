@@ -20,8 +20,14 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
 >
 > **思考力道(effort)**:每步標了建議值(`🎚️` 記號)。完整理由與調整方式見
 > `docs/EFFORT.md`。三個要點:①effort 是**成本桿**不是品質旋鈕 ②review 的準確度
-> 在較低 effort 仍撐得住,所以 Step 4/5 的迭代不必全程開滿 ③**不要關 thinking**,
+> 在較低 effort 仍撐得住,所以 Step 4/5 的迭代不必全程開滿(⚠️ 那句講的是**模型單 pass
+> 的準確度**,**不等於**「輪數由 effort 決定」——見 `docs/EFFORT.md`) ③**不要關 thinking**,
 > 要省成本就降 effort(關掉會讓 tool call 洩漏成純文字並污染後續 turn)。
+>
+> 🔴 **`🎚️` 沒有任何機制在執行它。** effort 是 **session 層級的單一設定,不分步驟**;
+> 這些標註的作用是提醒 AI 自己配速、告訴人哪一步值得手動調高。
+> 而且**切換本身有 cache 成本**(改 effort 讓 message cache 失效;換 model 沿用不到
+> 前一個 model 的 cache prefix)→ **主迴圈維持單一模型**,某步要用別的模型就開 subagent。
 >
 > **委派上限**:本流程只有 Step 1 與 Step 5 會用到 subagent,兩步都標了上限。
 > 委派規則本身見 CLAUDE.md 原則 5.5,這裡不重複。定義好的 agent 在 `.claude/agents/`。
@@ -42,12 +48,22 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
       **能自己 grep 完的不要派 agent**;一個夠就不要開好幾個
 - [ ] Plan 要**一次寫完整**(完整規格上前、然後放手跑):Opus 5 在「拿到完整任務規格
       再自己跑完」時表現最好,會把任務做完而不是留半成品。這條讓 Step 3 的中途打斷降到最低
+- [ ] **盤爆炸半徑(impact radius)**:這一刀動到的**不變量**,它的所有 producer /
+      consumer / 入口 / fixture / 操作文件在哪裡?寫成一小塊(不適用填 `N/A`,
+      小改動就短短一行,不必做成大表):
+
+      | 不變量 | producer | consumer／入口 | fixture／測試 | 操作文件 | 搜尋證據 |
+
+      ⚠️ 這跟上面的「關鍵檔案列表」**不是同一件事**:那是**你打算改的檔**,
+      這是**會被你的改動影響到的檔**。後者常常**不在 diff 裡**,
+      而**只看 diff 的 review 抓不到它們**——那是最容易漏的一類 finding
 - [ ] **起手記憶對抗檢查**:候選主題定了之後、寫 plan 前,先 git 核實推翻 hint
       (記憶層 marker 是 hint 非 truth)。〔若有 gbrain:加跑 `find_contradictions`
       對候選主題抓記憶矛盾;無 gbrain 降級:純 git 核實並於 plan 揭露未做語意檢查〕
 
-**STOP point**:若 plan 內有真實取捨(MVP vs full / 商業規則拍板)→ 提問;
-否則直接 ExitPlanMode 等批准。**不要**問「plan 好不好」。
+**STOP point**:**impact-radius 那一小塊要先寫完**;若 plan 內有真實取捨
+(MVP vs full / 商業規則拍板)→ 提問;否則直接 ExitPlanMode 等批准。
+**不要**問「plan 好不好」。
 
 ## Step 2:Confirm(等批准 / 釐清取捨) 🎚️ `low`
 
@@ -73,13 +89,27 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
 
 ## Step 4:跨模型 Review(對手 model 找 bug,本地 diff、push 前) 🎚️ `medium`(最後一輪 `high`)
 
+- [ ] **送第一輪之前先固定 baseline**:工作樹乾淨、初始 patch 已 commit,`baseline SHA = HEAD`
+      (工作樹髒時記下的 SHA **根本不含**被審的 diff,那個 baseline 是假的;不想 commit
+      就得另存 diff hash／bundle,只記 SHA 不算數)
 - [ ] 對本地 diff 跑對手模型 review 一輪(**不需先 push**)
       〔預設:Codex CLI `/codex review`;無 Codex 降級:Claude Code 內建 `/code-review high`——
       失去跨模型多樣性,但仍是獨立 fresh-context 審查〕
 - [ ] Round N findings 分類:
   - P1 critical(release-blocker)→ **必修**
   - P2 advisory → 修(模式是「修到 0 findings 為止」)
+- [ ] 每個 finding 除了 P1/P2,再標**來源(互斥三選一)**:
+      `初始 patch 內既有缺陷` / `初始 patch 漏改的外部 consumer` / `baseline 後新增／修改引入`
+      (後者含 review fix,**也含 Step 4.5／4.6 觸發後新加的東西**)。
+      判準:**看「造成 finding 的實作首次出現在哪裡」**,不是看風險是不是更早就存在。
+      三者的解法完全不同,混在一起就量不出東西(用途見 `docs/EFFORT.md`〈要做 sweep,先量對東西〉)
+- [ ] **prompt 要明確授權對手模型查 diff 以外的受影響處**(「這個不變量在 repo 其他地方
+      還有沒有舊說法／其他入口／其他 fixture?」)——不寫它,它就只審你框起來的 diff,
+      而漏改的外部 consumer 正是最貴的那類 finding
 - [ ] 每輪 fix commit 訊息標 `修復: <feature> review round N — <finding>(P1/P2)`
+- [ ] **修完一輪、送下一輪之前,把「自己這輪新加的東西」當成一份新 diff 自檢一遍**
+      ——這是 `baseline 後新增／修改引入` 那類的直接解法。修法本身沒被審過就送出去,
+      等於花一整輪請對手模型幫你審第一遍
 - [ ] 迭代到 round M「no actionable findings」
 - [ ] 把 round 數 / P1/P2 finding 數記入 progress entry cost field
 
@@ -169,6 +199,10 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
 - [ ] 更新 `.claude/memory/progress.md` 加 entry(格式見該檔模板)
   - 用 cost field 模板:
     `📊 成本:CC ~Xh / 跨模型 review N rounds / P1 X 個 / P2 X 個 / Step5 獨立發現 X 個`
+  - 再記三項(供 `docs/EFFORT.md` 的 sweep 用——**沒有這些就校不了那張表**):
+    ① **每輪實際的 model ＋ API effort**(session 當下真正生效的值,不是 `🎚️` 那個提示)
+    ② **baseline SHA** ③ **finding 來源分佈**(`初始 patch 內既有缺陷 X` /
+    `初始 patch 漏改的外部 consumer X` / `baseline 後新增／修改引入 X`)
     (最後一欄由 `npm run health:weekly` 解析成趨勢,見 Step 5)
   - 安全關與視覺關的觸發結果各記一行(`CSO_REQUIRED` / 未觸發 + 理由;視覺關同)
   - 把 Step 1-6 的 checklist 最終狀態貼上去
