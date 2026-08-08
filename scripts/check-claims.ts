@@ -25,9 +25,11 @@
 //   - 🔴 **它會把命中詞,以及命中行去頭尾空白後的前 90 字摘要印出來;那份輸出要被貼進
 //     PR 描述**(SOP Step 6)。所以未追蹤檔一律走 `--exclude-standard`:**未追蹤且被
 //     gitignore 的檔(`.env.local` 之類)不進掃描範圍**。拿掉那個旗標＝本機祕密的內容片段
-//     可能被印進 stdout 再貼上 PR。**另一條同型繞道走 symlink**(見 `defaultUntrackedRead`):
-//     用 `lstat` 只收 regular file,才不會被「未被 ignore 的 symlink 指向被 ignore 的祕密檔」讀穿。
-//     `[閘門: tests/check-claims.test.ts 有兩條專門守它(--exclude-standard ＋ symlink),mutation 驗過會轉紅]`
+//     可能被印進 stdout 再貼上 PR。**同型的繞道還有 symlink／hard link 指向被 ignore 的
+//     祕密檔**(路徑本身沒被 ignore、卻讀得到祕密內容;見 `defaultUntrackedRead`):用單一 fd
+//     開檔(`O_NOFOLLOW` 不跟隨 symlink)＋ `fstat` 驗 regular file、`nlink===1`、大小,從同一
+//     個 fd 讀,才不會被繞穿。
+//     `[閘門: tests/check-claims.test.ts 有 symlink／hard link 兩條專門守它,mutation 驗過會轉紅]`
 //
 // Usage:
 //   npm run check:claims                             # base 預設 develop(不存在時退 main)
@@ -41,7 +43,7 @@
 //       fail-closed 的意思是「你沒拿到清單,請自己人工掃一遍」,不是「擋下你」。
 
 import { execSync } from 'node:child_process';
-import { lstatSync, readFileSync } from 'node:fs';
+import { closeSync, constants, fstatSync, openSync, readFileSync } from 'node:fs';
 
 /**
  * 量詞清單。**每一條都要對得上一個真實踩過的案例**——沒有案例的不要加,
@@ -159,18 +161,32 @@ export function scanClaims(
 }
 
 /**
- * 未追蹤新檔的預設讀取器。**用 `lstat` 不跟隨 symlink**:被 gitignore 的祕密檔
- * (`.env.local`)可以被一條未被 ignore 的 symlink(`notes.txt -> .env.local`)繞過
- * ——`git ls-files --exclude-standard` 比對的是 symlink 自己的路徑、不是 target,於是
- * 它會被列出,而 `readFileSync` 會跟隨 symlink 讀出祕密內容再印進 stdout。只收 regular
- * file 就把這條路堵死;順帶擋 FIFO 等特殊檔(讀取會永久阻塞),並在讀入前就按實際大小
- * 跳過大檔(不先把整個 blob 吃進記憶體)。
+ * 未追蹤新檔的預設讀取器——**安全讀取**,防止把「被 gitignore 的祕密檔」內容經由未被
+ * ignore 的入口讀出來再印進 stdout。`--exclude-standard` 只排除「路徑本身被 ignore」的檔,
+ * 擋不住指向祕密檔的 **symlink 或 hard link**(路徑沒被 ignore、卻讀得到祕密內容)。
+ * 做法:用單一 file descriptor 完成 open→fstat→read,把「檢查」與「讀取」綁在同一個開啟
+ * 物件上——
+ *   - `O_NOFOLLOW`:open 不跟隨 symlink(被換成 symlink 直接失敗);
+ *   - `O_NONBLOCK`:open 不被 FIFO 卡住(隨後 `isFile()` 會拒掉它);
+ *   - `fstat(fd)` 而非 `stat(path)`:驗的是**已開啟的那個物件**,消除 path 被掉包的 TOCTOU;
+ *   - `nlink > 1` 拒絕:hard link 到祕密檔也是 regular file,靠這條擋;
+ *   - 大小在讀入前檢查,不先把整個 blob 吃進記憶體。
+ * (POSIX 前提:`O_NOFOLLOW`/`O_NONBLOCK` 在非 POSIX 平台退回 0;本工具與測試沿用 repo 既有的
+ *  POSIX 假設,如 `GIT_CONFIG_GLOBAL=/dev/null`。)
  */
 function defaultUntrackedRead(f: string): string {
-  const st = lstatSync(f); // lstat: 不跟隨 symlink
-  if (!st.isFile()) throw new Error('not a regular file'); // symlink／FIFO／socket／dir 一律拒絕
-  if (st.size > 1_000_000) throw new Error('too large'); // 讀入前就按實際大小跳過
-  return readFileSync(f, 'utf-8');
+  const O_NOFOLLOW = constants.O_NOFOLLOW ?? 0;
+  const O_NONBLOCK = constants.O_NONBLOCK ?? 0;
+  const fd = openSync(f, constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile()) throw new Error('not a regular file'); // FIFO／socket／dir(symlink 已被 O_NOFOLLOW 擋在 open)
+    if (st.nlink > 1) throw new Error('hard-linked'); // hard link 到被 ignore 的祕密檔
+    if (st.size > 1_000_000) throw new Error('too large'); // 讀入前就按實際大小跳過
+    return readFileSync(fd, 'utf-8'); // 從已驗證的 fd 讀,不再重新做 path lookup
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /** 未追蹤的新檔:整份都是新增行。二進位(含 NUL)、過大、非 regular file 跳過。 */
@@ -230,10 +246,10 @@ function main(): void {
     //    committed／staged／unstaged。這支會在 review 迭代中被跑,那時工作樹通常是髒的
     //    ——只看 committed 會漏掉「我這一輪剛寫、還沒 commit 的那句宣稱」,
     //    而那正是它最該抓的東西。
-    // 🔴 `--no-renames` 是刻意的 fail-loud 選擇(不是遺漏):關掉 rename 偵測,寧可讓
-    //    「純改名」把整檔既有量詞重新列出(吵、但可一眼看出是搬檔),也不讓 git 的 rename
-    //    啟發式把一個**新檔**誤判成改名、進而**藏起它的新宣稱**(漏)。這支是清單產生器
-    //    ——多列可接受,漏列才是真失敗。
+    // 🔴 `--no-renames` 是刻意採「路徑級新增」的契約:關掉 rename 偵測後,純改名也會把新路徑
+    //    的既有內容重新列入清單。Git 的 rename 偵測仍會把相對來源檔**真正新增的文字**列為新增,
+    //    它省略的只是兩邊相同的既有行;所以這不是「漏抓新宣稱」,而是要不要把「既有宣稱在新路徑
+    //    重新出現」也納入重審。本工具刻意納入(寧多勿漏、一眼看得出是搬檔),接受搬檔造成的額外清單。
     const diff = execSync(`git diff ${base} --unified=0 --no-renames --no-color`, {
       encoding: 'utf-8',
       maxBuffer: 64 * 1024 * 1024,

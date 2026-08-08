@@ -12,7 +12,7 @@
 //    子程序用本地 `tsx` binary 跑(離線、對齊 package.json 的 `check:claims`)。
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { linkSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -333,7 +333,9 @@ describe('🔴 端到端:拋棄式 repo 真跑腳本', () => {
   function makeRepo(baseContent: string): [string, string] {
     const dir = mkdtempSync(join(tmpdir(), 'check-claims-'));
     created.push(dir);
-    execFileSync('git', ['init', '-q', dir], { env: GIT_ENV });
+    // `-b fixture-head`:初始分支給中性名稱,default-base 測試才能自由建 develop／main
+    // 而不撞到 git init 的預設分支名(不同環境可能是 master 或 main)。
+    execFileSync('git', ['init', '-q', '-b', 'fixture-head', dir], { env: GIT_ENV });
     writeFileSync(join(dir, 'f.ts'), baseContent);
     execFileSync('git', ['-C', dir, 'add', '-A'], { env: GIT_ENV });
     execFileSync('git', ['-C', dir, 'commit', '-q', '-m', 'base'], { env: GIT_ENV });
@@ -405,9 +407,9 @@ describe('🔴 端到端:拋棄式 repo 真跑腳本', () => {
     expect(r.stdout).toContain('沒有任何');
   });
 
-  it('🔴🔴 被 gitignore 的檔**不得**被掃到——這支工具會把命中的整行印出來', () => {
+  it('🔴🔴 被 gitignore 的檔**不得**被掃到——否則會印出命中詞與該行前 90 字摘要', () => {
     // 安全性質:`--exclude-standard` 讓「未追蹤**且被忽略**」的檔不進掃描範圍。
-    // 少了它,`.env.local` 這種本機祕密檔的內容會被印進 stdout、再被貼進 PR 描述
+    // 少了它,`.env.local` 這種本機祕密檔的命中詞與內容片段可能被印進 stdout、再被貼進 PR 描述
     // (SOP 要求貼逐條處置)。**這是會外流的路徑,不只是雜訊。**
     const [dir, base] = makeRepo('// 起點\n');
     writeFileSync(join(dir, '.gitignore'), '.env.local\n');
@@ -435,6 +437,20 @@ describe('🔴 端到端:拋棄式 repo 真跑腳本', () => {
     expect(r.stdout).not.toContain('只有這一把鑰匙');
   });
 
+  it('🔴🔴 未被 ignore 的 hard link 指向被 ignore 的祕密檔——不得讀穿(fstat nlink>1 拒絕)', () => {
+    // 與 symlink 同型的**無競態**繞道(Codex round 2 P1):hard link 是 regular file,
+    // `isFile()` 會放行,只有 `nlink > 1` 這條擋得住。`ls-files --exclude-standard` 會列出
+    // 未被 ignore 的 `notes.txt`(它是 `.env.local` 的 hard link),讀它就讀到祕密內容。
+    const [dir, base] = makeRepo('// 起點\n');
+    writeFileSync(join(dir, '.gitignore'), '.env.local\n');
+    writeFileSync(join(dir, '.env.local'), 'SECRET=只有這一把鑰匙\n');
+    linkSync(join(dir, '.env.local'), join(dir, 'notes.txt')); // hard link,notes.txt 未被 ignore
+    const r = run(dir, base);
+    expect(r.status, `stdout=${r.stdout} stderr=${r.stderr}`).toBe(0);
+    expect(r.stdout, 'hard link 讀穿了被 ignore 的祕密').not.toContain('SECRET');
+    expect(r.stdout).not.toContain('只有這一把鑰匙');
+  });
+
   it('🔴 預設 base:develop 與 main 都在時取 develop(對齊 check-cso-trigger)', () => {
     // 這一刀刻意把來源的 resolveDefaultBase 改成 develop→main;所有其他 E2E 都顯式傳
     // --base,這條專門守「不傳時的預設解析」,否則優先序被誤改也全綠。
@@ -444,6 +460,8 @@ describe('🔴 端到端:拋棄式 repo 真跑腳本', () => {
     g('branch', 'develop', base);
     g('branch', 'main', base);
     const r = spawnSync(tsxBin, [scriptPath], { cwd: dir, encoding: 'utf-8', env: GIT_ENV });
+    // 驗 exit 0:選對 base 卻在之後 exit 2(例如印「base=develop 不是祖先」)時,只比字串仍會綠。
+    expect(r.status, `stdout=${r.stdout} stderr=${r.stderr}`).toBe(0);
     expect(r.stdout + r.stderr, `status=${r.status}`).toMatch(/base=develop/);
   });
 
@@ -453,6 +471,7 @@ describe('🔴 端到端:拋棄式 repo 真跑腳本', () => {
       execFileSync('git', ['-C', dir, ...a], { env: GIT_ENV, encoding: 'utf-8' });
     g('branch', 'main', base); // 只建 main、不建 develop
     const r = spawnSync(tsxBin, [scriptPath], { cwd: dir, encoding: 'utf-8', env: GIT_ENV });
+    expect(r.status, `stdout=${r.stdout} stderr=${r.stderr}`).toBe(0);
     expect(r.stdout + r.stderr, `status=${r.status}`).toMatch(/base=main/);
   });
 
