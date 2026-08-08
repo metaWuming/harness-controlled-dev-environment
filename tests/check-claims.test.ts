@@ -480,6 +480,25 @@ describe('🔴 端到端:拋棄式 repo 真跑腳本', () => {
     expect(r.stdout + r.stderr, `status=${r.status}`).toMatch(/base=main/);
   });
 
+  it('`--help` 印用法並 exit 0(不是丟一份命中 dump)', () => {
+    const r = spawnSync(tsxBin, [scriptPath, '--help'], { encoding: 'utf-8', env: GIT_ENV });
+    expect(r.status, `stdout=${r.stdout} stderr=${r.stderr}`).toBe(0);
+    expect(r.stdout).toMatch(/用法/);
+  });
+
+  it('🔴 tracked 的非 ASCII 檔名在報告裡以原文顯示(core.quotePath=false)', () => {
+    // untracked 走 `-z`,tracked 走 `git diff` 的 `+++ b/<path>` header,預設 quotePath 會把
+    // 非 ASCII 路徑加引號八進位轉義 → 報告檔名跳不回原檔。這條鎖住 `-c core.quotePath=false`。
+    const [dir, base] = makeRepo('// 起點\n');
+    const g = (...a: string[]) =>
+      execFileSync('git', ['-C', dir, ...a], { env: GIT_ENV, encoding: 'utf-8' });
+    writeFileSync(join(dir, '說明檔.ts'), '// 唯一的入口\n');
+    g('add', '說明檔.ts'); // 變成 tracked → 走 git diff 而非 ls-files
+    const r = run(dir, base);
+    expect(r.status, `stdout=${r.stdout} stderr=${r.stderr}`).toBe(1);
+    expect(r.stdout, '檔名被引號/轉義了').toContain('說明檔.ts');
+  });
+
   it('🔴 非法 base → exit 2(無法判定,不是 0 也不是 1)', () => {
     const [dir] = makeRepo('// 起點\n');
     const r = run(dir, '--sneaky');

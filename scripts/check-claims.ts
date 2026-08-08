@@ -226,6 +226,16 @@ function resolveDefaultBase(): string {
 }
 
 function main(): void {
+  if (process.argv.slice(2).some((a) => a === '--help' || a === '-h')) {
+    console.log(
+      'check-claims — 量詞自檢器(掃 diff 新增行的全稱/唯一性量詞,產待處置清單、非 CI gate)\n' +
+        '用法:\n' +
+        '  npm run check:claims                          # base 預設 develop(不存在時退 main)\n' +
+        '  npx tsx scripts/check-claims.ts --base=<ref|sha>   # 只看某輪之後自己新加的\n' +
+        'exit: 0=無命中  1=有待處置清單(非錯誤,請逐條過目)  2=無法判定(非法/非祖先 base)',
+    );
+    process.exit(0);
+  }
   const baseArg = process.argv.find((a) => a.startsWith('--base='));
   const base = baseArg ? baseArg.slice('--base='.length) : resolveDefaultBase();
   // 形狀檢查:擋掉 option smuggling(首字不得是 `-`)與 shell 元字元。
@@ -250,7 +260,10 @@ function main(): void {
     //    的既有內容重新列入清單。Git 的 rename 偵測仍會把相對來源檔**真正新增的文字**列為新增,
     //    它省略的只是兩邊相同的既有行;所以這不是「漏抓新宣稱」,而是要不要把「既有宣稱在新路徑
     //    重新出現」也納入重審。本工具刻意納入(寧多勿漏、一眼看得出是搬檔),接受搬檔造成的額外清單。
-    const diff = execSync(`git diff ${base} --unified=0 --no-renames --no-color`, {
+    // `-c core.quotePath=false`:tracked 檔的路徑走 diff 的 `+++ b/<path>` header,預設會把
+    //    非 ASCII 路徑加引號並八進位轉義(`"b/\346..."`)→ 報告的檔名欄位跳不回原檔(不影響命中,
+    //    內容照掃)。關掉 quotePath 讓 tracked 非 ASCII 檔名也以原文顯示,與 untracked 的 `-z` 對稱。
+    const diff = execSync(`git -c core.quotePath=false diff ${base} --unified=0 --no-renames --no-color`, {
       encoding: 'utf-8',
       maxBuffer: 64 * 1024 * 1024,
     });
@@ -260,6 +273,7 @@ function main(): void {
     //    檔名檔案可以完全不被掃到而工具照樣回 0。
     const untracked = execSync('git ls-files -z --others --exclude-standard', {
       encoding: 'utf-8',
+      maxBuffer: 64 * 1024 * 1024, // 與上面 git diff 對稱:海量未追蹤檔時別用預設 ~1MB 溢位
     })
       .split('\0')
       .filter(Boolean);
