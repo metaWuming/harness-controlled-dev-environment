@@ -335,7 +335,8 @@ describe('🔴 端到端:拋棄式 repo 真跑腳本', () => {
     created.push(dir);
     // 初始分支給中性名稱,default-base 測試才能自由建 develop／main 而不撞到 git init 的
     // 預設分支名(不同環境可能是 master 或 main)。用 symbolic-ref 而非 `git init -b`
-    // ——`-b` 要 Git 2.28+,symbolic-ref 各版本都有,不對測試偷偷加一條 Git 版本下限。
+    // ——`-b` 要 Git 2.28+;`symbolic-ref` 早於本測試既有的 `git -C`(Git 1.8.5+)下限,
+    // 因此不提高測試目前的 Git 版本下限。
     execFileSync('git', ['init', '-q', dir], { env: GIT_ENV });
     execFileSync('git', ['-C', dir, 'symbolic-ref', 'HEAD', 'refs/heads/fixture-head'], {
       env: GIT_ENV,
