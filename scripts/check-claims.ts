@@ -22,10 +22,12 @@
 //     `.claude/memory/progress.md` 留史**。⚠️ `progress.md` 是事後留痕,Step 7 跑的時候
 //     PR 早就合了——**別把它當關口**。
 //   - 只掃 **diff 的新增行**。存量不掃——不然第一次跑就會淹掉,然後沒人再看它。
-//   - 🔴 **它會把命中的整行印出來,而那份輸出要被貼進 PR 描述**(SOP Step 6)。所以
-//     未追蹤檔一律走 `--exclude-standard`:**被 gitignore 的檔(`.env.local` 之類)不進掃描
-//     範圍**。拿掉那個旗標＝本機祕密的內容會被印進 stdout 再貼上 PR。
-//     `[閘門: tests/check-claims.test.ts 有一條專門守它,mutation 驗過會轉紅]`
+//   - 🔴 **它會把命中詞,以及命中行去頭尾空白後的前 90 字摘要印出來;那份輸出要被貼進
+//     PR 描述**(SOP Step 6)。所以未追蹤檔一律走 `--exclude-standard`:**未追蹤且被
+//     gitignore 的檔(`.env.local` 之類)不進掃描範圍**。拿掉那個旗標＝本機祕密的內容片段
+//     可能被印進 stdout 再貼上 PR。**另一條同型繞道走 symlink**(見 `defaultUntrackedRead`):
+//     用 `lstat` 只收 regular file,才不會被「未被 ignore 的 symlink 指向被 ignore 的祕密檔」讀穿。
+//     `[閘門: tests/check-claims.test.ts 有兩條專門守它(--exclude-standard ＋ symlink),mutation 驗過會轉紅]`
 //
 // Usage:
 //   npm run check:claims                             # base 預設 develop(不存在時退 main)
@@ -39,7 +41,7 @@
 //       fail-closed 的意思是「你沒拿到清單,請自己人工掃一遍」,不是「擋下你」。
 
 import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { lstatSync, readFileSync } from 'node:fs';
 
 /**
  * 量詞清單。**每一條都要對得上一個真實踩過的案例**——沒有案例的不要加,
@@ -146,6 +148,9 @@ export function scanClaims(
   for (const l of lines) {
     const normalized = normalizeForMatch(l.text);
     for (const { pattern, why } of patterns) {
+      // 內建 pattern 都沒有 /g、/y,但這是 exported API:呼叫者若注入 stateful regex,
+      // 上一行留下的 lastIndex 會讓下一行從中間開始搜、隔行漏報。每次 exec 前歸零。
+      pattern.lastIndex = 0;
       const m = pattern.exec(normalized);
       if (m) hits.push({ ...l, matched: m[0], why });
     }
@@ -153,10 +158,25 @@ export function scanClaims(
   return hits;
 }
 
-/** 未追蹤的新檔:整份都是新增行。二進位(含 NUL)與過大的檔跳過。 */
+/**
+ * 未追蹤新檔的預設讀取器。**用 `lstat` 不跟隨 symlink**:被 gitignore 的祕密檔
+ * (`.env.local`)可以被一條未被 ignore 的 symlink(`notes.txt -> .env.local`)繞過
+ * ——`git ls-files --exclude-standard` 比對的是 symlink 自己的路徑、不是 target,於是
+ * 它會被列出,而 `readFileSync` 會跟隨 symlink 讀出祕密內容再印進 stdout。只收 regular
+ * file 就把這條路堵死;順帶擋 FIFO 等特殊檔(讀取會永久阻塞),並在讀入前就按實際大小
+ * 跳過大檔(不先把整個 blob 吃進記憶體)。
+ */
+function defaultUntrackedRead(f: string): string {
+  const st = lstatSync(f); // lstat: 不跟隨 symlink
+  if (!st.isFile()) throw new Error('not a regular file'); // symlink／FIFO／socket／dir 一律拒絕
+  if (st.size > 1_000_000) throw new Error('too large'); // 讀入前就按實際大小跳過
+  return readFileSync(f, 'utf-8');
+}
+
+/** 未追蹤的新檔:整份都是新增行。二進位(含 NUL)、過大、非 regular file 跳過。 */
 export function untrackedAsAddedLines(
   files: readonly string[],
-  read: (f: string) => string = (f) => readFileSync(f, 'utf-8'),
+  read: (f: string) => string = defaultUntrackedRead,
 ): AddedLine[] {
   const out: AddedLine[] = [];
   for (const file of files) {
@@ -164,10 +184,14 @@ export function untrackedAsAddedLines(
     try {
       content = read(file);
     } catch {
-      continue; // 讀不到(權限／已被刪)就跳過,不是這支的職責
+      continue; // 讀不到(權限／已被刪／非 regular file／過大)就跳過,不是這支的職責
     }
     if (content.includes('\0') || content.length > 1_000_000) continue;
-    content.split('\n').forEach((text, i) => out.push({ file, line: i + 1, text }));
+    const rows = content.split('\n');
+    // 去掉「結尾換行」造成的假空行:`"a\n"` split 出 `['a','']`,那個尾端空字串不是真的一行
+    // (空檔 `''` 同理應算 0 行)。只影響「掃描 N 行」統計、不影響命中,但統計要誠實。
+    if (rows.length && rows[rows.length - 1] === '') rows.pop();
+    rows.forEach((text, i) => out.push({ file, line: i + 1, text }));
   }
   return out;
 }
@@ -206,6 +230,10 @@ function main(): void {
     //    committed／staged／unstaged。這支會在 review 迭代中被跑,那時工作樹通常是髒的
     //    ——只看 committed 會漏掉「我這一輪剛寫、還沒 commit 的那句宣稱」,
     //    而那正是它最該抓的東西。
+    // 🔴 `--no-renames` 是刻意的 fail-loud 選擇(不是遺漏):關掉 rename 偵測,寧可讓
+    //    「純改名」把整檔既有量詞重新列出(吵、但可一眼看出是搬檔),也不讓 git 的 rename
+    //    啟發式把一個**新檔**誤判成改名、進而**藏起它的新宣稱**(漏)。這支是清單產生器
+    //    ——多列可接受,漏列才是真失敗。
     const diff = execSync(`git diff ${base} --unified=0 --no-renames --no-color`, {
       encoding: 'utf-8',
       maxBuffer: 64 * 1024 * 1024,

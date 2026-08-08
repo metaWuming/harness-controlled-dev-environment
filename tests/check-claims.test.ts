@@ -1,8 +1,8 @@
 // `scripts/check-claims.ts` 的守門測試。
 //
 // 這支工具的價值全押在一件事上:**它抓不抓得到「真的被 review 抓過」的那幾句。**
-// 所以除了純函式行為,還有一條**案例鎖**:把真實出現過的過度宣稱句寫死在測試裡,
-// 逐句斷言會命中。清單被改窄時那些句子會漏掉 → 轉紅。
+// 所以除了純函式行為,還有一條**案例鎖**:把真實 review 案例去識別化後的斷言形狀寫死在
+// 測試裡,逐句斷言會命中。清單被改窄時那些句型會漏掉 → 轉紅。
 //
 // ⚠️ 樣本句**寫死在這裡、不從 `CLAIM_PATTERNS` 推導**(斷言若從被測物長出來
 //    ——整條 pattern 刪掉時,用 `it.each(patterns)` 產生的斷言會跟著消失,測試照樣全綠)。
@@ -12,7 +12,7 @@
 //    子程序用本地 `tsx` binary 跑(離線、對齊 package.json 的 `check:claims`)。
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -146,7 +146,7 @@ describe('scanClaims — 命中判定', () => {
     const legit = [
       '那時**不會亮任何橫幅**',
       '「這條訂閱到底會不會開始」的倒數',
-      'channel 從 socket 摘掉(所以它真的不會自己回來)',
+      '項目從待處理集合摘掉(所以它真的不會自己回來)',
     ].map(line);
     expect(scanClaims(legit)).toEqual([]);
   });
@@ -173,6 +173,17 @@ describe('scanClaims — 命中判定', () => {
     const hits = scanClaims([{ file: 'pkg/a.ts', line: 42, text: '唯一的解法' }]);
     expect(hits[0]).toMatchObject({ file: 'pkg/a.ts', line: 42 });
   });
+
+  it('🔴 注入帶 /g 的 stateful regex 不得隔行漏報(每次 exec 前 lastIndex 歸零)', () => {
+    // scanClaims 是 exported API:呼叫者可注入 pattern。帶 /g 的 regex 會保留 lastIndex,
+    // 上一行命中後下一行就從中間開始搜。沒有 `pattern.lastIndex = 0` 的話,第二行漏報。
+    const g = [{ pattern: /always/g, why: '英文全稱' }];
+    const lines = [
+      { file: 'x', line: 1, text: 'always foo' },
+      { file: 'x', line: 2, text: 'always bar' },
+    ];
+    expect(scanClaims(lines, g)).toHaveLength(2);
+  });
 });
 
 describe('🔴 markdown 正規化 — 加粗的量詞照樣要抓到', () => {
@@ -184,7 +195,7 @@ describe('🔴 markdown 正規化 — 加粗的量詞照樣要抓到', () => {
 
   it('反引號夾在中間仍然命中', () => {
     expect(
-      scanClaims([{ file: 'x', line: 1, text: '理由只有 `socket.channels` 這一條' }]).length,
+      scanClaims([{ file: 'x', line: 1, text: '理由只有 `條件 A` 這一條' }]).length,
     ).toBeGreaterThan(0);
   });
 
@@ -198,17 +209,17 @@ describe('🔴 markdown 正規化 — 加粗的量詞照樣要抓到', () => {
   });
 });
 
-describe('🔴 案例鎖 — 真的被 review 抓過的句子必須命中', () => {
-  // 逐句取自真實 review 歷史,括號內是它宣稱的形狀。
-  // **這份清單只准加不准減**:減了就代表某個真實案例從此漏掉。
+describe('🔴 案例鎖 — 由真實 review 案例抽象化的句型必須命中', () => {
+  // 下列句型由既有 review 案例抽象化;為維持模板去識別化,不保留原始程式識別字。
+  // **這份清單只准加不准減**:減了就代表某個真實案例的形狀從此漏掉。
   const REAL_OVERCLAIMS: [string, string][] = [
-    ['逾時之後走**跟 `CLOSED` 完全一樣**的那套', '等同性斷言'],
-    ['成立的理由只有「不在 socket.channels 裡」這一條。', '唯一性斷言(修法引入)'],
-    ['**兩道各自都足夠**——⑴ `Socket.remove()` 把它從 `socket.channels` 濾掉,', '多重充分性斷言'],
+    ['逾時之後走**跟一般失敗完全一樣**的那套', '等同性斷言'],
+    ['成立的理由只有「不在待處理清單裡」這一條。', '唯一性斷言(修法引入)'],
+    ['**兩道各自都足夠**——⑴ 第一層把項目從待處理清單濾掉,', '多重充分性斷言'],
     ['本次 bug class 的**全面**掃描', '全稱斷言(實際只掃一個檔)'],
     ['repo **每一支** shell 腳本', '全稱斷言'],
     ['多掃**不會**誤報', '否定全稱(需要 markdown 正規化才抓得到)'],
-    ['✅ **這不會誤傷 `CLOSED` 排的那支重訂閱**', '否定全稱(被挑戰三次的那句)'],
+    ['✅ **這不會誤傷排隊中的重試工作**', '否定全稱(被挑戰三次的那句)'],
     ['現行寫入端是單一語句,**不可能**超過寬限', '不可能性斷言(實際是低機率不是不可能)'],
     ['兩個訊號實測同時抵達,所以兩個都等的成本是**零風險**', '空集合斷言(措辭過滿)'],
   ];
@@ -270,9 +281,9 @@ describe('🔴 案例鎖(續)', () => {
   it('🔴 **修對之後的版本要安靜**——否則它就是「永遠紅」,跟沒裝一樣', () => {
     // 一段修對後、不再過度宣稱的文字:應該零命中。
     const fixed = [
-      '//    `onClose` 會 `socket.remove(this)`,把 channel 移出 `socket.channels`',
-      '//    ——那是**訊息路由的集合**(`onConnMessage` 只往裡面派送),所以之後任何一種',
-      '//    `CHANNEL_ERROR` 來源都構不到它。**這一條就是完整的理由。**',
+      '//    `removeItem()` 會把項目移出 `pendingItems`',
+      '//    ——目前核對的派送路徑會讀取這個集合,再把訊息送給其中的項目。',
+      '//    因此這條已核對的路徑不再把訊息送給移除後的項目。',
     ].map((text) => ({ file: 'x.ts', line: 1, text }));
     expect(scanClaims(fixed)).toEqual([]);
   });
@@ -292,12 +303,24 @@ describe('untrackedAsAddedLines — 全新的檔整份都算新增', () => {
     expect(untrackedAsAddedLines(['bin'], () => 'a\0b')).toEqual([]);
   });
 
-  it('讀不到的檔跳過而不是炸掉(權限／剛被刪)', () => {
+  it('讀不到的檔跳過而不是炸掉(權限／剛被刪／非 regular file)', () => {
     expect(
       untrackedAsAddedLines(['gone'], () => {
         throw new Error('ENOENT');
       }),
     ).toEqual([]);
+  });
+
+  it('🔴 結尾換行不製造假空行(`"a\\n"` → 1 行,不是 2)', () => {
+    expect(untrackedAsAddedLines(['f'], () => 'a\n')).toEqual([{ file: 'f', line: 1, text: 'a' }]);
+  });
+
+  it('空檔算 0 行(不是 1 行空字串)', () => {
+    expect(untrackedAsAddedLines(['f'], () => '')).toEqual([]);
+  });
+
+  it('中間的空行保留、只砍尾端那一個(`"a\\n\\nb\\n"` → 3 行)', () => {
+    expect(untrackedAsAddedLines(['f'], () => 'a\n\nb\n').map((r) => r.text)).toEqual(['a', '', 'b']);
   });
 });
 
@@ -390,8 +413,47 @@ describe('🔴 端到端:拋棄式 repo 真跑腳本', () => {
     writeFileSync(join(dir, '.gitignore'), '.env.local\n');
     writeFileSync(join(dir, '.env.local'), 'SECRET=只有這一把鑰匙\n');
     const r = run(dir, base);
+    // 斷言 exit 0:區分「正確排除」與「掃描剛好失敗所以沒印」——後者 stdout 也不含 SECRET,
+    // 少了這條就分不出來(Codex round 1 P2)。
+    expect(r.status, `stdout=${r.stdout} stderr=${r.stderr}`).toBe(0);
     expect(r.stdout, '被忽略的檔內容被印出來了').not.toContain('SECRET');
     expect(r.stdout).not.toContain('.env.local');
+  });
+
+  it('🔴🔴 未被 ignore 的 symlink 指向被 ignore 的祕密檔——不得讀穿(lstat 只收 regular file)', () => {
+    // 安全性質(Codex round 1 P1):`--exclude-standard` 只排除「路徑本身被 ignore」的檔。
+    // 一條**未被 ignore** 的 symlink `notes.txt -> .env.local` 會被 `ls-files` 列出,
+    // 而 `readFileSync` 會跟隨 symlink 讀出祕密內容。用 `lstat` 只收 regular file 才堵得住。
+    // SECRET 值刻意含量詞「只有」——沒堵住的話它會命中並被印出。
+    const [dir, base] = makeRepo('// 起點\n');
+    writeFileSync(join(dir, '.gitignore'), '.env.local\n');
+    writeFileSync(join(dir, '.env.local'), 'SECRET=只有這一把鑰匙\n');
+    symlinkSync('.env.local', join(dir, 'notes.txt')); // notes.txt 本身未被 ignore
+    const r = run(dir, base);
+    expect(r.status, `stdout=${r.stdout} stderr=${r.stderr}`).toBe(0);
+    expect(r.stdout, 'symlink 讀穿了被 ignore 的祕密').not.toContain('SECRET');
+    expect(r.stdout).not.toContain('只有這一把鑰匙');
+  });
+
+  it('🔴 預設 base:develop 與 main 都在時取 develop(對齊 check-cso-trigger)', () => {
+    // 這一刀刻意把來源的 resolveDefaultBase 改成 develop→main;所有其他 E2E 都顯式傳
+    // --base,這條專門守「不傳時的預設解析」,否則優先序被誤改也全綠。
+    const [dir, base] = makeRepo('// 起點\n');
+    const g = (...a: string[]) =>
+      execFileSync('git', ['-C', dir, ...a], { env: GIT_ENV, encoding: 'utf-8' });
+    g('branch', 'develop', base);
+    g('branch', 'main', base);
+    const r = spawnSync(tsxBin, [scriptPath], { cwd: dir, encoding: 'utf-8', env: GIT_ENV });
+    expect(r.stdout + r.stderr, `status=${r.status}`).toMatch(/base=develop/);
+  });
+
+  it('🔴 預設 base:只有 main 時退回 main', () => {
+    const [dir, base] = makeRepo('// 起點\n');
+    const g = (...a: string[]) =>
+      execFileSync('git', ['-C', dir, ...a], { env: GIT_ENV, encoding: 'utf-8' });
+    g('branch', 'main', base); // 只建 main、不建 develop
+    const r = spawnSync(tsxBin, [scriptPath], { cwd: dir, encoding: 'utf-8', env: GIT_ENV });
+    expect(r.stdout + r.stderr, `status=${r.status}`).toMatch(/base=main/);
   });
 
   it('🔴 非法 base → exit 2(無法判定,不是 0 也不是 1)', () => {
