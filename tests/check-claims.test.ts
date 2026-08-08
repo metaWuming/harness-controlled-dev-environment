@@ -333,9 +333,13 @@ describe('🔴 端到端:拋棄式 repo 真跑腳本', () => {
   function makeRepo(baseContent: string): [string, string] {
     const dir = mkdtempSync(join(tmpdir(), 'check-claims-'));
     created.push(dir);
-    // `-b fixture-head`:初始分支給中性名稱,default-base 測試才能自由建 develop／main
-    // 而不撞到 git init 的預設分支名(不同環境可能是 master 或 main)。
-    execFileSync('git', ['init', '-q', '-b', 'fixture-head', dir], { env: GIT_ENV });
+    // 初始分支給中性名稱,default-base 測試才能自由建 develop／main 而不撞到 git init 的
+    // 預設分支名(不同環境可能是 master 或 main)。用 symbolic-ref 而非 `git init -b`
+    // ——`-b` 要 Git 2.28+,symbolic-ref 各版本都有,不對測試偷偷加一條 Git 版本下限。
+    execFileSync('git', ['init', '-q', dir], { env: GIT_ENV });
+    execFileSync('git', ['-C', dir, 'symbolic-ref', 'HEAD', 'refs/heads/fixture-head'], {
+      env: GIT_ENV,
+    });
     writeFileSync(join(dir, 'f.ts'), baseContent);
     execFileSync('git', ['-C', dir, 'add', '-A'], { env: GIT_ENV });
     execFileSync('git', ['-C', dir, 'commit', '-q', '-m', 'base'], { env: GIT_ENV });
@@ -422,10 +426,10 @@ describe('🔴 端到端:拋棄式 repo 真跑腳本', () => {
     expect(r.stdout).not.toContain('.env.local');
   });
 
-  it('🔴🔴 未被 ignore 的 symlink 指向被 ignore 的祕密檔——不得讀穿(lstat 只收 regular file)', () => {
+  it('🔴🔴 未被 ignore 的 symlink 指向被 ignore 的祕密檔——不得讀穿(O_NOFOLLOW 不跟隨 symlink)', () => {
     // 安全性質(Codex round 1 P1):`--exclude-standard` 只排除「路徑本身被 ignore」的檔。
     // 一條**未被 ignore** 的 symlink `notes.txt -> .env.local` 會被 `ls-files` 列出,
-    // 而 `readFileSync` 會跟隨 symlink 讀出祕密內容。用 `lstat` 只收 regular file 才堵得住。
+    // 而跟隨 symlink 讀取會讀出祕密內容。用 `openSync(... O_NOFOLLOW)` 開檔不跟隨 symlink 才堵得住。
     // SECRET 值刻意含量詞「只有」——沒堵住的話它會命中並被印出。
     const [dir, base] = makeRepo('// 起點\n');
     writeFileSync(join(dir, '.gitignore'), '.env.local\n');
