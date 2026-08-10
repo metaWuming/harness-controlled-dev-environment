@@ -94,3 +94,13 @@ type: guide
 - **gstack**(/cso、/review 等 skill 套件)— 外部依賴,本模板不包含、不教學;
   沒有就用內建 `security-review` / `/code-review`
 - **gbrain**(語意記憶檢索)— 沒有就純 git 核實
+
+## 10. 裝第三方 Claude Code skill 前(選用)
+
+- [ ] 裝之前先確認它有沒有**預設路徑假設**會跟本 repo 既有結構衝突——最常見的是 ADR
+      家目錄:不少 skill 預設把架構決策記錄寫到自己認定的路徑(例如 `docs/adr/`),但
+      本 repo 可能已經有自己的 ADR 慣例(路徑、編號格式都可能不同)。裝之前**先 grep
+      skill 內容裡的固定路徑,對照 repo 實際結構**,衝突就在該 skill 檔案開頭加一段
+      override 說明,不要照單全收預設值(2026-08-10 在一個下游專案裝
+      [mattpocock/skills](https://github.com/mattpocock/skills) 的 `domain-modeling`
+      時踩到,已修正)
