@@ -94,6 +94,13 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
 - [ ] 對本地 diff 跑對手模型 review 一輪(**不需先 push**)
       〔預設:Codex CLI `/codex review`;無 Codex 降級:Claude Code 內建 `/code-review high`——
       失去跨模型多樣性,但仍是獨立 fresh-context 審查〕
+- [ ] **`/codex review` 撞 exit 124(gstack skill 330s wrapper 撞牆)的 fallback**——**撞牆不等於不審**:
+      retry 一次(可能真 API stall,gstack 上游建議)→ 再撞改跑 `/codex challenge <focus>`
+      (600s wrapper,同一份 diff 換長 timeout)→ 再撞才切 Herdr codex pane(無 timeout)。
+      **跳過分流、直接 Herdr 的判準**(預期會多輪深度或範圍大):
+      預估 5+ 輪 review、修改 >6 個檔、或動 SECURITY DEFINER RPC/需並發連線 harness。
+      **不建議直接改 gstack skill 的 330 常數**——會被下次 `/gstack-upgrade` 覆蓋;
+      330s 是設計選擇(上游註解:「stall 過 5.5 分大概率是 API 問題,重跑或拆比等更久好」)。
 - [ ] Round N findings 分類:
   - P1 critical(release-blocker)→ **必修**
   - P2 advisory → 修(模式是「修到 0 findings 為止」)
