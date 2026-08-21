@@ -222,13 +222,17 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
       再開 sprint 討論是否簡化本步——**在有資料之前不要動流程**
 - [ ] 每輪 fix commit 訊息標 `修復: <feature> review findings — <finding>`
 - [ ] 🔴 **本步收乾後,寫 progress entry 進 feature branch 最後一個 commit**
-      (避免 Step 7 只為 progress 另開 PR、每個 sprint 收尾多 1 支 PR + 1 輪 CI 的浪費)
+      (避免 Step 7 只為 progress 另開 PR、每 sprint 收尾多 1 支 PR + 1 輪 CI 的浪費)
+  - **只寫 pre-merge 可知的資訊**——排除 PR 號 / squash SHA / CI status / merge status
+    (這些 post-merge 才可知,而 Step 5 是 pre-merge 時點;git log / GitHub PR page
+    自帶這些訊息,progress 不重複記、也不會過時)
   - 用 cost field 模板:
     `📊 成本:CC ~Xh / 跨模型 review N rounds / P1 X 個 / P2 X 個 / Step5 獨立發現 X 個`
     (`Step5 獨立發現` 欄由 `npm run health:weekly` 解析成趨勢)
   - 再記三項(供 `docs/EFFORT.md` 的 sweep 用——**沒有這些就校不了那張建議值表**):
     ① **每輪實際的 model ＋ API effort**(session 當下真正生效的值,不是 `🎚️` 那個提示)
-    ② **baseline SHA** ③ **finding 來源分佈**(`初始 patch 內既有缺陷 X` /
+    ② **baseline SHA**(commit 前記,pre-merge 可知)
+    ③ **finding 來源分佈**(`初始 patch 內既有缺陷 X` /
     `初始 patch 漏改的外部 consumer X` / `baseline 後新增／修改引入 X`;
     **分類依 finding 成因、不依修法位置**,判準見 `docs/EFFORT.md`)
     ⚠️ **這三項是人工填、人工讀**——`health:weekly` 的 collector **不解析**它們,
@@ -236,7 +240,9 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
   - 安全關與視覺關的觸發結果各記一行(`CSO_REQUIRED` / 未觸發 + 理由;視覺關同)
   - 把 Step 1-5 的 checklist 最終狀態貼上去
   - 下一棒議題選項貼上去(給接手 session 用)
-  - commit 訊息:`docs(memory): progress 加 <feature> sprint entry`
+  - `check:claims` 逐條處置(留 A / 降級 B)貼進 entry,同時貼進 Step 6 的 PR 描述
+      (合併前的關口 in PR、事後留史 in progress——**兩處貼、不轉抄**)
+  - commit 訊息:`文件:memory — progress 加 <feature> sprint entry`
       (跟 code 進同一 PR、CI 一次跑完、develop 只多一支 squash commit)
 
 **STOP point**:critical findings 全修;informational 排序完;**progress entry 已寫並 commit 進 feature branch** → 才進 Step 6。

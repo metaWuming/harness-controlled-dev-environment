@@ -32,7 +32,7 @@ round N+1 就得審它。這在不同專案的權重不一樣，**所以才要�
 
 ### 要做 sweep，先量對東西
 
-上表說「跑幾個 sprint 後回來重校」——但**要重校就得先有資料**。至少記三項（見 SOP Step 7）：
+上表說「跑幾個 sprint 後回來重校」——但**要重校就得先有資料**。至少記三項（見 SOP Step 5 寫 progress entry 時填）：
 
 1. **每輪實際的 model ＋ API effort**（session 當下真正生效的值，**不是** `🎚️` 那個提示）
 2. **baseline SHA**（送第一輪 review 前固定的那個。工作樹要乾淨、初始 patch 已 commit，
@@ -90,7 +90,7 @@ round N+1 就得審它。這在不同專案的權重不一樣，**所以才要�
 | Step 4.6 視覺關 | `medium` | 視覺比對靠工具（截圖、裁切、逐項對照）而非靠想；官方明講 **tool use 比純思考更划算** |
 | Step 5 第二道 review | `medium` | 同 Step 4 |
 | Step 6 Push + CI | `low` | 機械步驟 |
-| Step 7 Final 收尾 | `low` | 寫 progress entry、更新 TODOS，格式固定 |
+| Step 7 Final 收尾 | `low` | 更新 TODOS、通知 Owner（**progress entry 在 Step 5 已寫**，不在此步重複） |
 
 > ⚠️ **上表是起點不是定論。** 官方要求「依自己的 eval 重跑 sweep」——
 > 跑過幾個 sprint 後，若發現某步在較低 effort 就夠用（或反過來品質掉了），
