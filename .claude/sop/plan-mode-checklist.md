@@ -171,7 +171,9 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
       〔預設:gstack `/cso`;無 gstack 降級:Claude Code 內建 `security-review` skill〕,
       findings 分類同 Step 5(`[CRITICAL]` 必修),fix commit 標 `修復: <feature> 安全審 findings — <finding>`
 - [ ] `CSO_NOT_REQUIRED` → 自問一次「diff 是否含腳本路徑表沒涵蓋的安全敏感邏輯?」
-      (**機器判定是下限不是上限**);無 → 記錄不觸發理由,進 Step 5
+      (**機器判定是下限不是上限**);無 → **暫記於 plan file 或 scratchpad**
+      (progress entry Step 5 才寫、此刻寫會破 Step 5「最後一個 commit」的 partial-lifecycle
+      grep;Step 5 集中把這裡的 REQUIRED/NOT + 命中域 + 理由寫進 entry),進 Step 5
 - [ ] 本 sprint 新增了安全敏感模組 → 同步把路徑加進 `scripts/cso-trigger.config.ts` 路徑表
 
 **STOP point**:安全審 critical findings 全修才進 Step 5。
@@ -186,7 +188,8 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
 > 比單純加大思考量更划算。所以本關的重點不是「想久一點」,是**真的把畫面叫出來看**。
 
 - [ ] **觸發判定**:本 sprint 的 diff 是否碰到 UI 檔(元件 / 頁面 / 樣式 / design token /
-      字型或色彩設定)?否 → 記錄「未觸發」進 progress entry,直接進 Step 5
+      字型或色彩設定)?否 → **暫記「未觸發 + 判定理由」於 plan file 或 scratchpad**
+      (Step 5 集中寫進 entry;不在此提前寫進 progress、原因見 Step 4.5 同段),直接進 Step 5
 - [ ] 觸發時:**實際把畫面跑起來稽核**〔預設:gstack `/design-review`(80 項視覺稽核,
       對照 design token 抓 finding 並直接修 CSS/樣式、一 commit 一 finding、附
       before/after 截圖);無 gstack 降級:瀏覽器 / 模擬器 / 預覽環境手動截圖,
@@ -223,6 +226,11 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
 - [ ] 每輪 fix commit 訊息標 `修復: <feature> review findings — <finding>`
 - [ ] 🔴 **本步收乾後,寫 progress entry 進 feature branch 最後一個 commit**
       (避免 Step 7 只為 progress 另開 PR、每 sprint 收尾多 1 支 PR + 1 輪 CI 的浪費)
+  - 🔴 **先 grep 有無既有 partial entry**(見 `.claude/memory/progress.md` 檔頭「⚠️ 未完成
+    sprint 的 checkpoint 走另一條 flow」):
+    `grep -nE '⚠️ (partial|paused)' .claude/memory/progress.md`。有既有 partial → **就地
+    擴寫**成 completed schema、**不要**在最上方另加新 entry(同 feature branch squash 若
+    含兩份 entry 會一起進 delivery branch、違反「partial 不進主線」)
   - **只寫 pre-merge 可知的資訊**——排除 PR 號 / squash SHA / CI status / merge status
     (這些 post-merge 才可知,而 Step 5 是 pre-merge 時點;git log / GitHub PR page
     自帶這些訊息,progress 不重複記、也不會過時)
@@ -231,7 +239,7 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
     (`Step5 獨立發現` 欄由 `npm run health:weekly` 解析成趨勢)
   - 再記三項(供 `docs/EFFORT.md` 的 sweep 用——**沒有這些就校不了那張建議值表**):
     ① **每輪實際的 model ＋ API effort**(session 當下真正生效的值,不是 `🎚️` 那個提示)
-    ② **baseline SHA**(commit 前記,pre-merge 可知)
+    ② **baseline SHA**(Step 4 送第一輪前固定的那個 HEAD;非 Step 5 進行時的 HEAD)
     ③ **finding 來源分佈**(`初始 patch 內既有缺陷 X` /
     `初始 patch 漏改的外部 consumer X` / `baseline 後新增／修改引入 X`;
     **分類依 finding 成因、不依修法位置**,判準見 `docs/EFFORT.md`)
@@ -241,7 +249,7 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
   - 把 Step 1-5 的 checklist 最終狀態貼上去
   - 下一棒議題選項貼上去(給接手 session 用)
   - `check:claims` 逐條處置(留 A / 降級 B)貼進 entry,同時貼進 Step 6 的 PR 描述
-      (合併前的關口 in PR、事後留史 in progress——**兩處貼、不轉抄**)
+      (合併前的關口 in PR、長期紀錄 in progress——**兩處貼、不轉抄**)
   - commit 訊息:`文件:memory — progress 加 <feature> sprint entry`
       (跟 code 進同一 PR、CI 一次跑完、develop 只多一支 squash commit)
 
