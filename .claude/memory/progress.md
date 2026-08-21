@@ -18,13 +18,27 @@ type: note
 
 ## Entry 格式範本
 
-> ⚠️ **這是 pre-merge schema**(2026-08-21 改):entry 在 SOP Step 5 收乾後寫、進
-> feature branch 最後一個 commit、跟 code 進同一 PR 一起 squash。**排除 post-merge
-> 才可知的欄位**(PR 號 / squash SHA / CI 狀態 / merge 狀態)——這些 git log /
-> GitHub PR page 自帶,progress 不重複記、也不會過時。**要看 sprint 有沒有合 develop
-> → `git log --oneline develop -1`**;合併 commit 訊息尾自帶 `(#N)`。
+> ⚠️ **這是 completed-sprint 的 pre-merge schema**(2026-08-21 改):entry 在
+> SOP Step 5 收乾後寫、進 feature branch 最後一個 commit、跟 code 進同一 PR 一起 squash。
+> **排除 post-merge 才可知的欄位**(PR 號 / squash SHA / CI 狀態 / merge 狀態)——
+> 這些 git log / GitHub PR page 自帶,progress 不重複記、也不會過時。
+> 要驗證某 sprint 是否已合到 delivery branch:用 `CLAUDE.md` §「分支策略」段列的
+> delivery branch(專案可設定,例如 `main` / `develop` / 其他),跑
+> `git log --grep '<sprint 標題關鍵字>' <delivery-branch>` 找那筆 squash commit;
+> 或去 GitHub PR page 直接看 merge status。**不要用 branch tip 或 `-1` 判斷**——
+> 那只顯示最後一支、無法對應「這一個特定 sprint」。
 > (舊 schema 在 title 塞 `→ PR #N squash 進主線 SHA`,結果 Step 5 寫時全是 pending;
->  改成 Step 7 回寫又動不了 protected develop → 每 sprint 收尾多 1 支 PR + 1 輪 CI 純浪費)
+>  改成 Step 7 回寫又動不了 protected delivery branch → 每 sprint 收尾多 1 支 PR
+>  + 1 輪 CI 純浪費)
+
+> ### ⚠️ 未完成 sprint 的 checkpoint 走另一條 flow
+>
+> 上面的 schema 是**完整 sprint 收尾**用的。
+> **未完成 sprint** 的情境(工作暫停 / 被阻於外部 / context 快被壓縮前寫交棒):
+> 走 `.claude/sop/context-management.md` 的 checkpoint / take5 flow——寫 partial
+> entry 保留當下狀態、給下一棒接手。partial entry **不必**滿足上面的 pre-merge schema
+> (它本來就是未完成、不會 squash 進主線),但要明確標示「⚠️ partial / paused」
+> 讓下一棒知道這不是完整交付。
 
 ```markdown
 📅 YYYY-MM-DD ⓝ — **一句話標題**
