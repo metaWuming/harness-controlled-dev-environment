@@ -196,10 +196,10 @@ codebase 裡兩種寫法打架時,選一個(通常選較新 / 測試較多的),�
 3. **Go(本地優先)** — feature branch + atomic commits + 每 phase 全綠 gate;**先不 push、不開 PR**
 4. **跨模型 Review** — 對本地 diff 跑對手模型 review,迭代到 0 findings(無對手模型時降級:見 checklist)
    - **4.5 條件式安全關** — 碰安全敏感面(金流/個資/權限/資產轉移/audit trail)時觸發專責安全審;觸發判定先跑 `npx tsx scripts/check-cso-trigger.ts`(機器判定是下限不是上限)
-   - **4.6 條件式視覺關** — diff 碰 UI 檔時觸發;**實際截圖比對** design token,不靠讀碼推論外觀
-5. **同模型 sanity check** — 第二道 review 收尾(cross-model 補強設計層風險)
-6. **Push + PR + CI(最終 gate)** — 審乾淨才對外;CI 綠 → squash merge
-7. **Final** — 更新 progress.md + 收尾通知
+   - **4.6 條件式視覺關** — diff 碰 UI 檔時觸發;預設呼叫 gstack `/design-review` 對照 design token 稽核並直接修;無 gstack 降級:**實際截圖比對**,不靠讀碼推論外觀
+5. **同模型 sanity check** — 第二道 review 收尾(cross-model 補強設計層風險);**收乾後寫 progress entry 進 feature branch commit**(跟 code 進同一 PR、不另開)
+6. **Push + PR + CI(最終 gate)** — 審乾淨才對外;CI 綠 → squash merge(commit 含 progress)
+7. **Final** — TODOS / LESSONS / 通知 Owner(**progress 在 Step 5 已寫、不重複**)
 
 每步的建議 effort 標在 checklist 內(見原則 5.4 與 `docs/EFFORT.md`)。
 
