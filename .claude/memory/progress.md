@@ -26,7 +26,7 @@ type: note
 > 這個檔在遠端 delivery branch 的檔案歷史裡查 entry 內容,不要靠 branch tip 或 commit
 > subject。用 `CLAUDE.md` §「分支策略」段列的 delivery branch(專案可設定,例如
 > `main` / `develop` / 其他),跑
-> `git log -S '<entry title 精確文字>' origin/<delivery-branch> -- .claude/memory/progress.md`
+> `git log -S '<完整且唯一的 entry heading(含日期、ⓝ、標題)>' origin/<delivery-branch> -- .claude/memory/progress.md`
 > ——`-S` 對「內容變化」查、找到就代表這條 entry 已進遠端主線;找不到就是沒進。
 > 或去 GitHub PR page 直接看 merge status。**不要用 `--grep` 查 commit subject**
 > ——squash commit subject 不必然重複 entry 標題;**也不要用 branch tip 或 `-1`**
@@ -50,7 +50,7 @@ type: note
 > 否則同 feature branch 的 squash 會含**兩份 entry**(stale partial + completed)、
 > 一起進 delivery branch,違反「partial 不進主線」宣稱。做法:Step 5 開始寫時,
 > 先 `grep '⚠️ partial'` 找該 sprint 的既有 partial entry,把它就地擴寫成 completed
-> schema、不是在最上方另加新 entry。
+> schema、不是在最上方另加新 entry。查法:`grep -nE '⚠️ (partial|paused)' .claude/memory/progress.md`。
 
 ```markdown
 📅 YYYY-MM-DD ⓝ — **一句話標題**
