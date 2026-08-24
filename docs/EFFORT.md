@@ -90,7 +90,7 @@ round N+1 就得審它。這在不同專案的權重不一樣，**所以才要�
 | Step 4.6 視覺關 | `medium` | 視覺比對靠工具（截圖、裁切、逐項對照）而非靠想；官方明講 **tool use 比純思考更划算** |
 | Step 5 第二道 review | `medium` | 同 Step 4 |
 | Step 6 Push + CI | `low` | 機械步驟 |
-| Step 7 Final 收尾 | `low` | 更新 TODOS、通知 Owner（**progress entry 在 Step 5 已寫**，不在此步重複） |
+| Step 7 Final 收尾 | `low` | 通知 Owner、寫 LESSONS 若有新踩坑（**progress entry 在 Step 5 已寫、TODOS ✅ + PR 號 citation 在 Step 5/6 已寫**，均不在此步重複） |
 
 > ⚠️ **上表是起點不是定論。** 官方要求「依自己的 eval 重跑 sweep」——
 > 跑過幾個 sprint 後，若發現某步在較低 effort 就夠用（或反過來品質掉了），

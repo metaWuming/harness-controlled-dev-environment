@@ -226,6 +226,15 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
 - [ ] 每輪 fix commit 訊息標 `修復: <feature> review findings — <finding>`
 - [ ] 🔴 **本步收乾後,寫 progress entry 進 feature branch 最後一個 commit**
       (避免 Step 7 只為 progress 另開 PR、每 sprint 收尾多 1 支 PR + 1 輪 CI 的浪費)
+  - 🔴 **同理適用 BACKLOG / TODOS 標「刀 X ✅」的 bookkeeping**(來源專案 sprint
+    觀察後 port 進來)——那些同樣是 pre-merge 可知的資訊(「刀已收乾
+    等 merge」這件事 Step 5 就成立),不留給 Step 7。三份 memory 檔(progress / BACKLOG /
+    TODOS)的所有 pre-merge bookkeeping **一起寫進同一個 feature branch commit、走同一
+    輪 CI**。詳見 LESSONS.md `## 流程/工具` 段。
+    - 🔴 **TODOS ✅ 條目必留 `PR #___` placeholder**(Step 6 開 PR 後補 PR 號進去):
+      `scripts/check-todos-markers.ts` 對「已完工但沒引用 PR」只回 advisory 不擋合併
+      ——若 Step 5 沒留 placeholder、Step 6 也就沒 placeholder 可補、PR 可能合了但
+      citation 缺席。留 placeholder 才讓 Step 6 有明確 stop condition。
   - 🔴 **先 grep 有無既有 partial entry**(見 `.claude/memory/progress.md` 檔頭「⚠️ 未完成
     sprint 的 checkpoint 走另一條 flow」):
     `grep -nE '⚠️ (partial|paused)' .claude/memory/progress.md`。有既有 partial → **就地
@@ -253,7 +262,7 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
   - commit 訊息:`文件:memory — progress 加 <feature> sprint entry`
       (跟 code 進同一 PR、CI 一次跑完、develop 只多一支 squash commit)
 
-**STOP point**:critical findings 全修;informational 排序完;**progress entry 已寫並 commit 進 feature branch** → 才進 Step 6。
+**STOP point**:critical findings 全修;informational 排序完;**progress entry 已寫並 commit 進 feature branch**、**適用的 BACKLOG / TODOS ✅ 條目已標並留 `PR #___` placeholder**(本刀是新開發或收尾追蹤條目時適用;純內部 refactor 無關 TODO 追蹤才不適用——判不準當適用、留一條總比漏一條好) → 才進 Step 6。
 
 ## Step 6:Push + PR + CI(最終 gate,review 收乾淨後才對外) 🎚️ `low`
 
@@ -271,8 +280,27 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
       (在 Step 6 才發現 progress 沒寫 = 回頭 Step 5 補 commit,不是「先 merge 再另開 PR」)
 - [ ] `git push` + 開 feature → 主線 PR(PR 一開即是審過的乾淨版),
       description 對齊 plan(Summary / 完工內容 / Test plan)
-- [ ] 等 CI 綠 → **squash merge** 進開發主線(review 修復 round + progress commit 壓成
-      單一乾淨 commit)
+- [ ] 🔴 **PR 開了拿到 PR 號後、無條件 stop condition**:**只掃本 branch 新引入的
+      placeholder**(不是整檔 grep)——
+      ```bash
+      git diff origin/<主線>...HEAD -- \
+        .claude/memory/TODOS.md .claude/memory/TODOS-done.md .claude/memory/BACKLOG.md \
+        | grep -E '^\+.*PR #___'
+      ```
+      (`<主線>` 依 target repo 慣例:多數是 `main`,GitFlow 專案是 `develop`——先
+      `git branch -r | grep -E 'origin/(main|develop)$'` 確認。)**每一個新增的 placeholder
+      都要在此補 commit 填本刀 PR 號 → push → 讓 CI 走這一版**。
+      ⚠️ **不能整檔 `grep -n "PR #___"` 全掃**:主線若有前一次 Step 6 漏補的 stale
+      placeholder(Step 7 例外分支明說會發生),整檔掃會把它們錯認為本刀、以本 PR 號
+      覆寫、造成錯誤歸屬。整檔 grep 拿到的**額外**(主線已有的)placeholder 要分開列
+      出、報告給 Owner 手動處理(不由本 PR 動)。
+      掃本 branch 新增 0 hit ＋ Step 5 本刀有動 TODOS/BACKLOG ✅ → 停下確認為什麼沒
+      placeholder(Step 5 沒留 = 流程漏洞、要補)。
+      `scripts/check-todos-markers.ts` 的 `MARKER_SELF_PR` 允許 CI 驗自我引用、不擋
+      pre-merge 補 citation。這樣 Step 7 完全不需要回頭補 PR 號,徹底消除
+      「post-merge 才要另開 PR 補 TODOS」的坑。
+- [ ] 等 CI 綠 → **squash merge** 進開發主線(review 修復 round + progress commit +
+      bookkeeping fill-placeholder commit 壓成單一乾淨 commit)
 - [ ] CI 若抓到本地沒抓的(env / DB / build 差異)→ 修一輪再 push,屬正常
 
 **STOP point**:CI 綠 + squash merge 完成才進 Step 7。
@@ -283,8 +311,14 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
 > (2026-08-21 改;舊版把 progress.md 更新放這步 → 合 develop 後才寫、progress 動不了
 > develop protected branch、只能另開 PR;每個 sprint 收尾多 1 支 PR + 1 輪 CI 純浪費)
 
-- [ ] 更新 TODOS.md(mark 完成的條目 ✅,**完成宣稱必須引用交付 PR 號**——
-      `scripts/check-todos-markers.ts` CI gate 會驗)
+- [ ] ⚠️ **`TODOS.md` 完工標記 ✅ 與 `PR #___` citation 已在 Step 5/6 隨 code PR 一起
+      squash merge、此步驟不重複**(同 progress entry 的處理):完工項目 ✅ 標在 Step 5、
+      `PR #___` 引用位在 Step 6 開 PR 後補 commit push。Step 7 不再有 TODOS 更新動作——
+      留到這裡就是「主線 protected 只能另開 PR、多跑一輪 CI」的坑(見 LESSONS.md
+      `## 流程/工具` 段)。**唯一例外**:若 Step 6 忘了補 PR 號(違反紀律)、Step 7 才
+      發現,那才手動做——並記進 LESSONS 別下次再犯。
+      (`scripts/check-todos-markers.ts` CI gate 只回 advisory 不擋合併——所以驗證這步
+      的責任在 Step 6、不在 CI。)
 - [ ] 若有新踩坑 → 寫入 `.claude/memory/LESSONS.md`(按格式模板、告知 Owner 不靜默)
 - [ ] progress.md 過長 → 照 `.claude/memory/progress-archive/README.md` 慣例歸檔
 - [ ] 通知 Owner 收工
