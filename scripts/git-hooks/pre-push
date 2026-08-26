@@ -66,6 +66,10 @@ done
 [ ${#REF_LINES[@]} -eq 0 ] && exit 0
 
 # ── 1. 本機秘密掃描(只掃這次會離機的 commit 範圍)──────────────────────
+#
+# 🔴 range 內含空白(新 ref 用 `<sha> --not --remotes`)是刻意設計。呼叫端一律
+#    用 `set -- $range` 位置參數 split(而非 `"$range"` 引號傳入)。內容都是本
+#    hook 自己塞的 sha 或 rev-list expression、沒有外部輸入,shell splitting 安全。
 SCAN_RANGES=()
 for line in "${REF_LINES[@]}"; do
   # shellcheck disable=SC2086  # 刻意讓空白切成四個位置參數
@@ -74,33 +78,60 @@ for line in "${REF_LINES[@]}"; do
   _remote_sha="$4"
   [ "$_local_sha" = "$z40" ] && continue # 刪除 ref:沒有新 commit 離機
   if [ "$_remote_sha" = "$z40" ] || ! git cat-file -e "${_remote_sha}^{commit}" 2>/dev/null; then
-    # 新 ref,或 remote_sha 的 object 不在本機(stale / force)→ 掃整條 ancestry(從嚴)
-    SCAN_RANGES+=("$_local_sha")
+    # 🔴 R2 F3 修:新 ref (或 stale/force remote) 用 `--not --remotes` 只掃「這次
+    #    真的新離機」的 commits。舊寫法 `SCAN_RANGES+=("$_local_sha")` 走整條
+    #    ancestry → 若 repo 祖先某處曾 commit .gitleaks.toml,config-touched 段會
+    #    match 到、任何 `git push -u origin feature/foo` 都被擋。
+    #    `--not --remotes` = reachable from local_sha but not from any remote-
+    #    tracking ref = 這次真的要離機的 commits(且新 clone 因 remotes 已完整、
+    #    語意也對)。
+    SCAN_RANGES+=("$_local_sha --not --remotes")
   else
     SCAN_RANGES+=("${_remote_sha}..${_local_sha}")
   fi
 done
 
+# 🔴 R2 F1 修:取「可信 baseline」的 gitleaks config 給 gitleaks 用,而非讓
+#    gitleaks 讀當前工作樹的 `.gitleaks.toml`。工作樹 dirty config(尚未 commit)
+#    或環境變數(`GITLEAKS_CONFIG` / `GITLEAKS_CONFIG_TOML`)都能繞過原 R1 修法
+#    的 commit-scan config-touched 檢查。修法:從 `origin/HEAD` 取 config、寫
+#    tmpfile、`--config` 指定;找不到 origin config 則用 `/dev/null`(gitleaks
+#    內建 default rules,誤報稍多但不會被 dirty config 放行);並顯式清掉環境
+#    變數避免覆寫。
+resolve_trusted_gitleaks_config() {
+  local tmp
+  tmp=$(mktemp -t hook-gitleaks-config.XXXXXX)
+  if git show origin/HEAD:.gitleaks.toml >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+    printf '%s\n' "$tmp"
+    return 0
+  fi
+  # origin/HEAD 沒 .gitleaks.toml → tmp 檔可能留下空內容,清掉
+  rm -f "$tmp"
+  printf '/dev/null\n'
+}
+
 if [ ${#SCAN_RANGES[@]} -gt 0 ]; then
-  # 🔴 攻擊 vector 擋(Codex R1 P1):push 範圍同批修改 `.gitleaks.toml` /
-  #    `.gitleaksignore` → 直接硬擋。gitleaks 沒指定 `--config` 時會讀當前工作
-  #    樹的 `.gitleaks.toml`,攻擊者可在 feature branch 一個 commit 加寬 allowlist
-  #    再加密鑰 → gitleaks 依放寬後的 config 放行、密鑰隨 push feature 離機。
-  #    修法:合法情境是「先 push .gitleaks.toml 走 PR 合入 protected branch、再
-  #    push 這批 commit」;拒絕同批 push 就切斷這條 vector。
+  # 🔴 攻擊 vector 擋(R1 F2 + R2 F2 修):push 範圍同批修改 `.gitleaks.toml` /
+  #    `.gitleaksignore` → 直接硬擋。與 R2 F1 的「可信 config」修法互補:那條擋
+  #    dirty worktree config,這條擋「先加寬 allowlist 再加密鑰」的合批 commit
+  #    攻擊(config 若走 PR 合入 protected branch,那條路仍暢通)。
+  #    🔴 R2 F2 修:加 `-m` 讓 merge commit 對每個 parent 產生 diff。原修法漏
+  #       了、attacker 可在 merge resolution 只帶入 config 放寬(兩 parent 都沒有)
+  #       → config-touched 看不到,而 gitleaks 用 R2 F1 的可信 config 也擋得住,
+  #       但這裡若走的是「未來把 config 也走 PR」情境,merge 帶入的變更仍是繞道。
   for range in "${SCAN_RANGES[@]}"; do
-    if config_touched=$(git log --format= --name-only --no-renames "$range" 2>/dev/null | \
-      grep -E '^(\.gitleaks\.toml|\.gitleaksignore)$' || true); [ -n "$config_touched" ]; then
+    # shellcheck disable=SC2086  # range 內含 --not --remotes 等 args,刻意 split
+    if config_touched=$(git log --format= --name-only --no-renames -m $range 2>/dev/null | \
+      grep -E '^(\.gitleaks\.toml|\.gitleaksignore)$' | sort -u || true); [ -n "$config_touched" ]; then
       {
         echo ""
-        echo "✗ push 範圍 $range 同批修改 gitleaks 設定,擋下 push"
+        echo "✗ push 範圍「$range」同批修改 gitleaks 設定,擋下 push"
         echo "   影響檔案:"
         while IFS= read -r f; do
           [ -n "$f" ] && echo "     - $f"
         done <<< "$config_touched"
         echo ""
-        echo "   同批放寬 allowlist ＋加密鑰是已知攻擊 vector(feature branch push"
-        echo "   時 gitleaks 讀工作樹 .gitleaks.toml、依放寬後設定放行)。"
+        echo "   同批放寬 allowlist ＋加密鑰是已知攻擊 vector。"
         echo "   → 修法:先把 .gitleaks.toml 改動 push 走 PR、合入 protected branch,"
         echo "     再 push 這批 commit"
         echo "   → 緊急逃生:\`git push --no-verify\`(CI 仍會掃)"
@@ -110,24 +141,30 @@ if [ ${#SCAN_RANGES[@]} -gt 0 ]; then
   done
 
   if command -v gitleaks >/dev/null 2>&1; then
+    # 🔴 R2 F1 修:顯式清掉可能覆寫 --config 的 env(gitleaks 官方優先序
+    #    --config → GITLEAKS_CONFIG → GITLEAKS_CONFIG_TOML → 工作樹 .gitleaks.toml)。
+    unset GITLEAKS_CONFIG GITLEAKS_CONFIG_TOML
+    trusted_config=$(resolve_trusted_gitleaks_config)
+    # 清 tmp 檔:trap 用 signal + EXIT
+    trap '[ "${trusted_config:-}" != "/dev/null" ] && rm -f "$trusted_config"' EXIT
+
     for range in "${SCAN_RANGES[@]}"; do
+      # --config "$trusted_config":R2 F1,顯式從 origin/HEAD 取,不用工作樹
       # --ignore-gitleaks-allow:不認行內 `gitleaks:allow` 註解
-      # -i /dev/null:不認 repo 內的 .gitleaksignore(放行只走版控的 .gitleaks.toml)
-      # -m:讓 merge commit 對每個 parent 產生 diff(Codex R1 P1)。舊寫法未指定
-      #    diff-merges variant → git log 對 merge commit 不輸出 patch → 在
-      #    merge 解衝突時直接加、兩個 parent 都沒有的密鑰不會出現在 gitleaks
-      #    收到的 patch 裡、push 就離機。`-m` 是最保守選(掃每一邊 parent)。
+      # -i /dev/null:不認 repo 內的 .gitleaksignore
+      # -m:merge commit 對每個 parent 產 diff(R1 F3)
       # 輸出捕捉後失敗時完整印出(吞掉會讓人分不清「真 leak」vs「config 壞」vs 其他錯)
-      if ! out=$(gitleaks git --redact --no-banner --ignore-gitleaks-allow -i /dev/null \
-        --log-opts "-m $range" 2>&1); then
+      if ! out=$(gitleaks git --config "$trusted_config" --redact --no-banner \
+        --ignore-gitleaks-allow -i /dev/null --log-opts "-m $range" 2>&1); then
         {
           echo ""
-          echo "✗ gitleaks 在 push 範圍 $range 失敗,擋下 push"
+          echo "✗ gitleaks 在 push 範圍「$range」失敗,擋下 push"
           echo "$out"
           echo ""
-          echo "   誤報 → 按值加進 .gitleaks.toml allowlist(該檔算 code、要走 PR)再 push"
-          echo "   行內 gitleaks:allow 與 .gitleaksignore 已刻意停用(提交者不能自己放行)"
-          echo "   同批修改 .gitleaks.toml + 密鑰的攻擊 vector 已由 config-touched 檢查擋下"
+          echo "   config 使用可信 baseline: $trusted_config (從 origin/HEAD:.gitleaks.toml)"
+          echo "   誤報 → 按值加進 .gitleaks.toml allowlist(該檔算 code、要走 PR、合入"
+          echo "         protected branch 之後才會被 pre-push 認)再 push"
+          echo "   行內 gitleaks:allow / .gitleaksignore / 工作樹 dirty config / env 覆寫皆已停用"
           echo "   緊急逃生:\`git push --no-verify\`(CI 仍會掃到並擋 PR)"
         } >&2
         exit 1
