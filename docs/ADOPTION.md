@@ -57,7 +57,8 @@ type: guide
       (pre-commit / pre-push 兩支共用)。預設涵蓋模板實際附帶或最常見的
       `CLAUDE.md` / `.claude/sop/` / `SPEC.md` / `ARCHITECTURE.md` /
       `GOVERNANCE.md` / `docs/architecture/`;有專案自己的治理文件
-      (常見增補:AGENTS.md / DESIGN.md / 專案安全文件 docs/SECURITY.md 等
+      (常見增補:root 級 `AGENTS.md` / `DESIGN.md`、或
+      `docs/{SECURITY,THREAT_MODEL,BRANCH_PROTECTION}.md` 這類專案安全文件
       ——路徑依專案實情、非本模板附帶)按實情增補
 - [ ] 兩支 hook 用 **default-deny**(`NON_CODE_PATTERN` = `.md` 與
       `docs/*.html` — 後者只放行 `docs/` **直層一級**,`docs/guides/setup.html`
