@@ -110,18 +110,20 @@ done
 #    default rules;mktemp/寫失敗一律 return 1、hook 主流程 exit 1 fail-closed。
 #    ⚠️ R3 F1:早期版本 fallback 用 `/dev/null` → gitleaks 讀空 TOML = 0 rules =
 #       全放行。實測 gitleaks 8.30.1 對 `--config /dev/null` 就是「無規則」不
-#       是「default rules」。對本專案 pin 且已驗證的 gitleaks 8.30.1,寫入
-#       `[extend]\nuseDefault = true` 可啟用內建 default rules;不宣稱支援使用
-#       舊 CLI／舊 config schema 的歷史版本 (v8.19.0 前的 `gitleaks git` 子命令
-#       格式可能不相容)。
+#       是「default rules」。本段已用 CI pin 的 gitleaks 8.30.1 驗證:
+#       `[extend]\nuseDefault = true` 可啟用內建 default rules。本機 hook
+#       使用 PATH 中的 gitleaks;其他版本的 CLI／config schema 相容性未驗證。
 #    ⚠️ Command substitution 會清 subshell errexit,不能靠 `set -e` fail-closed,
 #       所以 helper 內每一步都要顯式檢查、失敗顯式 return 1。
 resolve_trusted_gitleaks_config() {
-  # 🔴 R4 F2 修:body 包在明確 subshell 內,裝自己的 INT/TERM/HUP trap
-  #    清 local tmp。原寫法在 command substitution subshell (`$(resolver)`) 內
-  #    執行,若 signal 落在 resolver 執行中而 assignment 未完成,parent 的
-  #    `trusted_config` 尚未 set、parent trap 看不到 resolver 的 local vars →
-  #    tmp orphan (含專案 sensitive rules)。subshell 內獨立 trap 修這條。
+  # 🔴 R4 F2 修:body 包在明確 subshell 內並安裝 INT/TERM/HUP trap。
+  #    終端 Ctrl-C 會把 SIGINT 送到整個前景 process group,因此此內層
+  #    subshell 可直接清除已指派給 tmp/project_config 的暫存檔。
+  #    Bash 不會把只送給外層 command-substitution shell 的 signal 自動轉送進來。
+  #    原寫法在 command substitution subshell (`$(resolver)`) 內執行,若 signal
+  #    落在 resolver 執行中而 assignment 未完成,parent 的 `trusted_config` 尚未
+  #    set、parent trap 看不到 resolver 的 local vars → tmp orphan (含專案
+  #    sensitive rules)。
   (
     trap 'rm -f "${tmp:-}" "${project_config:-}" 2>/dev/null; exit 130' INT TERM HUP
     local tmp project_config
