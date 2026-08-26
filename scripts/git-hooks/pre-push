@@ -54,6 +54,13 @@ HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 z40='0000000000000000000000000000000000000000'
 
+# 🔴 R3 F2 修:git pre-push argv[1] = remote name (目的地),argv[2] = url。
+#    後續用 `--remotes=$REMOTE_NAME` 只扣掉目的地的 tracking refs、避免
+#    其他 remote (fork/upstream) 的 refs 把「本次真的要離機到 origin」
+#    的 commits 誤扣掉。git 未提供 remote 時 default 'origin' (常見情境:
+#    hook 手動觸發、init/setup 腳本)。
+REMOTE_NAME="${1:-origin}"
+
 # ── 先把 stdin 全部收進來 ────────────────────────────────────────────────
 # Git 透過 stdin 傳 "<local-ref> <local-sha> <remote-ref> <remote-sha>",一行一個 ref。
 # gitleaks 要按 ref 掃,所以不能邊讀邊處理(洞 ①)。
@@ -85,30 +92,71 @@ for line in "${REF_LINES[@]}"; do
     #    `--not --remotes` = reachable from local_sha but not from any remote-
     #    tracking ref = 這次真的要離機的 commits(且新 clone 因 remotes 已完整、
     #    語意也對)。
-    SCAN_RANGES+=("$_local_sha --not --remotes")
+    # 🔴 R3 F2 修:用 `--remotes=$REMOTE_NAME` 只扣掉本次目的地 remote 的 tracking
+    #    refs,不是所有 remotes。若用 `--remotes` (無 pattern) 扣掉 fork/upstream 的
+    #    refs,可能把「本次真的要離機到 origin」的 commits 也排除。
+    SCAN_RANGES+=("$_local_sha --not --remotes=$REMOTE_NAME")
   else
     SCAN_RANGES+=("${_remote_sha}..${_local_sha}")
   fi
 done
 
-# 🔴 R2 F1 修:取「可信 baseline」的 gitleaks config 給 gitleaks 用,而非讓
-#    gitleaks 讀當前工作樹的 `.gitleaks.toml`。工作樹 dirty config(尚未 commit)
-#    或環境變數(`GITLEAKS_CONFIG` / `GITLEAKS_CONFIG_TOML`)都能繞過原 R1 修法
-#    的 commit-scan config-touched 檢查。修法:從 `origin/HEAD` 取 config、寫
-#    tmpfile、`--config` 指定;找不到 origin config 則用 `/dev/null`(gitleaks
-#    內建 default rules,誤報稍多但不會被 dirty config 放行);並顯式清掉環境
-#    變數避免覆寫。
+# 🔴 R2 F1 + R3 F1 修:取「可信 baseline」的 gitleaks config,而非讓 gitleaks 讀
+#    當前工作樹的 `.gitleaks.toml`(dirty)或環境變數。從 `refs/remotes/$REMOTE_NAME/HEAD`
+#    取 config、寫 tmpfile、`--config` 指定;找不到則寫合成 config 啟用 gitleaks
+#    default rules;mktemp/寫失敗一律 return 1、hook 主流程 exit 1 fail-closed。
+#    ⚠️ R3 F1:早期版本 fallback 用 `/dev/null` → gitleaks 讀空 TOML = 0 rules =
+#       全放行。實測 gitleaks 8.30.1 對 `--config /dev/null` 就是「無規則」不
+#       是「default rules」。正解是寫入 `[extend]\nuseDefault = true` 才啟用
+#       gitleaks 內建規則集。
+#    ⚠️ Command substitution 會清 subshell errexit,不能靠 `set -e` fail-closed,
+#       所以 helper 內每一步都要顯式檢查、失敗顯式 return 1。
 resolve_trusted_gitleaks_config() {
   local tmp
-  tmp=$(mktemp -t hook-gitleaks-config.XXXXXX)
-  if git show origin/HEAD:.gitleaks.toml >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
-    printf '%s\n' "$tmp"
-    return 0
+  tmp=$(mktemp -t hook-gitleaks-config.XXXXXX) || return 1
+  # 先寫合成 baseline (啟用 gitleaks default rules),之後若能覆蓋成 remote config 更好
+  if ! printf '[extend]\nuseDefault = true\n' > "$tmp"; then
+    rm -f "$tmp"
+    return 1
   fi
-  # origin/HEAD 沒 .gitleaks.toml → tmp 檔可能留下空內容,清掉
-  rm -f "$tmp"
-  printf '/dev/null\n'
+
+  # 嘗試從目的地 remote HEAD 取專案 config;取得且非空才覆蓋 synthetic fallback
+  local remote_head_ref="refs/remotes/$REMOTE_NAME/HEAD"
+  if git symbolic-ref --quiet "$remote_head_ref" >/dev/null 2>&1; then
+    local project_config
+    project_config=$(mktemp -t hook-gitleaks-project.XXXXXX) || {
+      rm -f "$tmp"
+      return 1
+    }
+    if git show "$remote_head_ref:.gitleaks.toml" >"$project_config" 2>/dev/null && \
+      [ -s "$project_config" ]; then
+      # 專案自帶 config → 覆蓋 synthetic (gitleaks 讀專案 config;若專案有 [extend]
+      # useDefault 也生效)
+      mv -f "$project_config" "$tmp" || {
+        rm -f "$tmp" "$project_config"
+        return 1
+      }
+    else
+      rm -f "$project_config"
+    fi
+  fi
+
+  printf '%s\n' "$tmp"
+  return 0
 }
+
+# 🔴 R3 F4 修:EXIT 只涵蓋正常結束與 `exit`,不涵蓋 INT/TERM/HUP → Ctrl-C 時
+#    tmp config (可能含專案 sensitive rules) 殘留。轉發這些 signal 為 exit 讓
+#    EXIT cleanup 執行。SIGKILL 無法攔截 (接受)。
+# shellcheck disable=SC2329  # 由 trap EXIT/INT/TERM/HUP 呼叫,shellcheck 抓不到
+cleanup_trusted_config() {
+  [ -n "${trusted_config:-}" ] && [ "$trusted_config" != "/dev/null" ] && \
+    rm -f "$trusted_config"
+}
+trap 'cleanup_trusted_config' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 if [ ${#SCAN_RANGES[@]} -gt 0 ]; then
   # 🔴 攻擊 vector 擋(R1 F2 + R2 F2 修):push 範圍同批修改 `.gitleaks.toml` /
@@ -120,9 +168,25 @@ if [ ${#SCAN_RANGES[@]} -gt 0 ]; then
   #       → config-touched 看不到,而 gitleaks 用 R2 F1 的可信 config 也擋得住,
   #       但這裡若走的是「未來把 config 也走 PR」情境,merge 帶入的變更仍是繞道。
   for range in "${SCAN_RANGES[@]}"; do
+    # 🔴 R3 F3 修:拆 pipeline、每階段顯式檢查、失敗 fail-closed。原寫法
+    #    `... | grep ... | sort -u || true` 若 git log/sort 因 TMPDIR 不可寫或
+    #    磁碟不足 fail、`|| true` 讓整條回空 → hook 繼續(fail-open)。改用 awk
+    #    streaming dedupe 避免 sort spill、並顯式檢查 PIPESTATUS。
     # shellcheck disable=SC2086  # range 內含 --not --remotes 等 args,刻意 split
-    if config_touched=$(git log --format= --name-only --no-renames -m $range 2>/dev/null | \
-      grep -E '^(\.gitleaks\.toml|\.gitleaksignore)$' | sort -u || true); [ -n "$config_touched" ]; then
+    log_out=$(git log --format= --name-only --no-renames -m $range 2>/dev/null)
+    log_ec=$?
+    if [ $log_ec -ne 0 ]; then
+      {
+        echo ""
+        echo "✗ git log 對 push 範圍「$range」失敗 (ec=$log_ec),擋下 push"
+        echo "   → 這通常是 stale remote-tracking ref 或 corrupted range,\`git fetch --prune\` 後重試"
+        echo "   → 緊急逃生:\`git push --no-verify\`(CI 仍會掃)"
+      } >&2
+      exit 1
+    fi
+    config_touched=$(printf '%s\n' "$log_out" | \
+      awk '/^\.gitleaks\.toml$|^\.gitleaksignore$/ && !seen[$0]++')
+    if [ -n "$config_touched" ]; then
       {
         echo ""
         echo "✗ push 範圍「$range」同批修改 gitleaks 設定,擋下 push"
@@ -144,9 +208,19 @@ if [ ${#SCAN_RANGES[@]} -gt 0 ]; then
     # 🔴 R2 F1 修:顯式清掉可能覆寫 --config 的 env(gitleaks 官方優先序
     #    --config → GITLEAKS_CONFIG → GITLEAKS_CONFIG_TOML → 工作樹 .gitleaks.toml)。
     unset GITLEAKS_CONFIG GITLEAKS_CONFIG_TOML
-    trusted_config=$(resolve_trusted_gitleaks_config)
-    # 清 tmp 檔:trap 用 signal + EXIT
-    trap '[ "${trusted_config:-}" != "/dev/null" ] && rm -f "$trusted_config"' EXIT
+    # 🔴 R3 F1 修:resolver 失敗一律 fail-closed。不能繼續用工作樹 dirty config
+    #    或空 config,那正是要擋掉的 vector。
+    if ! trusted_config=$(resolve_trusted_gitleaks_config); then
+      {
+        echo ""
+        echo "✗ 無法建立可信 gitleaks config (mktemp/write 失敗),擋下 push"
+        echo "   → 檢查 \$TMPDIR 可寫、磁碟未滿"
+        echo "   → 緊急逃生:\`git push --no-verify\`(CI 仍會掃)"
+      } >&2
+      exit 1
+    fi
+    # cleanup_trusted_config 已在檔頭 trap 過(涵蓋 EXIT + INT/TERM/HUP);此處
+    # 不再重新裝 trap,避免覆蓋掉 signal 版。
 
     for range in "${SCAN_RANGES[@]}"; do
       # --config "$trusted_config":R2 F1,顯式從 origin/HEAD 取,不用工作樹
@@ -161,7 +235,8 @@ if [ ${#SCAN_RANGES[@]} -gt 0 ]; then
           echo "✗ gitleaks 在 push 範圍「$range」失敗,擋下 push"
           echo "$out"
           echo ""
-          echo "   config 使用可信 baseline: $trusted_config (從 origin/HEAD:.gitleaks.toml)"
+          echo "   config 使用可信 baseline: $trusted_config"
+          echo "         (從 refs/remotes/$REMOTE_NAME/HEAD:.gitleaks.toml,或 fallback 到 gitleaks default rules)"
           echo "   誤報 → 按值加進 .gitleaks.toml allowlist(該檔算 code、要走 PR、合入"
           echo "         protected branch 之後才會被 pre-push 認)再 push"
           echo "   行內 gitleaks:allow / .gitleaksignore / 工作樹 dirty config / env 覆寫皆已停用"
