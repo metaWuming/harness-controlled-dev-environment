@@ -59,10 +59,11 @@ type: guide
       `GOVERNANCE.md` / `docs/architecture/`;有專案自己的治理文件
       (常見:`AGENTS.md`、`DESIGN.md`、`docs/SECURITY.md`)按實情增補
 - [ ] 兩支 hook 用 **default-deny**(`NON_CODE_PATTERN` = `.md` 與
-      `docs/*.html`);非文件一律視為 code、走 PR。若專案有其他純說明檔位置
-      要放行(例:`RUNBOOK/` 內全部 `.html`),在 `NON_CODE_PATTERN` 加入,
-      但**只放行 root 內外可信任的說明目錄**(避免 `public/**/*.html` 這種
-      同源可讀 session 的檔零阻力進主分支)
+      `docs/*.html` — 後者只放行 `docs/` **直層一級**,`docs/guides/setup.html`
+      這種 nested HTML 會被當 code、走 PR)。非文件一律視為 code。若專案有
+      其他純說明檔位置要放行,在 `NON_CODE_PATTERN` 加入,但**只放行可信任
+      的說明目錄**(避免 `public/**/*.html` 這種同源可讀 session 的檔零阻力
+      進主分支)
 - [ ] (**強烈建議**)本機裝 gitleaks(`brew install gitleaks`)。pre-push 預設
       **fail-closed**:沒裝就擋 push,要繞得明講 `SKIP_GITLEAKS_CHECK=1 git push …`
       或 `git push --no-verify`;`gitleaks:allow` 行內註解與 `.gitleaksignore`

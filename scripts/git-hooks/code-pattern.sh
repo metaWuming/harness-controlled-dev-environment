@@ -45,6 +45,12 @@ NON_CODE_PATTERN='\.md$|^docs/[^/]*\.html$'
 #    與 `.claude/sop/`,使這些治理文件會被當作一般 `.md` 放行。
 #    補上模板實際附帶的治理文件路徑。
 #
+# ⚠️ Pattern **case-sensitive**:`^CLAUDE\.md$` 不 match `claude.md`;
+#    `^\.claude/sop/` 不 match `.claude/SOP/`。macOS 案例不敏感 FS 上,git
+#    rename 會列出 canonical path 的 delete 端仍會被 match(`--no-renames`
+#    效果),但**新建**大小寫變體的檔案 (如 `.claude/SOP/new.md`) 會漏抓。
+#    正式使用時建議 canonical 路徑一致。
+#
 # ⚠️ 兩支 hook 都要套用(舊版只有 pre-commit 有,pre-push 完全沒套 → 在 feature
 #    分支 commit 完再 `git push origin feature:develop` 就被判 docs-only 無聲直推)。
 #

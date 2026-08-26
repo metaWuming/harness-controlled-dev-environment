@@ -81,12 +81,23 @@ done
 #    用 `set -- $range` 位置參數 split(而非 `"$range"` 引號傳入)。內容都是本
 #    hook 自己塞的 sha 或 rev-list expression、沒有外部輸入,shell splitting 安全。
 SCAN_RANGES=()
+# 🔴 Fresh review F2 修:config-touched 段只對 push 到 develop/main 的 range 跑
+#    (feature branch 修 .gitleaks.toml 是合法 workflow、gitleaks 用 trusted
+#    baseline config 掃還是能抓到密鑰;config-touched 是專防「同批放寬 allowlist
+#    ＋加密鑰、直接 push 保護分支」的攻擊 vector,對 feature branch push 過寬)。
+#    PROTECTED_SCAN_RANGES 是 SCAN_RANGES 的子集、只含 develop/main target。
+PROTECTED_SCAN_RANGES=()
 for line in "${REF_LINES[@]}"; do
   # shellcheck disable=SC2086  # 刻意讓空白切成四個位置參數
   set -- $line
   _local_sha="$2"
+  _remote_ref="$3"
   _remote_sha="$4"
   [ "$_local_sha" = "$z40" ] && continue # 刪除 ref:沒有新 commit 離機
+  case "$_remote_ref" in
+    refs/heads/develop | refs/heads/main) _is_protected=1 ;;
+    *) _is_protected=0 ;;
+  esac
   if [ "$_remote_sha" = "$z40" ] || ! git cat-file -e "${_remote_sha}^{commit}" 2>/dev/null; then
     # 🔴 R2 F3 修:新 ref (或 stale/force remote) 用 `--not --remotes` 只掃「這次
     #    真的新離機」的 commits。舊寫法 `SCAN_RANGES+=("$_local_sha")` 走整條
@@ -98,10 +109,12 @@ for line in "${REF_LINES[@]}"; do
     # 🔴 R3 F2 修:用 `--remotes=$REMOTE_NAME` 只扣掉本次目的地 remote 的 tracking
     #    refs,不是所有 remotes。若用 `--remotes` (無 pattern) 扣掉 fork/upstream 的
     #    refs,可能把「本次真的要離機到 origin」的 commits 也排除。
-    SCAN_RANGES+=("$_local_sha --not --remotes=$REMOTE_NAME")
+    _range="$_local_sha --not --remotes=$REMOTE_NAME"
   else
-    SCAN_RANGES+=("${_remote_sha}..${_local_sha}")
+    _range="${_remote_sha}..${_local_sha}"
   fi
+  SCAN_RANGES+=("$_range")
+  [ "$_is_protected" = "1" ] && PROTECTED_SCAN_RANGES+=("$_range")
 done
 
 # 🔴 R2 F1 + R3 F1 修:取「可信 baseline」的 gitleaks config,而非讓 gitleaks 讀
@@ -171,15 +184,18 @@ trap 'exit 143' TERM
 trap 'exit 129' HUP
 
 if [ ${#SCAN_RANGES[@]} -gt 0 ]; then
-  # 🔴 攻擊 vector 擋(R1 F2 + R2 F2 修):push 範圍同批修改 `.gitleaks.toml` /
-  #    `.gitleaksignore` → 直接硬擋。與 R2 F1 的「可信 config」修法互補:那條擋
-  #    dirty worktree config,這條擋「先加寬 allowlist 再加密鑰」的合批 commit
-  #    攻擊(config 若走 PR 合入 protected branch,那條路仍暢通)。
+  # 🔴 攻擊 vector 擋(R1 F2 + R2 F2 + Fresh F2 修):push 範圍同批修改
+  #    `.gitleaks.toml` / `.gitleaksignore` → 直接硬擋。與 R2 F1 的「可信 config」
+  #    修法互補:那條擋 dirty worktree config,這條擋「先加寬 allowlist 再加密鑰」
+  #    的合批 commit 攻擊(config 若走 PR 合入 protected branch,那條路仍暢通)。
   #    🔴 R2 F2 修:加 `-m` 讓 merge commit 對每個 parent 產生 diff。原修法漏
   #       了、attacker 可在 merge resolution 只帶入 config 放寬(兩 parent 都沒有)
-  #       → config-touched 看不到,而 gitleaks 用 R2 F1 的可信 config 也擋得住,
-  #       但這裡若走的是「未來把 config 也走 PR」情境,merge 帶入的變更仍是繞道。
-  for range in "${SCAN_RANGES[@]}"; do
+  #       → config-touched 看不到,而 gitleaks 用 R2 F1 的可信 config 也擋得住。
+  #    🔴 Fresh F2 修:只對 push 到 develop/main 的 range 跑 (PROTECTED_SCAN_RANGES)。
+  #       feature branch 修 .gitleaks.toml 是合法 workflow;gitleaks 用 trusted
+  #       baseline config 掃還是能抓到密鑰、攻擊 vector 已中和。對 feature branch
+  #       硬擋是過寬、developers 得為合法 config 修改一律 `--no-verify`。
+  for range in "${PROTECTED_SCAN_RANGES[@]}"; do
     # 🔴 R3 F3 + R4 F1 修:拆 git log 與過濾;git log 失敗時顯示錯誤並 fail-closed。
     #    使用 awk streaming dedupe、避免 sort spill。
     #    ⚠️ R4 F1:原寫法 `log_out=$(...); log_ec=$?` 在 `set -e` 下 command
@@ -331,9 +347,14 @@ for line in "${REF_LINES[@]}"; do
   # 🔴 端點 diff **不夠**:commit A 新增 `evil.ts`、commit B 刪掉它,端點比較是空的
   #    → 舊寫法 `[ -z "$changed" ] && continue` 直接放行,兩個 code commit 無聲進了
   #    develop 的歷史。改成「端點 diff ∪ 逐 commit 檔案清單」。
+  # 🔴 Fresh review F1 修:`git log` 加 `-m` 讓 merge commit 對每個 parent 產 diff。
+  #    原修法漏了(config-touched 段 R2 F2 已加 -m,這裡漏了同一 bug class)。
+  #    攻擊:兩個 merge commit — M1 conflict resolution 引入 evil.ts (neither
+  #    parent 有)、M2 conflict resolution 移除 → 端點 diff 空 + git log 無 -m 對
+  #    merge 不輸出檔名 → changed 空 → protected branch 守衛靜默通過。
   if ! changed=$( {
     git diff --name-only --no-renames "$remote_sha..$local_sha" 2>&1
-    git log --format= --name-only --no-renames "$remote_sha..$local_sha" 2>&1
+    git log --format= --name-only --no-renames -m "$remote_sha..$local_sha" 2>&1
   } | sort -u); then
     triggered=1
     append_warning ""
