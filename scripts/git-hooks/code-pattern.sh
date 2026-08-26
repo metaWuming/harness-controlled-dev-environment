@@ -32,16 +32,22 @@ NON_CODE_PATTERN='\.md$|^docs/[^/]*\.html$'
 # PR-only 禁區文件:雖是 .md,但屬 CLAUDE.md「禁區清單」＋ SOP「一律跑完整流程」
 # 的治理 / 安全 / spec 文件 → 在保護分支上直接 commit 或直推一樣要擋。
 #
-# 預設值是**模板通用範例**,導入時按專案實情增刪:
-#   - `SPEC.md` / `ARCHITECTURE.md` / `GOVERNANCE.md`(root 級策略文件)
+# 預設值涵蓋**模板本身實際附帶或最常見**的治理／spec 檔:
+#   - `CLAUDE.md`(模板附帶的 AI 協作行為守則、屬治理正本)
+#   - `.claude/sop/`(SOP 目錄;模板未來若加、預設就能保護)
+#   - `SPEC.md` / `ARCHITECTURE.md` / `GOVERNANCE.md`(root 級策略文件通用範例)
 #   - `docs/architecture/`(ADR 目錄,code 之後要照抄的 spec)
 # 常見增補(依專案情況):
-#   - 專案的 CLAUDE.md / AGENTS.md / DESIGN.md 等治理文件(root)
-#   - `.claude/sop/` 或等效的 SOP 目錄
+#   - `AGENTS.md` / `DESIGN.md` 等治理文件(root)
 #   - `docs/SECURITY.md` / `docs/THREAT_MODEL.md` / `docs/BRANCH_PROTECTION.md`
+#
+# 🔴 修 Codex R1 P1:上一版預設值只有 SPEC/ARCHITECTURE/GOVERNANCE + docs/architecture,
+#    但模板 root 實際附帶的是 `CLAUDE.md` → 新使用者採用模板時,PROTECTED_DOCS 對
+#    reviewed commits 內任何檔都 match 不到、預設守衛在乾裝狀態就是空門。補回
+#    模板實際會有的路徑。
 #
 # ⚠️ 兩支 hook 都要套用(舊版只有 pre-commit 有,pre-push 完全沒套 → 在 feature
 #    分支 commit 完再 `git push origin feature:develop` 就被判 docs-only 無聲直推)。
 #
 # shellcheck disable=SC2034
-PROTECTED_DOCS='^(SPEC|ARCHITECTURE|GOVERNANCE)\.md$|^docs/architecture/'
+PROTECTED_DOCS='^CLAUDE\.md$|^\.claude/sop/|^(SPEC|ARCHITECTURE|GOVERNANCE)\.md$|^docs/architecture/'

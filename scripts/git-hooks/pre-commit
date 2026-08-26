@@ -54,12 +54,17 @@ staged="$(git diff --cached --name-only --no-renames)"
 
 blocked=""
 
+# 🔴 用 `printf '%s\n'` 而非 `echo`(Codex R1 P1):Bash builtin `echo` 會把
+#    `-n` / `-e` / `-E` 這類檔名當成選項吃掉、輸出空 → `grep -Ev` 收到空輸入 →
+#    `code_files` 空 → default-deny 靜默放行。合法檔名叫這些字元罕見但可能,
+#    default-deny 就是要處理極端。`printf '%s\n'` 對第一個 argument 一律當字面。
+
 # 1) code 檔一律 block(default-deny:非 .md / 非 docs/*.html 就是 code)
-code_files=$(echo "$staged" | grep -Ev "$NON_CODE_PATTERN" || true)
+code_files=$(printf '%s\n' "$staged" | grep -Ev "$NON_CODE_PATTERN" || true)
 [ -n "$code_files" ] && blocked="$code_files"
 
 # 2) PROTECTED_DOCS 內的 PR-only 治理／安全／spec 文件,.md 也不放行
-protected=$(echo "$staged" | grep -E "$PROTECTED_DOCS" || true)
+protected=$(printf '%s\n' "$staged" | grep -E "$PROTECTED_DOCS" || true)
 if [ -n "$protected" ]; then
   blocked="${blocked}${blocked:+
 }$protected"

@@ -82,13 +82,44 @@ for line in "${REF_LINES[@]}"; do
 done
 
 if [ ${#SCAN_RANGES[@]} -gt 0 ]; then
+  # 🔴 攻擊 vector 擋(Codex R1 P1):push 範圍同批修改 `.gitleaks.toml` /
+  #    `.gitleaksignore` → 直接硬擋。gitleaks 沒指定 `--config` 時會讀當前工作
+  #    樹的 `.gitleaks.toml`,攻擊者可在 feature branch 一個 commit 加寬 allowlist
+  #    再加密鑰 → gitleaks 依放寬後的 config 放行、密鑰隨 push feature 離機。
+  #    修法:合法情境是「先 push .gitleaks.toml 走 PR 合入 protected branch、再
+  #    push 這批 commit」;拒絕同批 push 就切斷這條 vector。
+  for range in "${SCAN_RANGES[@]}"; do
+    if config_touched=$(git log --format= --name-only --no-renames "$range" 2>/dev/null | \
+      grep -E '^(\.gitleaks\.toml|\.gitleaksignore)$' || true); [ -n "$config_touched" ]; then
+      {
+        echo ""
+        echo "✗ push 範圍 $range 同批修改 gitleaks 設定,擋下 push"
+        echo "   影響檔案:"
+        while IFS= read -r f; do
+          [ -n "$f" ] && echo "     - $f"
+        done <<< "$config_touched"
+        echo ""
+        echo "   同批放寬 allowlist ＋加密鑰是已知攻擊 vector(feature branch push"
+        echo "   時 gitleaks 讀工作樹 .gitleaks.toml、依放寬後設定放行)。"
+        echo "   → 修法:先把 .gitleaks.toml 改動 push 走 PR、合入 protected branch,"
+        echo "     再 push 這批 commit"
+        echo "   → 緊急逃生:\`git push --no-verify\`(CI 仍會掃)"
+      } >&2
+      exit 1
+    fi
+  done
+
   if command -v gitleaks >/dev/null 2>&1; then
     for range in "${SCAN_RANGES[@]}"; do
       # --ignore-gitleaks-allow:不認行內 `gitleaks:allow` 註解
       # -i /dev/null:不認 repo 內的 .gitleaksignore(放行只走版控的 .gitleaks.toml)
+      # -m:讓 merge commit 對每個 parent 產生 diff(Codex R1 P1)。舊寫法未指定
+      #    diff-merges variant → git log 對 merge commit 不輸出 patch → 在
+      #    merge 解衝突時直接加、兩個 parent 都沒有的密鑰不會出現在 gitleaks
+      #    收到的 patch 裡、push 就離機。`-m` 是最保守選(掃每一邊 parent)。
       # 輸出捕捉後失敗時完整印出(吞掉會讓人分不清「真 leak」vs「config 壞」vs 其他錯)
       if ! out=$(gitleaks git --redact --no-banner --ignore-gitleaks-allow -i /dev/null \
-        --log-opts "$range" 2>&1); then
+        --log-opts "-m $range" 2>&1); then
         {
           echo ""
           echo "✗ gitleaks 在 push 範圍 $range 失敗,擋下 push"
@@ -96,6 +127,7 @@ if [ ${#SCAN_RANGES[@]} -gt 0 ]; then
           echo ""
           echo "   誤報 → 按值加進 .gitleaks.toml allowlist(該檔算 code、要走 PR)再 push"
           echo "   行內 gitleaks:allow 與 .gitleaksignore 已刻意停用(提交者不能自己放行)"
+          echo "   同批修改 .gitleaks.toml + 密鑰的攻擊 vector 已由 config-touched 檢查擋下"
           echo "   緊急逃生:\`git push --no-verify\`(CI 仍會掃到並擋 PR)"
         } >&2
         exit 1
@@ -186,8 +218,10 @@ for line in "${REF_LINES[@]}"; do
 
   [ -z "$changed" ] && continue
 
-  code_files=$(echo "$changed" | grep -Ev "$NON_CODE_PATTERN" || true)
-  protected_docs=$(echo "$changed" | grep -E "$PROTECTED_DOCS" || true)
+  # 🔴 `printf '%s\n'` 而非 `echo`(Codex R1 P1):見 pre-commit 同段——`-n`/`-e`
+  #    等檔名會被 Bash builtin echo 當 flag、輸出空 → default-deny 靜默放行。
+  code_files=$(printf '%s\n' "$changed" | grep -Ev "$NON_CODE_PATTERN" || true)
+  protected_docs=$(printf '%s\n' "$changed" | grep -E "$PROTECTED_DOCS" || true)
 
   if [ -z "$code_files" ] && [ -z "$protected_docs" ]; then
     continue # 全是純說明文字且不含 PR-only 文件 → 放行

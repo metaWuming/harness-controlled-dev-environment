@@ -54,10 +54,10 @@ type: guide
 - [ ] `scripts/git-hooks/commit-msg` 擋「commit 訊息含去識別化 denylist 詞」——
       你若照 §6 移除了去識別化 gate,本 hook 會自動 no-op(不必特別處理)
 - [ ] 檢查 `scripts/git-hooks/code-pattern.sh` 的 `PROTECTED_DOCS` SSOT
-      (pre-commit / pre-push 兩支共用)。預設值只涵蓋通用範例
-      `SPEC.md` / `ARCHITECTURE.md` / `GOVERNANCE.md` 與 `docs/architecture/`;
-      有專案自己的治理／SOP 文件(常見:`CLAUDE.md`、`.claude/sop/`、
-      `docs/SECURITY.md`)按實情增補
+      (pre-commit / pre-push 兩支共用)。預設涵蓋模板實際附帶或最常見的
+      `CLAUDE.md` / `.claude/sop/` / `SPEC.md` / `ARCHITECTURE.md` /
+      `GOVERNANCE.md` / `docs/architecture/`;有專案自己的治理文件
+      (常見:`AGENTS.md`、`DESIGN.md`、`docs/SECURITY.md`)按實情增補
 - [ ] 兩支 hook 用 **default-deny**(`NON_CODE_PATTERN` = `.md` 與
       `docs/*.html`);非文件一律視為 code、走 PR。若專案有其他純說明檔位置
       要放行(例:`RUNBOOK/` 內全部 `.html`),在 `NON_CODE_PATTERN` 加入,
