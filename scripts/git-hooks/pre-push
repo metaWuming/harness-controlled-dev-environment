@@ -195,6 +195,11 @@ if [ ${#SCAN_RANGES[@]} -gt 0 ]; then
   #       feature branch 修 .gitleaks.toml 是合法 workflow;gitleaks 用 trusted
   #       baseline config 掃還是能抓到密鑰、攻擊 vector 已中和。對 feature branch
   #       硬擋是過寬、developers 得為合法 config 修改一律 `--no-verify`。
+  # 🔴 空陣列 + `set -u` = unbound variable error → 先檢查長度再展開(bash 舊版
+  #    對 `${arr[@]}` 空陣列展開會觸發 unbound;`${arr[@]-}` fallback 對 array
+  #    語意不對)。本 hook push feature branch 時 PROTECTED_SCAN_RANGES 為空、
+  #    自我測試抓到 (第一次 push 本刀就撞這條、正是 fail-closed 該有的行為)。
+  if [ ${#PROTECTED_SCAN_RANGES[@]} -gt 0 ]; then
   for range in "${PROTECTED_SCAN_RANGES[@]}"; do
     # 🔴 R3 F3 + R4 F1 修:拆 git log 與過濾;git log 失敗時顯示錯誤並 fail-closed。
     #    使用 awk streaming dedupe、避免 sort spill。
@@ -234,6 +239,7 @@ if [ ${#SCAN_RANGES[@]} -gt 0 ]; then
       exit 1
     fi
   done
+  fi # end PROTECTED_SCAN_RANGES gate
 
   if command -v gitleaks >/dev/null 2>&1; then
     # 🔴 R2 F1 修:顯式清掉可能覆寫 --config 的 env(gitleaks 官方優先序
