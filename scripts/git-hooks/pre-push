@@ -54,9 +54,12 @@ HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 z40='0000000000000000000000000000000000000000'
 
-# 🔴 R3 F2 修:git pre-push argv[1] = remote name (目的地),argv[2] = url。
+# 🔴 R3 F2 修:git pre-push argv[1] 在使用具名 remote 時是 remote name;直接
+#    對 URL push 時 argv[1]/argv[2] 都是 URL。只有具名 remote 能對應
+#    `refs/remotes/<name>/*`;沒有可用 tracking refs 時不扣除任何 ref
+#    (`--remotes=$REMOTE_NAME` 匹配不到 → 走整條 ancestry,多掃不漏掃)。
 #    後續用 `--remotes=$REMOTE_NAME` 只扣掉目的地的 tracking refs、避免
-#    其他 remote (fork/upstream) 的 refs 把「本次真的要離機到 origin」
+#    其他 remote (fork/upstream) 的 refs 把「本次真的要離機到目的地」
 #    的 commits 誤扣掉。git 未提供 remote 時 default 'origin' (常見情境:
 #    hook 手動觸發、init/setup 腳本)。
 REMOTE_NAME="${1:-origin}"
@@ -107,42 +110,49 @@ done
 #    default rules;mktemp/寫失敗一律 return 1、hook 主流程 exit 1 fail-closed。
 #    ⚠️ R3 F1:早期版本 fallback 用 `/dev/null` → gitleaks 讀空 TOML = 0 rules =
 #       全放行。實測 gitleaks 8.30.1 對 `--config /dev/null` 就是「無規則」不
-#       是「default rules」。正解是寫入 `[extend]\nuseDefault = true` 才啟用
-#       gitleaks 內建規則集。
+#       是「default rules」。對本專案 pin 且已驗證的 gitleaks 8.30.1,寫入
+#       `[extend]\nuseDefault = true` 可啟用內建 default rules;不宣稱支援使用
+#       舊 CLI／舊 config schema 的歷史版本 (v8.19.0 前的 `gitleaks git` 子命令
+#       格式可能不相容)。
 #    ⚠️ Command substitution 會清 subshell errexit,不能靠 `set -e` fail-closed,
 #       所以 helper 內每一步都要顯式檢查、失敗顯式 return 1。
 resolve_trusted_gitleaks_config() {
-  local tmp
-  tmp=$(mktemp -t hook-gitleaks-config.XXXXXX) || return 1
-  # 先寫合成 baseline (啟用 gitleaks default rules),之後若能覆蓋成 remote config 更好
-  if ! printf '[extend]\nuseDefault = true\n' > "$tmp"; then
-    rm -f "$tmp"
-    return 1
-  fi
-
-  # 嘗試從目的地 remote HEAD 取專案 config;取得且非空才覆蓋 synthetic fallback
-  local remote_head_ref="refs/remotes/$REMOTE_NAME/HEAD"
-  if git symbolic-ref --quiet "$remote_head_ref" >/dev/null 2>&1; then
-    local project_config
-    project_config=$(mktemp -t hook-gitleaks-project.XXXXXX) || {
+  # 🔴 R4 F2 修:body 包在明確 subshell 內,裝自己的 INT/TERM/HUP trap
+  #    清 local tmp。原寫法在 command substitution subshell (`$(resolver)`) 內
+  #    執行,若 signal 落在 resolver 執行中而 assignment 未完成,parent 的
+  #    `trusted_config` 尚未 set、parent trap 看不到 resolver 的 local vars →
+  #    tmp orphan (含專案 sensitive rules)。subshell 內獨立 trap 修這條。
+  (
+    trap 'rm -f "${tmp:-}" "${project_config:-}" 2>/dev/null; exit 130' INT TERM HUP
+    local tmp project_config
+    tmp=$(mktemp -t hook-gitleaks-config.XXXXXX) || exit 1
+    # 先寫 synthetic baseline (啟用 gitleaks default rules),之後若能覆蓋成 remote config 更好
+    if ! printf '[extend]\nuseDefault = true\n' > "$tmp"; then
       rm -f "$tmp"
-      return 1
-    }
-    if git show "$remote_head_ref:.gitleaks.toml" >"$project_config" 2>/dev/null && \
-      [ -s "$project_config" ]; then
-      # 專案自帶 config → 覆蓋 synthetic (gitleaks 讀專案 config;若專案有 [extend]
-      # useDefault 也生效)
-      mv -f "$project_config" "$tmp" || {
-        rm -f "$tmp" "$project_config"
-        return 1
-      }
-    else
-      rm -f "$project_config"
+      exit 1
     fi
-  fi
 
-  printf '%s\n' "$tmp"
-  return 0
+    # 嘗試從目的地 remote HEAD 取專案 config;取得且非空才覆蓋 synthetic fallback
+    local remote_head_ref="refs/remotes/$REMOTE_NAME/HEAD"
+    if git symbolic-ref --quiet "$remote_head_ref" >/dev/null 2>&1; then
+      project_config=$(mktemp -t hook-gitleaks-project.XXXXXX) || {
+        rm -f "$tmp"
+        exit 1
+      }
+      if git show "$remote_head_ref:.gitleaks.toml" >"$project_config" 2>/dev/null && \
+        [ -s "$project_config" ]; then
+        # 專案自帶 config → 覆蓋 synthetic (gitleaks 讀專案 config)
+        mv -f "$project_config" "$tmp" || {
+          rm -f "$tmp" "$project_config"
+          exit 1
+        }
+      else
+        rm -f "$project_config"
+      fi
+    fi
+
+    printf '%s\n' "$tmp"
+  )
 }
 
 # 🔴 R3 F4 修:EXIT 只涵蓋正常結束與 `exit`,不涵蓋 INT/TERM/HUP → Ctrl-C 時
@@ -168,14 +178,17 @@ if [ ${#SCAN_RANGES[@]} -gt 0 ]; then
   #       → config-touched 看不到,而 gitleaks 用 R2 F1 的可信 config 也擋得住,
   #       但這裡若走的是「未來把 config 也走 PR」情境,merge 帶入的變更仍是繞道。
   for range in "${SCAN_RANGES[@]}"; do
-    # 🔴 R3 F3 修:拆 pipeline、每階段顯式檢查、失敗 fail-closed。原寫法
-    #    `... | grep ... | sort -u || true` 若 git log/sort 因 TMPDIR 不可寫或
-    #    磁碟不足 fail、`|| true` 讓整條回空 → hook 繼續(fail-open)。改用 awk
-    #    streaming dedupe 避免 sort spill、並顯式檢查 PIPESTATUS。
+    # 🔴 R3 F3 + R4 F1 修:拆 git log 與過濾;git log 失敗時顯示錯誤並 fail-closed。
+    #    使用 awk streaming dedupe、避免 sort spill。
+    #    ⚠️ R4 F1:原寫法 `log_out=$(...); log_ec=$?` 在 `set -e` 下 command
+    #       substitution 失敗會直接 exit、`log_ec=$?` 那行到不了 → 使用者只收到
+    #       近無訊息的 push failure。改用 `if ...; then :; else log_ec=$?; ...`
+    #       結構讓錯誤訊息真的顯示。
     # shellcheck disable=SC2086  # range 內含 --not --remotes 等 args,刻意 split
-    log_out=$(git log --format= --name-only --no-renames -m $range 2>/dev/null)
-    log_ec=$?
-    if [ $log_ec -ne 0 ]; then
+    if log_out=$(git log --format= --name-only --no-renames -m $range 2>/dev/null); then
+      :
+    else
+      log_ec=$?
       {
         echo ""
         echo "✗ git log 對 push 範圍「$range」失敗 (ec=$log_ec),擋下 push"
