@@ -134,6 +134,9 @@ Step 6/7 收尾照走。
 - [ ] 跨檔大改 → 跑完整測試 suite 確認 0 regression
 - [ ] ⚠️ **此階段不 push、不開 PR**(review 只讀本地 diff `git diff <主線>...HEAD`,
       先在本地審乾淨再公開;push + PR 移到 Step 6)。需備份可單純 `git push` 分支(不開 PR)
+- [ ] 執行中浮現**真實取捨**(不同解讀會導出完全不同成果)→ 照
+      `.claude/sop/decision-request-template.md` 整理後問 Owner;
+      **浮上來 ≠ 停下來**,先做完不依賴答案的部分
 
 **STOP point**:Health stack 任一項紅 → 修到綠才能下一步(原則 7「失敗要大聲說」)。
 
