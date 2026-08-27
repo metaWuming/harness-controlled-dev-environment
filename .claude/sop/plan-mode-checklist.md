@@ -76,7 +76,7 @@ Step 6/7 收尾照走。
 |---|---|---|
 | 輕(docs-only) | 本節上方判準(意圖判定,判不準從嚴) | 略 Step 4 跨模型,跑 Step 5 fresh review |
 | 標準 | 預設(非 docs-only、安全關未觸發) | 完整 7 步 |
-| 高風險 | `npm run check:cso` 判 `CSO_REQUIRED`(機器判定是下限不是上限) | 完整 7 步 + Step 4.5 安全審 + 兩項加強:破壞性探針、Step 5 worktree 審查(見各步條目) |
+| 高風險 | `npm run check:cso` 判 `CSO_REQUIRED`,或人工視同(機器判定是下限不是上限,見 Step 4.5) | 完整 7 步 + Step 4.5 安全審 + 兩項加強:破壞性探針、Step 5 worktree 審查(見各步條目) |
 
 三條車道**都是既有判準**,本表只把它們放進同一張地圖:風險越高,驗證強度越高
 (對應治理架構常見的風險分級驗證矩陣精神)。輕車道的完整判準以上方「適用範圍」
@@ -236,7 +236,9 @@ Step 6/7 收尾照走。
     (SHA 在 Step 5 派工前才記,**不是**沿用 Step 4 的 baseline SHA——fix round
     會讓 HEAD 前進;見 Step 5〔僅高風險車道〕條目)
 - [ ] `CSO_NOT_REQUIRED` → 自問一次「diff 是否含腳本路徑表沒涵蓋的安全敏感邏輯?」
-      (**機器判定是下限不是上限**);無 → **暫記於 plan file 或 scratchpad**
+      (**機器判定是下限不是上限**);**有 → 視同 `CSO_REQUIRED`**(跑安全審 +
+      上一條的高風險車道兩項加強),並照下方條目把新路徑補進路徑表、重跑判定;
+      無 → **暫記於 plan file 或 scratchpad**
       (progress entry Step 5 才寫、此刻寫會破 Step 5「最後一個 commit」的 partial-lifecycle
       grep;Step 5 集中把這裡的 REQUIRED/NOT + 命中域 + 理由寫進 entry),進 Step 5
 - [ ] 本 sprint 新增了安全敏感模組 → 同步把路徑加進 `scripts/cso-trigger.config.ts` 路徑表
@@ -275,14 +277,15 @@ Step 6/7 收尾照走。
       無 gstack 降級:Claude Code 內建 `/code-review` + 派**一個** `.claude/agents/adversarial-reviewer.md`
       對 diff 獨立審(注意:它要從 diff 本身出發,**不是**去驗證前面 review 的結論——
       那會複製盲點。**一個就夠,不要開多個**)〕
-- [ ] 〔僅高風險車道,即 Step 4.5 判 `CSO_REQUIRED`〕本步 review 的**執行環境**改為
-      拋棄式 git worktree(乾淨 checkout)——是同一道 review 換環境,**不是多開一個
-      reviewer**。做法:派工前記 `review-tip SHA = 當下 HEAD`、寫進 prompt 要求開工
-      先核對(核對規則見 agent 定義檔)。
-      ⚠️ **不要拿 Step 4 的 baseline SHA 核對**——fix round 已讓 HEAD 前進,必然
-      mismatch;baseline SHA 只供 finding 來源分類。
-      〔預設 gstack `/review`:先 `git worktree add <dir> <review-tip SHA>`、在該目錄跑;
-      降級:adversarial-reviewer 以 `isolation: worktree` 派出〕。
+- [ ] 〔僅高風險車道,即 Step 4.5 判 `CSO_REQUIRED`(含人工視同)〕本步**多加一道
+      worktree 獨立審**:adversarial-reviewer 以 `isolation: worktree` 派出(每次派工
+      = 全新拋棄式 worktree、乾淨 checkout),prompt 附**派工當下**的
+      `review-tip SHA = HEAD`,要求開工先核對(SHA + 工作樹乾淨度,規則見 agent
+      定義檔)。預設(gstack)與降級路徑做法相同——這是高風險車道**刻意增加的
+      一輪**,不受上一條「一個就夠」限制(那條講的是同一道 review 不要重複開)。
+      ⚠️ 每輪 fix commit 後 HEAD 前進 → 下一輪派工**重記 review-tip、派新 agent**
+      (= 新 worktree;舊 worktree 隨舊 agent 作廢,不重用)。Step 4 的 baseline SHA
+      只供 finding 來源分類,**不拿來核對**——fix round 後必然 mismatch。
       目的:抓「依賴本地未提交狀態 / 工作樹污染」的錯——`scripts/mutate.ts` 檔頭
       指出的同一類極限。輕/標準車道不掛,避免 ceremony
 - [ ] Findings 分類(severity 與 confidence 是兩條獨立軸):

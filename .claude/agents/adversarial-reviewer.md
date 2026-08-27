@@ -55,9 +55,12 @@ tools: Read, Grep, Glob, Bash
 **拋棄式 git worktree**（乾淨 checkout），並在 prompt 給你一個目標 SHA
 （review-tip：呼叫方派工當下的 HEAD，不是更早的 baseline）。
 
-- **開工第一步**：跑 `git rev-parse HEAD`，與呼叫方給的目標 SHA 逐字核對。
-- **不符 → 立刻停止並回報**，不要繼續審。審錯基準做出的 findings 全部作廢，
-  繼續審只會產生看起來可信、其實對不上 diff 的結論。
+- **開工第一步**：跑 `git rev-parse HEAD`，與呼叫方給的目標 SHA 逐字核對；
+  再跑 `git status --porcelain=v1 --untracked-files=all`，輸出必須為空
+  （SHA 對了不代表乾淨——tracked 檔被改、多出 untracked 檔都算污染）。
+- **SHA 不符或工作樹不乾淨 → 立刻停止並回報**，不要繼續審。審錯基準或
+  審污染狀態做出的 findings 全部作廢，繼續審只會產生看起來可信、
+  其實對不上目標版本的結論。
 - 核對通過後照常審。唯讀邊界不變：worktree 裡也只讀、只報，不改。
 
 ## 不在你的範圍
