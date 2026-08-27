@@ -8,6 +8,8 @@
 // ⚠️ 填完 scripts/cso-trigger.config.ts 路徑表後,請啟用檔尾註解掉的
 //   「路徑表完整性鎖」測試(哨兵檔自比,防路徑表默默失準)。
 
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   evaluateCsoTrigger,
@@ -15,6 +17,17 @@ import {
   CSO_TRIGGER_PATTERNS,
   type CsoDomain,
 } from '../scripts/check-cso-trigger';
+
+// tsx binary + script path 供 argv 白名單子程序測試用
+const SCRIPT = path.resolve(__dirname, '../scripts/check-cso-trigger.ts');
+function runCli(args: string[]): { code: number | null; stderr: string; stdout: string } {
+  const r = spawnSync('npx', ['tsx', SCRIPT, ...args], {
+    encoding: 'utf-8',
+    // 用 repo 根當 cwd 避免影響 baseline resolution
+    cwd: path.resolve(__dirname, '..'),
+  });
+  return { code: r.status, stderr: r.stderr, stdout: r.stdout };
+}
 
 // 範例路徑表(中性虛構專案結構)— 只用於驗引擎行為,與出廠空 config 無關。
 const SAMPLE_PATTERNS: { domain: CsoDomain; pattern: RegExp }[] = [
@@ -104,17 +117,20 @@ describe('evaluateCsoTrigger — 域別命中(注入範例路徑表)', () => {
     expect(evaluateCsoTrigger([], SAMPLE_PATTERNS).required).toBe(false);
   });
 
-  it('空路徑表(出廠狀態)→ 任何 diff 都不命中(NOT_REQUIRED,由 main 印導入提醒)', () => {
+  it('空路徑表(出廠狀態)→ evaluateCsoTrigger 本身不命中(engine 純函式)。' +
+      '⚠️ main() 對空表現 fail-closed 印 CSO_REQUIRED + exit 2 (Codex R1 F4 修的空表契約)', () => {
     expect(evaluateCsoTrigger(['src/lib/payment/charge.ts'], []).required).toBe(false);
   });
 });
 
 describe('collectChangedFiles — 完整變更面聯集', () => {
   it('committed + staged + unstaged + untracked 聯集去重', () => {
+    // 🔴 三支 git diff 都會帶 `--no-renames`(P1 修:防 rename 繞道)。fake 用
+    //    substring 比對而非 exact 字串,以免下次改 flag 又要一起改測試。
     const fake = (cmd: string): string => {
       if (cmd.includes('...HEAD')) return 'src/lib/payment/charge.ts\ndocs/a.md\n';
       if (cmd.includes('--cached')) return 'src/lib/payment/charge.ts\n'; // 與 committed 重複
-      if (cmd === 'git diff --name-only') return 'src/lib/pricing.ts\n';
+      if (cmd.includes('git diff --name-only')) return 'src/lib/pricing.ts\n'; // unstaged (含 --no-renames)
       return 'scripts/new-untracked.ts\n'; // ls-files --others
     };
     const files = collectChangedFiles('develop', fake);
@@ -125,11 +141,64 @@ describe('collectChangedFiles — 完整變更面聯集', () => {
 
   it('未 commit 的安全敏感檔編輯照樣觸發(核心情境:腳本在 commit 前被跑)', () => {
     const fake = (cmd: string): string =>
-      cmd === 'git diff --name-only' ? 'src/lib/payment/charge.ts\n' : '';
+      cmd.includes('git diff --name-only') && !cmd.includes('--cached') && !cmd.includes('...HEAD')
+        ? 'src/lib/payment/charge.ts\n'
+        : '';
     const r = evaluateCsoTrigger(collectChangedFiles('develop', fake), SAMPLE_PATTERNS);
     expect(r.required).toBe(true);
   });
+
+  it('--no-renames 顯式傳給每個 git diff 呼叫(P1:防 rename 繞道 fixture)', () => {
+    const capturedCmds: string[] = [];
+    const fake = (cmd: string): string => {
+      capturedCmds.push(cmd);
+      return '';
+    };
+    collectChangedFiles('develop', fake);
+    // 三支 git diff 都必須帶 --no-renames;ls-files --others 沒 rename 語意、不需要
+    const diffCmds = capturedCmds.filter((c) => c.startsWith('git diff'));
+    expect(diffCmds.length).toBe(3);
+    for (const cmd of diffCmds) {
+      expect(cmd).toContain('--no-renames');
+    }
+  });
 });
+
+describe('argv 白名單 (Codex R1 P1) — 未知/重複/空 --base= 一律 fail-closed exit 2', () => {
+  it('未知參數 (拼錯 flag) → exit 2', () => {
+    // `--bsae=xxx` 是常見拼錯:舊版靜默 fall-back 到預設 base、可能 fail-open
+    const r = runCli(['--bsae=HEAD~1']);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('未知參數');
+  });
+
+  it('重複 --base= → exit 2', () => {
+    const r = runCli(['--base=main', '--base=develop']);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('重複 --base=');
+  });
+
+  it('空 --base= (無值) → exit 2', () => {
+    const r = runCli(['--base=']);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('空 --base=');
+  });
+
+  it('多餘位置參數 → exit 2', () => {
+    const r = runCli(['extra', '--base=main']);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('未知參數');
+  });
+
+  it('base 形狀不合 (含 `=`) → 印「非法 base ref」而非空表訊號 (Codex R2 P2)', () => {
+    // `--base=main=extra` 通過 argv 白名單 (合法 flag) + 值非空 → 該落形狀檢查
+    const r = runCli(['--base=main=extra']);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('非法 base ref');
+    // 順序保證:形狀檢查在空表檢查之前,不該被空表訊號蓋掉
+    expect(r.stdout).not.toContain('路徑表為空');
+  });
+}, 30_000); // spawnSync 加載 tsx 稍慢,timeout 拉高
 
 describe('cso-trigger.config — 出廠 config schema 驗證', () => {
   const VALID_DOMAINS = new Set<CsoDomain>([

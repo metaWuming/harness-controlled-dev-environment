@@ -214,9 +214,15 @@ export function untrackedAsAddedLines(
   return out;
 }
 
-/** 預設 diff base:與 `check-cso-trigger.ts` 同一套解析,行為要一致才不會兩支對不同的東西。 */
+/**
+ * 預設 diff base:與 `check-cso-trigger.ts` 同一套解析,行為要一致才不會兩支對不同的東西。
+ * 🔴 Fresh review F1 修:同步 check-cso-trigger 的 origin fallback。舊寫法兩個 ref
+ *    都試不到會 `return 'develop'`,對本機沒 develop/main 但有 `origin/*` 的 fresh
+ *    clone,check-cso-trigger 已能 pick `origin/develop`、check-claims 卻整支失敗。
+ *    對齊順序讓兩支對同一組 refs 解析。
+ */
 function resolveDefaultBase(): string {
-  for (const ref of ['develop', 'main']) {
+  for (const ref of ['develop', 'origin/develop', 'main', 'origin/main']) {
     try {
       execSync(`git rev-parse --verify --quiet ${ref}`, { stdio: 'pipe' });
       return ref;

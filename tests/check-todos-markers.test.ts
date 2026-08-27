@@ -35,6 +35,48 @@ describe('extractPrCitations', () => {
   it('放寬 PR 號上限到 5 位數', () => {
     expect(extractPrCitations('PR #12345 完工')).toEqual([12345]);
   });
+
+  it('先剝掉 issue #N 引用再抽 PR(避免 issue 號被誤當 PR)', () => {
+    // 只有 issue 引用 → 空
+    expect(extractPrCitations('spec = GitHub issue #13')).toEqual([]);
+    expect(extractPrCitations('issue #42 已 close')).toEqual([]);
+    // 混合:issue 引用被剝、PR 引用保留
+    expect(extractPrCitations('關聯 issue #13,PR #150 完工')).toEqual([150]);
+    // 大小寫不敏感
+    expect(extractPrCitations('Issue #99 而 PR #150 完工')).toEqual([150]);
+    expect(extractPrCitations('ISSUE #99 而 PR #150 完工')).toEqual([150]);
+  });
+
+  it('issue 引用的常見標點形式 (Codex R1 P2 邊界)', () => {
+    // 冒號分隔
+    expect(extractPrCitations('fixed GitHub issue: #13')).toEqual([]);
+    // 全形冒號
+    expect(extractPrCitations('已修 issue：#42')).toEqual([]);
+    // 半形括號
+    expect(extractPrCitations('fixed issue(#13)')).toEqual([]);
+    // 全形括號
+    expect(extractPrCitations('已修 issue（#42）')).toEqual([]);
+    // 井號和數字之間有空白
+    expect(extractPrCitations('issue # 13 已 close')).toEqual([]);
+    // 混合:標點+PR 保留
+    expect(extractPrCitations('已修 GitHub issue: #13,squash 進 PR #150')).toEqual([150]);
+  });
+
+  it('左邊界避免 reissue / sub-issue 被誤剝 (Codex R1 P2)', () => {
+    // `reissue #150` 中 `issue` 前接 `re` = 字母 → 不該剝 → 150 保留為 PR
+    expect(extractPrCitations('reissue #150 之後')).toEqual([150]);
+    // `sub-issue #99` 中 `issue` 前接 `-` = 非字母 → 剝掉
+    expect(extractPrCitations('sub-issue #99 進度')).toEqual([]);
+    // `notaissue #77` 前接 `a` = 字母 → 不剝
+    expect(extractPrCitations('notaissue #77 完工')).toEqual([77]);
+  });
+
+  it('複數 issues 也要剝 (Fresh review F2 P3)', () => {
+    // GitHub `closes issues #13, #14` 這種常見寫法
+    expect(extractPrCitations('closes issues #13,PR #150 完工')).toEqual([150]);
+    expect(extractPrCitations('issues #42 已 close')).toEqual([]);
+    expect(extractPrCitations('關聯 issues #13')).toEqual([]);
+  });
 });
 
 describe('parseTodosMarkers', () => {

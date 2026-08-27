@@ -108,13 +108,34 @@ export interface CheckResult {
  * 涵蓋形式:`PR #150` / `(#177)` / `#177→develop` / markdown `[#158](…/pull/158)` /
  * 裸 GitHub PR URL `…/pull/158`。
  * 單位數 `#N` 不算(避免 #1/#5 這類序號雜訊);上限放寬到 5 位數,避免大 repo 撞號。
- * ⚠️ 若你的 repo 用 `#N` 也表示非 PR 的編號(issue / sprint 序號),在此先整段移除再抽。
+ *
+ * 🔴 **先移除 issue 井號引用再抽 PR**:GitHub 專案常用井號同時指 PR 與 issue,若不
+ *    先過濾 issue 引用,`spec = GitHub issue #13` 這種寫法會把 `#13` 當成查無 merge
+ *    證據的 PR、假陽性擋掉合法完工條目。
+ *
+ *    實作邊界(Codex R1 P2):
+ *    - **左邊界 `(?<![A-Za-z])`**:避免 `reissue`、`sub-issue`(前接字母) 中的 `issue`
+ *      被誤匹配,那些字通常後面接的才是真 PR 號 (`reissue #150` 是 PR、不是 issue)
+ *    - **分隔符** `[\s:：（(]*`:涵蓋常見 issue 與井號之間的字元 — 空白、冒號、
+ *      全形冒號、半形/全形左括號
+ *    - **括號閉合** `[)）]?`:可選右括號 (半形/全形)
+ *    - `\s*`:井號與數字之間允許空白
+ *
+ *    ⚠️ 若你的 repo 用井號也表示其他非 PR 編號(sprint 序號 / 內部工單),照此模式擴充
+ *    filter regex (例:`/sprint\s*#\d+/gi`)。
  */
 export function extractPrCitations(text: string): number[] {
+  // 先剝掉「issue[s] 井號N」引用(大小寫不敏感),避免 issue 號被誤當 PR 號
+  // 🔴 Fresh F2 修:`issues?` 涵蓋複數形式;GitHub `closes issues #13, #14` 這種常見寫法
+  //    若不涵蓋複數、`#13` 會被誤當 PR 號。
+  const cleaned = text.replace(
+    /(?<![A-Za-z])(?:github\s+)?issues?[\s:：（(]*#\s*\d+[)）]?/gi,
+    ''
+  );
   const out = new Set<number>();
   for (const re of [/#(\d{2,5})\b/g, /\/pull\/(\d{2,5})\b/g]) {
     let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
+    while ((m = re.exec(cleaned)) !== null) {
       out.add(Number(m[1]));
     }
   }
