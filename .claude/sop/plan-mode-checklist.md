@@ -238,8 +238,10 @@ Step 6/7 收尾照走。
     不是真值)。刪除 / 搬出型改動沒有新機制可改壞 → 探針對象改為「刪除後**接手
     該不變量的防線**」(把它改壞、看測試轉紅);指不出接手防線 → 這本身就是要
     帶進安全審的 finding,不是探針可略的理由。
-    ⚠️ 後續(Step 4 fix round / 4.6 / Step 5 / Step 6 CI 修復)又對命中域機制做
-    **行為級修改** → 在新 HEAD **重跑對應探針**。最後一次 exit 0 必須綁
+    ⚠️ 探針 exit 0 之後,只要再出現**任何非 bookkeeping commit**(Step 4 fix
+    round / 4.6 / Step 5 / Step 6 CI 修復,**不限是否碰命中域**)→ 在新 HEAD
+    **重跑對應探針**。判準刻意統一:逐 commit 判定「有沒有碰到命中域」判錯的
+    成本比重跑高,而探針是 targeted、重跑便宜。最後一次 exit 0 因此永遠綁
     **最後一個非 bookkeeping commit** 的 SHA、且在派最終 worktree 審之前完成——
     探針與 worktree 審循環,直到兩者對同一個 SHA 成立
   - **標記高風險車道**:Step 5 要**多加一道** worktree 獨立審(SHA 在 Step 5
