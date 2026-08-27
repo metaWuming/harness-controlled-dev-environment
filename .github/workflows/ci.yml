@@ -116,8 +116,13 @@ jobs:
         # `release/**`),同步把它加進下面的條件,否則 mainline push 的 marker 治理
         # 會被靜默跳過(Codex batch 6 round 3 P2)。
         if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/develop'
+        # 🔴 Codex batch 6 round 5 P2:候選要與 scripts/check-todos-markers.ts 的
+        # DELIVERY_REF_CANDIDATES 一致——三處(event filter / workflow if / marker fetch)
+        # 少一處都會造成 gate 假紅或 silent skip。
         run: |
           git fetch --no-tags origin main:refs/remotes/origin/main || echo "note: main ref fetch 略過"
+          git fetch --no-tags origin master:refs/remotes/origin/master || echo "note: master ref fetch 略過"
+          git fetch --no-tags origin trunk:refs/remotes/origin/trunk || echo "note: trunk ref fetch 略過"
           git fetch --no-tags origin develop:refs/remotes/origin/develop || echo "note: develop ref fetch 略過(未採 develop 主線則屬正常)"
 
       - name: TODOS Markers Check

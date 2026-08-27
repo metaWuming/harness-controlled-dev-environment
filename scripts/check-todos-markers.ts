@@ -300,8 +300,16 @@ export function checkTodosMarkers(
   return { violations, advisories, verifiedPrs, totalCompletionPrs };
 }
 
-/** 交付分支候選(依序試 resolve;預設分支非 main/develop 的 repo 請把你的交付分支加進來) */
-const DELIVERY_REF_CANDIDATES = ['origin/main', 'origin/develop', 'main', 'develop'];
+/** 交付分支候選(依序試 resolve;預設分支非本清單的 repo 請把你的交付分支加進來)
+ *
+ * 🔴 Codex batch 6 round 5 P2:清單需與 `.github/workflows/ci.yml` 的 event filter
+ * (on.push.branches / on.pull_request.branches)+ workflow `if:` 條件涵蓋一致——
+ * 三處(event filter / workflow if / 這裡)少一處都會造成「gate 跑但認不到 merge 證據」
+ * 假紅或「gate 不跑」silent skip。 */
+const DELIVERY_REF_CANDIDATES = [
+  'origin/main', 'origin/master', 'origin/trunk', 'origin/develop',
+  'main', 'master', 'trunk', 'develop',
+];
 
 /**
  * git IO:從「交付分支」commit subject 建「有 merge 證據的 PR 號集合」。
@@ -340,7 +348,7 @@ function buildMergedPrSet(): Set<number> {
   const refs = deliveryRefs;
   if (refs.length === 0) {
     console.warn(
-      '⚠️ 找不到任何交付 ref(origin/main / origin/develop / main / develop / origin/HEAD)。' +
+      '⚠️ 找不到任何交付 ref(候選:main/master/trunk/develop 的 origin/ 版與本地版,以及 origin/HEAD)。' +
         '不以 HEAD 充當 merge 證據(未合併 commit 會假交付)——若 TODOS 有完成宣稱將直接失效。' +
         '請把你的交付分支加進 scripts/check-todos-markers.ts 的 DELIVERY_REF_CANDIDATES。'
     );
