@@ -16,6 +16,14 @@
 //   - 跳過 gitignored 路徑(`.env*` / `.claude/settings.local.json` 等)— 本機有、CI checkout 無,
 //     刻意不進版控,不在「repo 檔是否存在」驗證範圍(否則硬 gate 在 CI 必假陽性)
 //   - 跳過 PLANNED_PATHS 清單內、尚未建立的模板檔(見下方註解)
+//   - **前瞻文件 vs 歷史敘事的分離**(採用者的紀律建議):
+//     - **前瞻文件要掃**:TODOS / PLAN / spec 這類「說接下來要做什麼」的清單,
+//       路徑爛掉會誤導下一棒 → 硬 gate
+//     - **歷史敘事不該掃**:progress log / LESSONS / retro 這類「說過去發生什麼」
+//       的紀錄,會(正當地)提到「當時存在、後來被刪」的檔案 → 硬 gate 掃它們
+//       等於逼人改寫歷史。**這類文件把它們排除在 DOC_LIST 之外**(見下方)
+//   - 只讀 `.md`。`docs/*.html` runbook 內的路徑引用**不在覆蓋範圍**(要解析 HTML
+//     才做得到),這是誠實的缺口、不是漏做
 //
 // 找到失效引用 → exit 1,印 file:line + type + 缺失路徑。CI gate。
 //
