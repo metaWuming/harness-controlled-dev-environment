@@ -321,11 +321,21 @@ exit 0(被抓)——才進 Step 5。
       **LESSONS.md 與任何規則 / 安全文字的改動不在例外內**(那是治理內容,
       見頂部 docs-only 判準的 🔴 條件)——含這類改動就要再跑一輪。
       **機器化核對**:寫完 bookkeeping commit 後跑 `npm run check:bookkeeping`
-      (預設查 HEAD;查特定 commit 傳 SHA)——純檔名判準,exit 0 表示只動了
-      `.claude/memory/**.md`(LESSONS.md 除外);exit 1 表示 diff 有治理/碼/規則
-      檔命中、不能當 bookkeeping 例外。⚠️ **邊界誠實揭露**:v1 只看檔名、不看
-      diff 內容——「檔名對但內容塞了 SOP 規則文字」抓不到,那是 human 惡意情境,
-      超出工具範圍;有誤報數據再加 v2 內容檢查。
+      (預設查 HEAD;查特定 commit 傳 SHA)——純檔名判準。
+      **exit 0 需 diff 內每一支動到的檔都落在下面任一條:**
+        - 精確 allowlist(root 與 `.claude/memory/` 兩處皆可):
+          `TODOS.md` / `BACKLOG.md` / `TODOS-done.md`
+        - 精確 allowlist(唯一路徑):`.claude/memory/progress.md`
+        - `.claude/memory/progress-archive/*.md`,**但 basename 不能是 `README.md`**
+          (歸檔慣例文件屬 governance),也不進子目錄
+      **一律 exit 1(不算 bookkeeping)的常見例子:**
+        - `.claude/memory/LESSONS.md`(canonical 治理內容)
+        - `.claude/memory/LESSONS-archive/**`(archived lessons 同屬 governance)
+        - 任何 `.claude/sop/**`、`CLAUDE.md`、`scripts/**`、`docs/**`、`README.md`、原始碼、測試、CI 設定
+        - `.claude/memory/` 底下不在上表的任意 `.md`(收窄:不再放行任意 memory .md)
+      ⚠️ **邊界誠實揭露**:v1 只看檔名、不看 diff 內容——「檔名對但內容塞了 SOP
+      規則文字」抓不到,那是 human 惡意情境,超出工具範圍;有誤報數據再加 v2
+      內容檢查。
       **時序**:bookkeeping commit 只能在**最終 worktree 審收乾之後**才 commit
       (否則它成為派工當下的 HEAD,review-tip 落在 bookkeeping 上、收斂條件字面
       無法滿足);bookkeeping 之後又出現非 bookkeeping 修復 → 回到重跑循環。
