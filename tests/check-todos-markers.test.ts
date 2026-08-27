@@ -35,6 +35,17 @@ describe('extractPrCitations', () => {
   it('放寬 PR 號上限到 5 位數', () => {
     expect(extractPrCitations('PR #12345 完工')).toEqual([12345]);
   });
+
+  it('先剝掉 issue #N 引用再抽 PR(避免 issue 號被誤當 PR)', () => {
+    // 只有 issue 引用 → 空
+    expect(extractPrCitations('spec = GitHub issue #13')).toEqual([]);
+    expect(extractPrCitations('issue #42 已 close')).toEqual([]);
+    // 混合:issue 引用被剝、PR 引用保留
+    expect(extractPrCitations('關聯 issue #13,PR #150 完工')).toEqual([150]);
+    // 大小寫不敏感
+    expect(extractPrCitations('Issue #99 而 PR #150 完工')).toEqual([150]);
+    expect(extractPrCitations('ISSUE #99 而 PR #150 完工')).toEqual([150]);
+  });
 });
 
 describe('parseTodosMarkers', () => {

@@ -108,13 +108,21 @@ export interface CheckResult {
  * 涵蓋形式:`PR #150` / `(#177)` / `#177→develop` / markdown `[#158](…/pull/158)` /
  * 裸 GitHub PR URL `…/pull/158`。
  * 單位數 `#N` 不算(避免 #1/#5 這類序號雜訊);上限放寬到 5 位數,避免大 repo 撞號。
- * ⚠️ 若你的 repo 用 `#N` 也表示非 PR 的編號(issue / sprint 序號),在此先整段移除再抽。
+ *
+ * 🔴 **先移除 `issue #N` 引用再抽 PR**:GitHub 專案常用 `#N` 同時指 PR 與 issue,若不
+ *    先過濾 issue 引用,`spec = GitHub issue #13` 這種寫法會把 `#13` 當成查無 merge
+ *    證據的 PR、假陽性擋掉合法完工條目。實作:先 replace `issue #N`(含 `github issue`
+ *    前綴、大小寫不敏感)成空字串,再對剩餘文字抽 PR 號。
+ *    ⚠️ 若你的 repo 用 `#N` 也表示其他非 PR 編號(sprint 序號 / 內部工單),照此模式擴
+ *    充 filter regex(例:`/sprint\s*#\d+/gi`)。
  */
 export function extractPrCitations(text: string): number[] {
+  // 先剝掉 `[github ]issue #N` 引用(大小寫不敏感),避免 issue 號被誤當 PR 號
+  const cleaned = text.replace(/(?:github\s+)?issue\s*#\d+/gi, '');
   const out = new Set<number>();
   for (const re of [/#(\d{2,5})\b/g, /\/pull\/(\d{2,5})\b/g]) {
     let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
+    while ((m = re.exec(cleaned)) !== null) {
       out.add(Number(m[1]));
     }
   }
