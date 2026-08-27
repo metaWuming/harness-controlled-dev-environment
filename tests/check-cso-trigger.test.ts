@@ -189,6 +189,15 @@ describe('argv 白名單 (Codex R1 P1) — 未知/重複/空 --base= 一律 fail
     expect(r.code).toBe(2);
     expect(r.stderr).toContain('未知參數');
   });
+
+  it('base 形狀不合 (含 `=`) → 印「非法 base ref」而非空表訊號 (Codex R2 P2)', () => {
+    // `--base=main=extra` 通過 argv 白名單 (合法 flag) + 值非空 → 該落形狀檢查
+    const r = runCli(['--base=main=extra']);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('非法 base ref');
+    // 順序保證:形狀檢查在空表檢查之前,不該被空表訊號蓋掉
+    expect(r.stdout).not.toContain('路徑表為空');
+  });
 }, 30_000); // spawnSync 加載 tsx 稍慢,timeout 拉高
 
 describe('cso-trigger.config — 出廠 config schema 驗證', () => {

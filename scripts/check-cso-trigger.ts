@@ -126,6 +126,20 @@ function main(): void {
   }
   const base = baseArgValue ?? resolveDefaultBase();
 
+  // 🔴 形狀檢查(必須在空表檢查之前,Codex R2 P2):不含空白 / 分號 / 管線 / `$` /
+  //    反引號 / 引號 / glob 或 `=`,且**必須以英數起頭**(擋掉 `--flag` 形狀的 option
+  //    smuggling;舊版允許開頭 `--`,只是因為後面接 `...HEAD` 才碰巧被 git 拒絕 = 安
+  //    全靠巧合、不是靠設計)。
+  //    順序理由:`--base=main=extra` 這種「值合法通過 argv 白名單、但形狀不合」若排在
+  //    空表檢查之後,採用者拿到「路徑表為空」錯訊、看不到真正的「非法 ref」訊號。
+  //    「用法錯」訊號必須優先於「未導入」訊號。
+  if (!/^[A-Za-z0-9_][\w./-]*$/.test(base)) {
+    // 🔴 exit 2 而非 1:契約是「2 = 要跑安全審」,用法錯誤若回 1,比對 `=== 2` 的呼叫
+    //    端會把它讀成「不需要跑」= fail-open。
+    console.error(`❌ 非法 base ref:${base}(fail-closed,視同 CSO_REQUIRED)`);
+    process.exit(2);
+  }
+
   // 🔴 路徑表為空 → 無從比對(= 尚未導入)。**fail-closed**:舊版這裡 exit 0,與檔頭
   //    宣稱 fail-closed 矛盾,而且「用戶會自己記得填」不是理由——把正確性寄託在紀律
   //    上等於這支自己沒有守門。改 exit 2 讓「未導入」跟「無法判定」同樣硬擋。
@@ -134,15 +148,6 @@ function main(): void {
       'CSO_REQUIRED(fail-closed:路徑表為空 = 尚未導入,無判定依據)。' +
         '請照 scripts/cso-trigger.config.ts 檔頭說明填表。'
     );
-    process.exit(2);
-  }
-  // 🔴 形狀檢查:不含空白 / 分號 / 管線 / `$` / 反引號 / 引號 / glob,且**必須以英數
-  //    起頭**(擋掉 `--flag` 形狀的 option smuggling;舊版允許開頭 `--`,只是因為後
-  //    面接 `...HEAD` 才碰巧被 git 拒絕 = 安全靠巧合、不是靠設計)。
-  if (!/^[A-Za-z0-9_][\w./-]*$/.test(base)) {
-    // 🔴 exit 2 而非 1:契約是「2 = 要跑安全審」,用法錯誤若回 1,比對 `=== 2` 的呼叫
-    //    端會把它讀成「不需要跑」= fail-open。
-    console.error(`❌ 非法 base ref:${base}(fail-closed,視同 CSO_REQUIRED)`);
     process.exit(2);
   }
 
