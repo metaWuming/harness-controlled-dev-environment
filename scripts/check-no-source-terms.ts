@@ -211,24 +211,42 @@ export function partitionPatterns(patterns: string[]): {
 }
 
 /**
- * 把 git grep 輸出行的 `filename:line_number:` 前綴剝掉,只保留 content。
+ * 解析 `git grep -z` 的單行輸出,拆出 path / line / content。
  *
- * ⚠️ round 5 P2-1 修法:git grep -n 輸出格式是 `filename:line:content`
- *    (rev 掃時是 `rev:filename:line:content`)。舊 processScan 對整行呼叫
- *    isSelfPrReferenceLine,若 filename 恰好含 CA pattern 字面(如
- *    `docs/PR-井號 999 notes.md`),extractor 會從 filename 部分抽出未知號 →
- *    合法 self-PR 引用被誤擋。
+ * ⚠️ round 6 P2-3 修法:舊版用 regex `/:數字:/` 找 line number 邊界,若真實
+ *    filename 含 `:數字:` sub-path(如 `docs/meta:12:PR-井號-999-notes.md`),
+ *    regex 從 filename 中的 `:12:` 切割 → content 錯,把 filename 的其餘部分
+ *    當成 content → extractor 從錯 content 抽未知號 → 合法引用誤擋。
  *
- *    策略:找首個 `:數字:` segment,取其後為 content。這對 working tree scan
- *    (`filename:line:content`)與 history blob scan(`rev:filename:line:content`)
- *    都成立,因為兩者的 line number 位置都是「path-like prefix 之後」。第 3 段
- *    commit-msg scan 用 strict mode 不呼叫本函式,不受影響。
+ *    改用 `git grep -z / --null` 讓 grep 用 NUL 字元 (`\0`) 分隔 filename 與
+ *    line number(replaces the `:` between them),結構化明確不需猜邊界。
+ *    格式:
+ *      working tree:`filename\0line:content`
+ *      history 掃 :`rev:filename\0line:content`
  *
- *    格式異常或抓不到 `:數字:` → fail-safe 回原文(判定端仍會嚴格擋)。
+ *    解析失敗 → 回 null,呼叫端 fail-safe 用原 raw 判定。
  */
-export function stripGitGrepPrefix(line: string): string {
-  const m = /:\d+:(.*)$/.exec(line);
-  return m ? m[1] : line;
+export function parseGrepZLine(
+  raw: string
+): { path: string; line: string; content: string } | null {
+  const nul = raw.indexOf("\0");
+  if (nul === -1) return null;
+  const path = raw.slice(0, nul);
+  const rest = raw.slice(nul + 1);
+  const colon = rest.indexOf(":");
+  if (colon === -1) return null;
+  return {
+    path,
+    line: rest.slice(0, colon),
+    content: rest.slice(colon + 1),
+  };
+}
+
+/** 把 raw hit(含 NUL)轉成 human-readable「path:line:content」顯示。 */
+export function displayGrepHit(raw: string): string {
+  const parsed = parseGrepZLine(raw);
+  if (!parsed) return raw;
+  return `${parsed.path}:${parsed.line}:${parsed.content}`;
 }
 
 // ───────────────────────────────────────── I/O helpers
@@ -338,7 +356,9 @@ interface GrepResult {
 }
 
 function gitGrep(root: string, args: string[]): GrepResult {
-  const r = spawnSync("git", ["-C", root, "grep", ...args], {
+  // 🔴 round 6 P2-3:加 -z / --null → filename 與 line number 之間用 NUL 而
+  // 非 `:`,結構化解析 filename 含 `:` 的情形(見 parseGrepZLine docstring)
+  const r = spawnSync("git", ["-C", root, "grep", "-z", ...args], {
     encoding: "utf-8",
     maxBuffer: 256 * 1024 * 1024,
   });
@@ -521,26 +541,27 @@ function processScan(scan: Scan, allowedPrs: Set<number>): boolean {
   // rc === 0:有命中
   if (scan.mode === "strict") {
     console.error(`❌ ${scan.label}:含來源專案識別詞`);
-    for (const h of scan.hits) console.error(`  ${h}`);
+    for (const h of scan.hits) console.error(`  ${displayGrepHit(h)}`);
     return false;
   }
   // mode === "self-pr":逐行走 self-PR 判定
-  // 🔴 round 5 P2-1 修法:先剝掉 grep filename:line: 前綴,只把 content 傳給
-  // 判定——避免 filename 含 CA 字面時 extractor 從 filename 部分抽出未知號、
-  // 讓合法 self-PR 引用被誤擋
+  // 🔴 round 5 P2-1 + round 6 P2-3:用 parseGrepZLine 從 NUL-delimited 輸出
+  // 拆出 content 部分,再交給判定——避免 filename 含 CA 字面時 extractor 從
+  // filename 抽出未知號、讓合法 self-PR 引用被誤擋
   const real: string[] = [];
   const allowed: string[] = [];
-  for (const line of scan.hits) {
-    const content = stripGitGrepPrefix(line);
-    if (isSelfPrReferenceLine(content, allowedPrs)) allowed.push(line);
-    else real.push(line);
+  for (const raw of scan.hits) {
+    const parsed = parseGrepZLine(raw);
+    const content = parsed?.content ?? raw;
+    if (isSelfPrReferenceLine(content, allowedPrs)) allowed.push(raw);
+    else real.push(raw);
   }
   if (allowed.length > 0) {
     console.log(`  ↳ ${scan.label}:${allowed.length} 行 self-PR 引用放行`);
   }
   if (real.length > 0) {
     console.error(`❌ ${scan.label}:含未知 PR/pull 引用(非本 repo 已 merge)`);
-    for (const h of real) console.error(`  ${h}`);
+    for (const h of real) console.error(`  ${displayGrepHit(h)}`);
     return false;
   }
   return true;

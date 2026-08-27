@@ -37,7 +37,8 @@ import {
   extractPrRefsFromLine,
   isSelfPrReferenceLine,
   partitionPatterns,
-  stripGitGrepPrefix,
+  parseGrepZLine,
+  displayGrepHit,
 } from "../scripts/check-no-source-terms";
 
 const REPO_ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], {
@@ -228,33 +229,50 @@ describe("isSelfPrReferenceLine — CA-scan hit 的 self-PR 判定", () => {
   });
 });
 
-describe("stripGitGrepPrefix — 剝 grep filename:line: 前綴(round 5 P2-1)", () => {
-  it("working tree 掃輸出:filename:line:content → 抽 content", () => {
-    expect(stripGitGrepPrefix("docs/note.md:5:see " + PREF_PR + "7")).toBe(
-      "see " + PREF_PR + "7"
-    );
+describe("parseGrepZLine — 解 git grep -z NUL 分隔輸出(round 6 P2-3)", () => {
+  it("working tree 掃:path NUL line:content → 拆對", () => {
+    const raw = "docs/note.md\x005:see " + PREF_PR + "7";
+    expect(parseGrepZLine(raw)).toEqual({
+      path: "docs/note.md",
+      line: "5",
+      content: "see " + PREF_PR + "7",
+    });
   });
 
-  it("history 掃輸出:rev:filename:line:content → 抽 content", () => {
-    expect(
-      stripGitGrepPrefix("abc1234:docs/note.md:5:some content")
-    ).toBe("some content");
+  it("history 掃:rev:path NUL line:content → 拆對", () => {
+    // git grep -z 對 rev 掃時,rev 用 `:` 與 path 分隔,path 與 line 用 NUL
+    const raw = "abc1234:docs/note.md\x005:some content";
+    expect(parseGrepZLine(raw)).toEqual({
+      path: "abc1234:docs/note.md",
+      line: "5",
+      content: "some content",
+    });
   });
 
-  it("🔴 P2-1 反例:filename 含 CA 字面 → content 不含,避免誤擋", () => {
-    // 舊 processScan 對整行呼叫 extractor,filename 內 999 會被抽出 → 合法 PR 7
-    // 引用被判「未知 999 洩漏」誤擋。修法後只看 content 部分
-    const line =
-      "docs/" + PREF_PR + "999 notes.md:5:see " + PREF_PR + "7 legit";
-    const content = stripGitGrepPrefix(line);
-    expect(content).toBe("see " + PREF_PR + "7 legit");
-    expect(extractPrRefsFromLine(content)).toEqual([7]);
+  it("🔴 round 6 P2-3 反例:filename 含 `:數字:` sub-path → 正確拆到 NUL", () => {
+    // 舊 stripGitGrepPrefix 用 regex `/:數字:/` 找 line number 邊界,若真實
+    // filename 含「:12:」sub-path 會被誤切 → content 錯抽 filename 部分。
+    // 用 NUL 分隔就沒這問題
+    const raw =
+      "docs/meta:12:" + PREF_PR + "999 notes.md\x005:see " + PREF_PR + "7 legit";
+    const parsed = parseGrepZLine(raw);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.path).toBe("docs/meta:12:" + PREF_PR + "999 notes.md");
+    expect(parsed!.content).toBe("see " + PREF_PR + "7 legit");
+    expect(extractPrRefsFromLine(parsed!.content)).toEqual([7]);
   });
 
-  it("格式異常 → fail-safe 回原文", () => {
-    expect(stripGitGrepPrefix("no line number here")).toBe(
-      "no line number here"
-    );
+  it("格式異常(無 NUL)→ 回 null", () => {
+    expect(parseGrepZLine("no null here")).toBeNull();
+  });
+
+  it("displayGrepHit:parseable 轉 human-readable path:line:content", () => {
+    const raw = "docs/note.md\x005:see " + PREF_PR + "7";
+    expect(displayGrepHit(raw)).toBe("docs/note.md:5:see " + PREF_PR + "7");
+  });
+
+  it("displayGrepHit:格式異常 → 回原文", () => {
+    expect(displayGrepHit("no null here")).toBe("no null here");
   });
 });
 
@@ -465,6 +483,23 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     });
     const { code, out } = runChecker(dir);
     expect(out).toContain("git 歷史 blob 含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 round 6 P2-4 fix:commit 訊息 CA hit(合法 self-PR 引用格式)→ 仍嚴格擋", () => {
+    // 檔案乾淨、squash marker 尾綴讓 7 進 allowedPrs;然後另一 commit subject
+    // 用「PR 井號 7」引用它(CA 字面)。commit-msg scan 是 mode="strict" 不
+    // 套 self-PR 放行 → exit 1。若未來把 commit-msg scan 錯改成 self-PR,
+    // 這條會轉紅(現有 round 5 non-CA case 抓不到)
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [
+        { message: "feat: setup (#7)", files: { "src/foo.md": "hello\n" } },
+        { message: "docs: mention " + PREF_PR + "7 in commit subject" },
+      ],
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("commit 訊息");
     expect(code).toBe(1);
   });
 
