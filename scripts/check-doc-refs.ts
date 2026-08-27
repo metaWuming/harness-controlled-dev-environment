@@ -21,7 +21,11 @@
 //       路徑爛掉會誤導下一棒 → 硬 gate
 //     - **歷史敘事不該掃**:progress log / LESSONS / retro 這類「說過去發生什麼」
 //       的紀錄,會(正當地)提到「當時存在、後來被刪」的檔案 → 硬 gate 掃它們
-//       等於逼人改寫歷史。**這類文件把它們排除在 DOC_LIST 之外**(見下方)
+//       等於逼人改寫歷史。
+//     ⚠️ **本模板目前的實作仍會遞迴掃 `.claude/memory`**(見下方 `SCAN_DIRS_RECURSIVE`),
+//     所以 `.claude/memory/progress.md` / `LESSONS.md` / `progress-archive/` /
+//     `LESSONS-archive/` 都會被掃。採用此分離策略時,須先調整 `SCAN_DIRS_RECURSIVE`
+//     或 `collectDocFiles()` 排除歷史檔。這條紀律是**採用者要落實的**,不是模板現況。
 //   - 只讀 `.md`。`docs/*.html` runbook 內的路徑引用**不在覆蓋範圍**(要解析 HTML
 //     才做得到),這是誠實的缺口、不是漏做
 //

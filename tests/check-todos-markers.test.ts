@@ -46,6 +46,30 @@ describe('extractPrCitations', () => {
     expect(extractPrCitations('Issue #99 而 PR #150 完工')).toEqual([150]);
     expect(extractPrCitations('ISSUE #99 而 PR #150 完工')).toEqual([150]);
   });
+
+  it('issue 引用的常見標點形式 (Codex R1 P2 邊界)', () => {
+    // 冒號分隔
+    expect(extractPrCitations('fixed GitHub issue: #13')).toEqual([]);
+    // 全形冒號
+    expect(extractPrCitations('已修 issue：#42')).toEqual([]);
+    // 半形括號
+    expect(extractPrCitations('fixed issue(#13)')).toEqual([]);
+    // 全形括號
+    expect(extractPrCitations('已修 issue（#42）')).toEqual([]);
+    // 井號和數字之間有空白
+    expect(extractPrCitations('issue # 13 已 close')).toEqual([]);
+    // 混合:標點+PR 保留
+    expect(extractPrCitations('已修 GitHub issue: #13,squash 進 PR #150')).toEqual([150]);
+  });
+
+  it('左邊界避免 reissue / sub-issue 被誤剝 (Codex R1 P2)', () => {
+    // `reissue #150` 中 `issue` 前接 `re` = 字母 → 不該剝 → 150 保留為 PR
+    expect(extractPrCitations('reissue #150 之後')).toEqual([150]);
+    // `sub-issue #99` 中 `issue` 前接 `-` = 非字母 → 剝掉
+    expect(extractPrCitations('sub-issue #99 進度')).toEqual([]);
+    // `notaissue #77` 前接 `a` = 字母 → 不剝
+    expect(extractPrCitations('notaissue #77 完工')).toEqual([77]);
+  });
 });
 
 describe('parseTodosMarkers', () => {

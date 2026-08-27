@@ -93,6 +93,39 @@ function resolveDefaultBase(): string {
 }
 
 function main(): void {
+  // 🔴 argv 白名單先驗 (Codex R1 P1):舊版只 find `--base=`、其他參數靜默忽略。
+  //    `check-cso-trigger.ts --bsae=<SHA>` 打錯 flag → 靜默 fall-back 到預設 base、
+  //    敏感 commit 位於「使用者指定 SHA」與預設 base 之間就被吃掉 = fail-open。
+  //    契約是「未知 / 錯拼 / 重複 / 空值一律 exit 2」,不能例外。
+  //    ⚠️ 順序:argv 檢查**必須在空表檢查之前**——若空表分支先 exit,argv 錯誤永
+  //    遠不會被印,採用者拼錯 flag 的訊號會被「路徑表為空」訊號蓋掉。兩者都 exit 2、
+  //    但錯誤訊息語意不同 (前者「用法錯」、後者「未導入」),不能互相取代。
+  const argv = process.argv.slice(2);
+  const baseArgs = argv.filter((a) => a.startsWith('--base='));
+  const unknownArgs = argv.filter((a) => !a.startsWith('--base='));
+  if (unknownArgs.length > 0) {
+    console.error(
+      `❌ 未知參數:${unknownArgs.join(', ')}(fail-closed,視同 CSO_REQUIRED)。` +
+        `只接受單一 --base=<ref>。`
+    );
+    process.exit(2);
+  }
+  if (baseArgs.length > 1) {
+    console.error(
+      `❌ 重複 --base= (${baseArgs.length} 個)(fail-closed,視同 CSO_REQUIRED)。` +
+        `只接受單一 --base=<ref>。`
+    );
+    process.exit(2);
+  }
+  const baseArgValue = baseArgs[0]?.slice('--base='.length);
+  if (baseArgs.length === 1 && !baseArgValue) {
+    console.error(
+      `❌ 空 --base= (無值)(fail-closed,視同 CSO_REQUIRED)。`
+    );
+    process.exit(2);
+  }
+  const base = baseArgValue ?? resolveDefaultBase();
+
   // 🔴 路徑表為空 → 無從比對(= 尚未導入)。**fail-closed**:舊版這裡 exit 0,與檔頭
   //    宣稱 fail-closed 矛盾,而且「用戶會自己記得填」不是理由——把正確性寄託在紀律
   //    上等於這支自己沒有守門。改 exit 2 讓「未導入」跟「無法判定」同樣硬擋。
@@ -103,9 +136,6 @@ function main(): void {
     );
     process.exit(2);
   }
-
-  const baseArg = process.argv.find((a) => a.startsWith('--base='));
-  const base = baseArg ? baseArg.slice('--base='.length) : resolveDefaultBase();
   // 🔴 形狀檢查:不含空白 / 分號 / 管線 / `$` / 反引號 / 引號 / glob,且**必須以英數
   //    起頭**(擋掉 `--flag` 形狀的 option smuggling;舊版允許開頭 `--`,只是因為後
   //    面接 `...HEAD` 才碰巧被 git 拒絕 = 安全靠巧合、不是靠設計)。
