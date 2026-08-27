@@ -173,6 +173,8 @@ Step 6/7 收尾照走。
 - [ ] **finding 涉及「一個被宣稱的不變量」→ 連它的守法一起審,不只審那句敘述**(敘述只准一份 SSOT、呼叫點要另外守、守門用位置＋數量),見下方〈壓輪數的三條紀律〉⑶。
 - [ ] 迭代到 round M「no actionable findings」
 - [ ] 把 round 數 / P1/P2 finding 數記入 progress entry cost field
+- [ ] 執行中浮現真實取捨(例:P1 修法有兩條完全不同的路 → Owner 拍板)→ 用
+      `.claude/sop/decision-request-template.md`(接線規則見 Step 3 同名條目、此處不重抄)
 
 **STOP point**:還有 actionable findings → 繼續迭代;0 actionable 才進 Step 5。
 
@@ -264,6 +266,8 @@ Step 6/7 收尾照走。
       (progress entry Step 5 才寫、此刻寫會破 Step 5「最後一個 commit」的 partial-lifecycle
       grep;Step 5 集中把這裡的 REQUIRED/NOT + 命中域 + 理由寫進 entry),進 Step 5
 - [ ] 本 sprint 新增了安全敏感模組 → 同步把路徑加進 `scripts/cso-trigger.config.ts` 路徑表
+- [ ] 執行中浮現真實取捨(例:安全審 finding 修法對機能影響大、要 Owner 決策)→ 用
+      `.claude/sop/decision-request-template.md`(接線規則見 Step 3 同名條目)
 
 **STOP point**:安全審 critical findings 全修;高風險車道的 mutation 探針全部
 exit 0(被抓)——才進 Step 5。
@@ -335,6 +339,8 @@ exit 0(被抓)——才進 Step 5。
       `npm run health:weekly` 會把這個數字做成趨勢;若連續多個 sprint 都是 0,
       再開 sprint 討論是否簡化本步——**在有資料之前不要動流程**
 - [ ] 每輪 fix commit 訊息標 `修復: <feature> review findings — <finding>`
+- [ ] 執行中浮現真實取捨(例:informational finding 該不該修、trade-off 由 Owner 拍板)→ 用
+      `.claude/sop/decision-request-template.md`(接線規則見 Step 3 同名條目)
 - [ ] 🔴 **本步收乾後,寫 progress entry 進 feature branch 最後一個 commit**
       (避免 Step 7 只為 progress 另開 PR、每 sprint 收尾多 1 支 PR + 1 輪 CI 的浪費)
   - 🔴 **同理適用 BACKLOG / TODOS 標「刀 X ✅」的 bookkeeping**(來源專案 sprint
@@ -419,6 +425,8 @@ exit 0(被抓)——才進 Step 5。
       Step 5 worktree 條目,以該處為唯一正本)→ 回 Step 4.5 / Step 5 照該兩步的
       重跑規則走(探針重跑**不限是否碰命中域**、worktree 審綁新 SHA),兩者對
       新 SHA 成立才 merge(否則探針 exit 0 與 worktree 審都停在舊 SHA,綁定形同虛設)
+- [ ] 執行中浮現真實取捨(例:CI 例外要不要 override 主線保護 / 要不要 force-push)
+      → 用 `.claude/sop/decision-request-template.md`(接線規則見 Step 3 同名條目)
 
 **STOP point**:CI 綠 + squash merge 完成才進 Step 7。
 

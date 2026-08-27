@@ -510,7 +510,17 @@ export function parseSpecs(raw: unknown): MutationSpec[] {
 
 // ───────────────────────────────────────── 摘要
 
-export function formatSummary(results: MutationResult[], controlOk: boolean): { text: string; exitCode: number } {
+export function formatSummary(
+  results: MutationResult[],
+  controlOk: boolean,
+  /**
+   * 跑完當下的 HEAD SHA(選填)。有給就印在收尾分隔線之後、判定訊息之前。
+   * 用途:高風險車道要記「exit 0 綁定的最後非 bookkeeping SHA」——這裡直接印出來,
+   * Owner／review 直接抄,不用另外跑 `git rev-parse HEAD`(手抄易錯:短 SHA 不夠、跑
+   * 完後 HEAD 又前進就更難對)。純函式保持純:不在這裡呼叫 git,由 `main()` 傳進來。
+   */
+  headSha?: string,
+): { text: string; exitCode: number } {
   const lines: string[] = [];
   const killed = results.filter((r) => r.verdict === "killed");
   const survived = results.filter((r) => r.verdict === "survived");
@@ -527,6 +537,7 @@ export function formatSummary(results: MutationResult[], controlOk: boolean): { 
     if (r.reason) lines.push(`         → ${r.reason}`);
   }
   lines.push("─".repeat(72));
+  if (headSha) lines.push(`HEAD(綁定 SHA):${headSha}`);
 
   let exitCode = 0;
   if (!controlOk) {
@@ -1268,7 +1279,17 @@ async function main(): Promise<number> {
     }
   }
 
-  const { text, exitCode } = formatSummary(results, controlOk);
+  // HEAD SHA:給 Step 4.5 高風險車道抄「exit 0 綁定的最後非 bookkeeping SHA」用。
+  // 讀失敗只 skip(不影響判定):摘要格式不是探針 exit 0 的關鍵路徑,只是方便手抄。
+  let headSha: string | undefined;
+  try {
+    const r = spawnSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf-8" });
+    if (r.status === 0 && r.stdout) headSha = r.stdout.trim() || undefined;
+  } catch {
+    /* HEAD 讀不到就不印 */
+  }
+
+  const { text, exitCode } = formatSummary(results, controlOk, headSha);
   console[exitCode === 0 ? "log" : "error"](text);
   return exitCode;
 }

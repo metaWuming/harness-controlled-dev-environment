@@ -502,6 +502,15 @@ describe("mutate — 摘要與 exit code", () => {
   it("摘要逐條印出 label——這張表要能直接貼進 PR", () => {
     expect(formatSummary([r("killed")], true).text).toContain("拿掉守衛應該讓測試轉紅");
   });
+
+  it("有 headSha → 摘要含「HEAD(綁定 SHA):<sha>」(Step 4.5 高風險車道抄的來源)", () => {
+    const sha = "abc123def456abc123def456abc123def4567890";
+    expect(formatSummary([r("killed")], true, sha).text).toContain(`HEAD(綁定 SHA):${sha}`);
+  });
+
+  it("headSha 未給 → 摘要不含 HEAD 行(保留舊行為;失敗時 main 也走這條路)", () => {
+    expect(formatSummary([r("killed")], true).text).not.toContain("HEAD(綁定 SHA):");
+  });
 });
 
 // ───────────────────────────────────────── 端到端(拋棄式 git repo)
