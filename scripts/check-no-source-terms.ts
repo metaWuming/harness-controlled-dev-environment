@@ -197,6 +197,24 @@ export function isSelfPrReferenceLine(
 /**
  * 把 denylist pattern 集切成兩組:CA(走 self-PR 判定)與 non-CA(嚴格擋)。
  */
+/**
+ * 找出 CONTEXT_AWARE_PATTERNS 內、但不在 denylist 內的 entry(Step 5 F1 修法)。
+ *
+ * ⚠️ 兩處敘述同一不變量:CONTEXT_AWARE_PATTERNS(硬碼常數)與 deny-terms.txt
+ *    的對應 entry。若 denylist entry 被改字(尾空白、regex 變體)或刪除,
+ *    partitionPatterns 的 `.includes()` 精確比對會靜默失敗 → 該 pattern 被歸
+ *    non-CA → context-aware 徹底失效、CI 誤擋回 pre-Sprint-7 狀態。
+ *
+ *    無守門 = SOP L215-217「敘述只准一份 SSOT / 呼叫點另守」違反。本函式抽出
+ *    純函式邏輯,main() 開頭 startup assert 用它 fail-hard。
+ */
+export function findDriftedCaPatterns(
+  allPatterns: string[],
+  caPatterns: string[]
+): string[] {
+  return caPatterns.filter((p) => !allPatterns.includes(p));
+}
+
 export function partitionPatterns(patterns: string[]): {
   nonCa: string[];
   ca: string[];
@@ -575,6 +593,19 @@ function main(): number {
   if (allPatterns.length === 0) {
     console.log("⚠️ denylist 為空,無事可掃(如不需要本 gate,連同 CI step 一併移除)");
     return 0;
+  }
+
+  // Step 5 F1:CONTEXT_AWARE_PATTERNS ↔ deny-terms.txt 漂移守門(fail-hard)
+  const drifted = findDriftedCaPatterns(allPatterns, CONTEXT_AWARE_PATTERNS);
+  if (drifted.length > 0) {
+    console.error(
+      `❌ CONTEXT_AWARE_PATTERNS 與 ${DENY_SRC} 漂移 — 這些 CA 常數在 denylist 內找不到對應 entry:`
+    );
+    for (const p of drifted) console.error(`  ${p}`);
+    console.error(
+      "  → 對齊 deny-terms.txt 的字面 entry,或更新 CONTEXT_AWARE_PATTERNS(scripts/check-no-source-terms.ts CONTEXT_AWARE_PATTERNS 常數)"
+    );
+    return 1;
   }
 
   const { nonCa, ca } = partitionPatterns(allPatterns);

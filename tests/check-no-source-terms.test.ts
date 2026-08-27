@@ -39,6 +39,7 @@ import {
   partitionPatterns,
   parseGrepZLine,
   displayGrepHit,
+  findDriftedCaPatterns,
 } from "../scripts/check-no-source-terms";
 
 const REPO_ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], {
@@ -276,6 +277,26 @@ describe("parseGrepZLine — 解 git grep -z NUL 分隔輸出(round 6 P2-3)", ()
   });
 });
 
+describe("findDriftedCaPatterns — CA 常數 vs denylist 漂移守門(Step 5 F1)", () => {
+  it("CA 常數全在 denylist → 空(對齊)", () => {
+    const all = ["forbid_a", "PR " + "#[0-9]", PREF_PULL + "[0-9]", "forbid_b"];
+    const ca = ["PR " + "#[0-9]", PREF_PULL + "[0-9]"];
+    expect(findDriftedCaPatterns(all, ca)).toEqual([]);
+  });
+
+  it("🔴 CA 條目被改字面(尾空白)→ 挑出漂移項", () => {
+    const all = ["PR " + "#[0-9] "]; // 尾空白版
+    const ca = ["PR " + "#[0-9]"]; // 原版硬碼
+    expect(findDriftedCaPatterns(all, ca)).toEqual(["PR " + "#[0-9]"]);
+  });
+
+  it("🔴 CA 條目被刪掉 → 全部挑出", () => {
+    const all = ["forbid_a"];
+    const ca = ["PR " + "#[0-9]", PREF_PULL + "[0-9]"];
+    expect(findDriftedCaPatterns(all, ca).length).toBe(2);
+  });
+});
+
 describe("partitionPatterns — 把 denylist 切成 CA / non-CA", () => {
   it("兩條 CA 條目挑出,其餘進 non-CA", () => {
     const patterns = [FRAG_ACTI, FRAG_WUM, "PR " + "#[0-9]", PREF_PULL + "[0-9]", FRAG_OPX];
@@ -309,6 +330,8 @@ function makeRepo(opts: {
   workingTree?: Record<string, string>;
   /** round 2 P2-5 新加:寫進工作樹但不 commit(給 tracked-but-modified 情境用) */
   workingTreeUnstaged?: Record<string, string>;
+  /** Step 5 F1:刻意不注入 CA entries,測 startup fail-hard 漂移守門 */
+  omitCaAutoInject?: boolean;
 }): string {
   const wrap = mkdtempSync(join(tmpdir(), "cnst-e2e-"));
   created.push(wrap);
@@ -323,9 +346,16 @@ function makeRepo(opts: {
   git("config", "user.email", "t@example.com");
   git("config", "user.name", "t");
 
+  // Step 5 F1:預設自動注入 CA entries(避免 CI startup assert fail-hard);
+  // omitCaAutoInject 專用於 F1 e2e 反例(測 assert 本身)
+  const finalDeny = opts.omitCaAutoInject
+    ? opts.deny
+    : Array.from(
+        new Set([...opts.deny, "PR " + "#[0-9]", PREF_PULL + "[0-9]"])
+      );
   writeFileSync(
     join(dir, "scripts/deny-terms.txt"),
-    opts.deny.join("\n") + "\n",
+    finalDeny.join("\n") + "\n",
     "utf-8"
   );
   git("add", "-A");
@@ -461,6 +491,47 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     });
     const { code, out } = runChecker(dir);
     expect(out).toContain("含未知 PR/pull 引用");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 Step 5 F1 fix e2e:CONTEXT_AWARE_PATTERNS 與 denylist 漂移 → startup fail-hard exit 1", () => {
+    // denylist 完全不含 CA entry(尾空白版),但 checker 內硬碼常數還在
+    // → main() startup assert 應 fail-hard、印明漂移訊息
+    const dir = makeRepo({
+      deny: ["forbid_only"], // 沒 CA entry
+      omitCaAutoInject: true, // 刻意讓 denylist 缺 CA,測 assert
+      commits: [
+        { message: "feat: init", files: { "src/foo.md": "hello\n" } },
+      ],
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("CONTEXT_AWARE_PATTERNS");
+    expect(out).toContain("漂移");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 Step 5 F3 fix e2e:SYNTAX_EXEMPT 目標檔含 non-CA hit → 縮減 pattern scan 抓", () => {
+    // 拋棄式 repo 內建 scripts/check-todos-markers.ts(SYNTAX_EXEMPT 目標之一),
+    // 內含 non-CA denylist term。CA 字面(PR/pull)在 SYNTAX_EXEMPT scan 內被
+    // 跳過、但 non-CA term 應被抓 → exit 1。若這條 scan branch 被拆(例:
+    // syntaxNonCaFile = null),此 test 會轉綠
+    const dir = makeRepo({
+      deny: ["forbid_marker_term", "PR " + "#[0-9]", PREF_PULL + "[0-9]"],
+      commits: [
+        {
+          message: "feat: init",
+          files: {
+            "src/foo.md": "hello\n",
+            "scripts/check-todos-markers.ts":
+              "// tool with forbid_marker_term inline + CA fixture " +
+              PREF_PR +
+              "999\n",
+          },
+        },
+      ],
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("含來源專案識別詞");
     expect(code).toBe(1);
   });
 
