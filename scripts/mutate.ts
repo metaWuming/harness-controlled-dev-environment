@@ -1117,6 +1117,18 @@ async function main(): Promise<number> {
     return 2;
   }
 
+  // 🔴 Codex review round 1 P1(HEAD 綁定):**開跑前**就把 HEAD 記下來,
+  //   收尾時再抓一次比對。若期間 HEAD 動過(外部 shell / IDE / 其他 agent 建 clean
+  //   commit)——工作樹仍乾淨、閘① 看不見,但**所有 mutation 判定的 SHA 綁定作廢**
+  //   (Step 4.5 高風險車道拿 exit 0 綁 SHA,若印的是新 HEAD、探針其實跑在舊 checkout,
+  //   等於偽造綁定、suppress 掉本該重跑的 sprint)。fail-closed:HEAD 變動 → 判定作廢。
+  const startHeadR = spawnSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf-8" });
+  if (startHeadR.status !== 0 || !startHeadR.stdout?.trim()) {
+    console.error("✗ 讀不到起手 HEAD(`git rev-parse HEAD` 失敗)——無法綁定判定 SHA,拒跑。");
+    return 2;
+  }
+  const startHead = startHeadR.stdout.trim();
+
   const results: MutationResult[] = [];
   let controlOk = false;
 
@@ -1279,17 +1291,29 @@ async function main(): Promise<number> {
     }
   }
 
-  // HEAD SHA:給 Step 4.5 高風險車道抄「exit 0 綁定的最後非 bookkeeping SHA」用。
-  // 讀失敗只 skip(不影響判定):摘要格式不是探針 exit 0 的關鍵路徑,只是方便手抄。
+  // HEAD SHA 綁定:給 Step 4.5 高風險車道抄「exit 0 綁定的最後非 bookkeeping SHA」用。
+  // 🔴 Codex review round 1 P1:endHead 必須與 startHead(main 開頭抓的)相同——
+  //   期間有人 clean commit → HEAD 前進 → 印新 SHA 等於偽造綁定。fail-closed:
+  //   兩者不等 → 不印 SHA、將 exitCode 升到 2、判定全部作廢。
   let headSha: string | undefined;
-  try {
-    const r = spawnSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf-8" });
-    if (r.status === 0 && r.stdout) headSha = r.stdout.trim() || undefined;
-  } catch {
-    /* HEAD 讀不到就不印 */
+  const endHeadR = spawnSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf-8" });
+  const endHead = endHeadR.status === 0 ? (endHeadR.stdout ?? "").trim() : "";
+  let headBindingDrifted = false;
+  if (!endHead) {
+    // 收尾讀不到 HEAD:一律 fail-closed,不印 SHA,判定作廢
+    headBindingDrifted = true;
+  } else if (endHead !== startHead) {
+    headBindingDrifted = true;
+    console.error(
+      `✗ HEAD 在 mutation 期間變動:${startHead} → ${endHead}(可能有外部 clean commit)——` +
+        "所有判定的 SHA 綁定作廢,不印 SHA。",
+    );
+  } else {
+    headSha = startHead;
   }
 
-  const { text, exitCode } = formatSummary(results, controlOk, headSha);
+  const { text, exitCode: rawExit } = formatSummary(results, controlOk, headSha);
+  const exitCode = headBindingDrifted ? Math.max(rawExit, 2) : rawExit;
   console[exitCode === 0 ? "log" : "error"](text);
   return exitCode;
 }

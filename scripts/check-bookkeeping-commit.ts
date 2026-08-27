@@ -71,21 +71,44 @@ export function classifyBookkeepingFiles(files: string[]): {
 
 // ───────────────────────────────────────── git 讀 diff 檔清單
 
+/**
+ * 讀該 commit 動到的所有檔案路徑(repo 相對)。
+ *
+ * 🔴 Codex review round 1 P1(rename 偵測):`diff-tree --name-only` 在 rename
+ *   偵測開啟時,只會列出目的地路徑。把 `.claude/memory/LESSONS.md` 或任何 code
+ *   檔 rename 到 archive 底下的 allowlist 路徑 → 這裡回傳的清單只有目的地 →
+ *   `classifyBookkeepingFiles` 判 ok → exit 0 → 錯誤啟動 bookkeeping 例外。
+ *   → `--no-renames` 關掉 rename 偵測,強制看到「刪一支 + 加一支」兩條。
+ *
+ * 🔴 Codex review round 1 P2(路徑 bytes):`diff-tree --name-only` 對含空白或
+ *   非 ASCII 的檔名會加引號 escape;`trim()` 又會把合法的前後空白吃掉,讓
+ *   ` .claude/memory/progress.md`(前導空白)這種怪路徑被誤判為 allowlist。
+ *   → `-z` 讓路徑用 NUL 分隔並輸出原始 bytes,再用 NUL 切、不 trim。
+ */
 function getChangedFiles(sha: string): string[] | null {
-  const r = spawnSync("git", ["diff-tree", "--no-commit-id", "--name-only", "-r", sha], {
-    encoding: "utf-8",
-  });
+  const r = spawnSync(
+    "git",
+    ["diff-tree", "--no-commit-id", "--name-only", "--no-renames", "-z", "-r", sha],
+    { encoding: "utf-8" },
+  );
   if (r.status !== 0) return null;
-  return (r.stdout ?? "")
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
+  return (r.stdout ?? "").split("\0").filter((l) => l.length > 0);
 }
 
 // ───────────────────────────────────────── main
 
 async function main(): Promise<number> {
   const argv = process.argv.slice(2);
+
+  // 🔴 Codex review round 1 P2(額外參數):過去把多餘 arg 靜默忽略——
+  //   例:`npm run check:bookkeeping -- HEAD~1 HEAD` 只會查 HEAD~1、HEAD 被漏。
+  //   本腳本控制高風險車道的重跑決策,malformed 呼叫必須 fail-closed 而非
+  //   悄悄查錯的 commit。
+  if (argv.length > 1) {
+    console.error(`✗ 多餘參數(收到 ${argv.length} 個,只接受 0 或 1 個):${argv.join(" ")}`);
+    console.error("  → 只查一個 commit,或不加參數(預設 HEAD)");
+    return 2;
+  }
   const shaArg = argv[0] ?? "HEAD";
 
   // 驗證是不是有效 commit(拒收 tag / tree / blob / 亂字串)
