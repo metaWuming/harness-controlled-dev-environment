@@ -31,6 +31,45 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
 > **委派上限**:本流程只有 Step 1 與 Step 5 會用到 subagent,兩步都標了上限。
 > 委派規則本身見 CLAUDE.md 原則 5.5,這裡不重複。定義好的 agent 在 `.claude/agents/`。
 
+## 適用範圍 — 完整 SOP vs docs-only
+
+**預設:一律跑完整流程**(含 Step 4 跨模型 review + Step 5 fresh review),**不跳**。
+docs-only 是**唯一、且窄**的例外;**判不準 = 當非文件、跑完整 SOP**。
+
+**判定靠「意圖／內容」不靠路徑 glob**(glob 永遠補不完,改名／新路徑就漏)。
+
+✅ **算 docs-only(可只跑 Step 5 fresh review、略過 Step 4 跨模型)** — 需**同時**滿足三條:
+1. 本次 PR 的**每一個檔**都是「純給人讀的說明文字」,**且沒有任何 code / 設定 / SQL /
+   腳本 / build 會去消費它**(典型:`.claude/memory/**` 的純散文 checkpoint、純散文
+   交接檔、不被 app build 的純說明 markdown)。
+2. **不是 spec / 政策 / 安全文件**(見下方 🔴)。
+3. **不含**上面以外的任何檔(混合即非文件,見判定單位)。
+
+🔴 **一律跑完整 SOP(含跨模型)——不論副檔名或路徑:**
+- **spec / 決策 / 計畫**:任何「code 之後要照抄」的文件——**所有 ADR**(不論放在哪、
+  不論改名)、design doc、plan、可執行 spec。
+- **安全 / 權限 / 部署 ops**:任何談 auth / 權限 / 威脅模型 / migration 步驟 / env 設定
+  / 部署程序的文件(含 HTML runbook)。
+- **專案治理**:`CLAUDE.md`、`.claude/sop/**`、`docs/` 底下的策略檔(例如 SECURITY /
+  THREAT_MODEL / BRANCH_PROTECTION 這類命名的檔),以及 `.claude/memory/LESSONS.md`
+  裡的 SOP / 安全規則段。**(專案可對照替換自己的治理檔名。)**
+- **任何非純說明檔**(常見範例、非窮舉;判不準從嚴):產品碼(`src/**`)· SQL / migration
+  · 守門腳本(`scripts/**` 含 `git-hooks/**`)· CI / 設定(`.github/**`、`**/*.config.*`、
+  `**/package.json`、`**/tsconfig*.json`、lockfile、`.claude/settings*.json`、`**/.env*`)
+  · 測試碼與測試支援(`**/*.test.*`、`**/*.spec.*`、`**/test/**`)。
+- **碰安全邊界(auth / migration / 守門)者,Step 4/5 絕對不可跳。**
+
+**判定單位 = 整個 PR / 待 ship 的完整 diff**(不是單一 commit)。PR 內只要有一個
+非 docs-only 檔,**全 PR 跑完整 SOP**。不可把 code 改拆進「docs PR」、或在 PR 內
+切「純 docs commit」規避跨模型審。
+
+**docs-only 仍必須**:fresh review 對任何技術陳述 **verify against ground truth**;
+本地 gate 與 CI checks(lint / typecheck / test / build,依專案實情替換)照綠;
+Step 6/7 收尾照走。
+
+**理由**:純說明文字、無 spec / 安全意涵時,跨模型把關邊際價值低,fresh-context +
+事實查核已足。但 ADR / 安全 / 策略文件屬 spec → 這條線上一律完整 SOP。
+
 ## Step 1:Plan(寫 plan file) 🎚️ `high`
 
 - [ ] Plan file 寫在 `~/.claude/plans/*.md`(plan mode 強制)
@@ -333,7 +372,15 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
 - 純格式整理
 - Owner 明確說「快速做就好」「不用問」
 
-**自我檢驗**:這個改動會不會影響任何 customer-facing behavior?會 → 走完整流程。
+🔴 **本例外受上方「適用範圍 — 完整 SOP vs docs-only」判準約束**:
+- 若改動命中 docs-only 判準的**任何一條 🔴 完整 SOP 條件**(spec / 決策 / 計畫 / 安全 /
+  權限 / 部署 ops / 專案治理 / 任何非純說明檔),**一律不適用本例外**——即使只是「顯而
+  易見的單行修改」。單行改 auth 邏輯、CI gate、守門腳本、migration 都是本規則要擋的。
+- 只有**同時**是「不影響 customer-facing behavior」+「不碰安全邊界」+「不改 spec /
+  治理」的 typo / 格式,才走本例外。
+
+**自我檢驗**:①改動會不會影響 customer-facing behavior?②會不會碰上方 docs-only 判準
+列的任何一條 🔴 完整 SOP 條件?**任一為「會」→ 走完整流程,不適用本例外。**
 
 ## Plan Mode 邊界提醒
 
@@ -341,3 +388,57 @@ related: CLAUDE.md Part 2「Plan Mode 流程規則」 / docs/DEGRADATION.md / do
 - 不能 run write tool(Edit / Write / Bash commit / 等)
 - 結束方式只有提問(釐清)或 ExitPlanMode(批准)
 - 結束 plan mode 後 bias toward 不停下來問,reasonable call 自己做,Owner 會在偏差時 redirect
+
+## 節奏分層 — per-change / 里程碑 / 階段
+
+> 上面 7 步是**每次 change** 的核心迴圈,**保持精簡、別再往裡塞**。以下是「超出單次
+> change」的節奏節點——掛在對的高度,不加重每次開發。
+
+### A. 里程碑 / EPIC 節點(安全審計 + retro)
+
+**三層安全審的分工(別再混用):**
+
+| 層 | 審什麼 | 什麼時候 |
+|---|---|---|
+| per-change | **這一刀的 diff** | Step 4.5,機器判 `CSO_REQUIRED` 時 |
+| per-EPIC | 一整批改動的**橫切面** | 每個 EPIC 收尾(branch-scoped 較輕的安全審) |
+| 上線前 / 碰真 auth | **整個攻擊面**撐不撐得住 | 首次上線 / 第一個真用戶 / 生產部署之前(重型戰略審) |
+
+- EPIC 節點那層抓的是 per-diff review **結構上看不到**的東西:token 生命週期跨多支
+  migration、secret 處理、授權 blast-radius 跨整個 schema、小決策的累積。
+- 三層**不重複**:4.5 問「這個 diff 對不對」,EPIC 問「這批加起來有沒有破洞」,
+  上線前那層問「整體撐不撐得住」。
+- **每個 EPIC 收尾、或每週**跑一次教訓沉澱流程:把本輪 finding、踩雷、解法統整寫進
+  `LESSONS.md`;沒有工具時手動照 LESSONS 模板寫。
+- ⚠️ 這些是**里程碑節點,不是 per-change**;塞進每次 change 就失去意義、變 ceremony。
+
+### B. 階段占位節點(達成解鎖條件才啟用)
+
+> 專案生命週期的不同階段會需要不同工具接進 SOP(驗證階段、部署階段、性能階段…)。
+> 這些節點**共用一條規則:條件達成時把它們接進 Step 6/7,不到位前不強加**。
+
+範例(通用範式、專案依實情替換):
+
+- **驗證階段**(解鎖條件:E2E fixture 就緒 → 能以真身份跑 auth-scoped 測試):加進
+  Step 6 CI gates,或 Step 7 收尾前手動跑一次。
+- **部署階段**(解鎖條件:生產環境 credentials 就緒):加進 Step 6/7 的部署對照 checklist,
+  上線前置一律照 written checklist,不要憑記憶重建。
+
+### C. 除錯入口(需要時)
+
+- 真整合 bug 出現時走系統化 root cause 分析(先固定 repro、再二分定位、最後補 test),
+  別亂猜。有工具就用工具、沒有就手動走同樣步驟。
+
+### 刻意不加(避免 ceremony,誠實標註)
+
+- **完整 UI 設計流程**:Step 4.6 視覺關已覆蓋 per-change 的 UI 核對;完整設計流程留給
+  「整批 UI 改版」或 mobile app 動 UI 這類**里程碑**動作,不是 per-change。
+- **性能量測 / benchmark**:小 codebase / 無 perf 敏感面時,加它進 per-change 是稅、
+  不加價值;真正的性能面出現時再接進 Step 6/7。
+- **重複 L3 守門**:許多「更嚴格的守門」工具與模板附帶的 `scripts/git-hooks/**` +
+  `scripts/lib/destructive-guard.ts` 重疊,不必重複裝。若專案自己另加 `CODEOWNERS`
+  與 branch protection(模板未附帶),那兩層又會多蓋一次同一批面向。唯獨會鎖 session
+  編輯目錄的 skill 屬可選 polish(freeze 類)。
+- **週健檢 / 教訓機器化率等 harness 自省指標**:模板有 `scripts/weekly-health-check.ts`,
+  但**先讓 Step 5 寫進 progress 的 cost field 累積幾個 sprint 的資料,再決定要不要做
+  趨勢圖**(沒有資料就做趨勢＝生出看起來像量測、其實不是的數字)。

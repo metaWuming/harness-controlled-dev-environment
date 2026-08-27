@@ -37,8 +37,10 @@ related: CLAUDE.md Part 2 / .claude/sop/plan-mode-checklist.md
 而且是預設值不是選配**,官方也明講**指令遵循、工具呼叫、推理品質在整個視窗內保持一致**
 ——不再有「後半段開始退化」這回事。三點要跟著改:
 
-1. **「回應變慢」不再是 context 將盡的訊號。** 回應速度現在主要受 effort 影響
-   (見 `docs/EFFORT.md`),把它當 context 餘量的代理指標會誤判。
+1. **「回應變慢」不再是 context 將盡的訊號。** 回應速度現在主要受**實際生效的 effort
+   設定**影響(＝ session 層級的單一值,`.claude/settings.json` / `/config`;**不是** SOP
+   各步的 `🎚️` 記號——那是「審查深度提示」,沒有機制在執行它,見
+   `plan-mode-checklist.md` 檔頭)。把回應速度當 context 餘量的代理指標會誤判。
    **唯一可靠的訊號是「已經被 compact 過」**——上表已據此收斂。
 2. **交棒門檻應該往後拉。** 過去「聊很久了、保險起見先交棒」的直覺,現在多半是
    **過早交棒**:交棒本身有成本(寫 HANDOFF、新 session 重新建立脈絡、
