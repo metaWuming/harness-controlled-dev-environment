@@ -285,16 +285,23 @@ function makeRepo(opts: {
     git("add", "-A");
     git("commit", "-qm", "add working tree fixtures");
   }
-  // round 2 P2-5 修法:未 commit 的 tracked file 內容,只出現在 working tree,
-  // history 內沒有這條 hit → working-tree scan 是唯一 leg 能抓到
+  // round 2 P2-5 + round 3 P2-3 修法:tracked-but-modified 狀態——先 commit
+  // 一份 harmless base(進 history + index),再覆寫 working tree 版本但**不 add**。
+  // 這樣 index / history 都是 harmless、只有 working tree 含 forbidden 內容;
+  // 若 checker 弱化成 `git grep --cached` 掃 index,測試會轉紅(強化守門)。
   if (opts.workingTreeUnstaged) {
-    for (const [rel, body] of Object.entries(opts.workingTreeUnstaged)) {
+    for (const rel of Object.keys(opts.workingTreeUnstaged)) {
       const abs = join(dir, rel);
       mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, "harmless base\n", "utf-8");
+    }
+    git("add", "-A");
+    git("commit", "-qm", "add harmless base for tracked-but-modified fixture");
+    // 覆寫 working tree 版本,不 add → tracked-but-modified 效果
+    for (const [rel, body] of Object.entries(opts.workingTreeUnstaged)) {
+      const abs = join(dir, rel);
       writeFileSync(abs, body, "utf-8");
     }
-    // 加進 index 但不 commit → tracked-but-modified 效果
-    git("add", "-A");
   }
   return dir;
 }

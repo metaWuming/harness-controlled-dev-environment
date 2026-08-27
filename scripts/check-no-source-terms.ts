@@ -69,6 +69,11 @@ const FULL_EXCLUDES = [
   ":!package-lock.json",
   ":!scripts/check-todos-markers.ts",
   ":!tests/check-todos-markers.test.ts",
+  // round 3 P2-1 fix:配對 SYNTAX_EXEMPT_FILES,讓全域 CA/non-CA scan 跳過本檔,
+  // 只由下方 SYNTAX_EXEMPT scan 用縮減 pattern(non-CA)掃它。這樣 test fixture
+  // 若真要寫 CA 字面(如 canonical PR/pull 引用範例)不會被 CA scan 誤攔。
+  // round 2 fix P2-3 只加 SYNTAX_EXEMPT 沒加 FULL_EXCLUDES → 該檔被雙掃、CA 沒跳。
+  ":!tests/check-no-source-terms.test.ts",
 ];
 /**
  * 這幾檔用「縮減 pattern 集」掃(只掃 non-CA,容許 CA 字面):

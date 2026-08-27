@@ -153,6 +153,13 @@ jobs:
       - name: Source-term scan (de-identification gate)
         # 去識別化常駐 gate:本模板抽取自私有專案,掃「來源專案識別詞」殘留
         # (working tree + git 全史)。導入者不需要時可連同 scripts/deny-terms.txt 移除。
+        #
+        # 🔴 批 7 round 3 P2-2:step-level env 不會跨 step 傳遞,DELIVERY_REFS
+        # 也要在本 step 顯式設。若 default branch 是 main 但 develop 也是既定
+        # delivery,checker 的 origin/HEAD 命中 main、develop fallback 不執行 →
+        # 只 merge 到 develop 的 PR 不在 allowedPrs → 合法 PR 引用被誤擋。
+        env:
+          DELIVERY_REFS: origin/${{ github.event.repository.default_branch }}
         run: npm run check:no-source-terms
 
       - name: Test (vitest)
