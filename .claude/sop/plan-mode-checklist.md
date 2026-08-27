@@ -219,18 +219,22 @@ Step 6/7 收尾照走。
 ## Step 4.5:條件式安全關(觸發判定機器化) 🎚️ `xhigh`
 
 - [ ] 跑 `npx tsx scripts/check-cso-trigger.ts`(對完整變更面做安全域 path 比對),
-      把輸出(REQUIRED/NOT + 命中域)記入 progress entry
+      把輸出(REQUIRED/NOT + 命中域)暫記 plan file 或 scratchpad
+      (Step 5 集中寫進 progress entry;理由見下方 `CSO_NOT_REQUIRED` 條目——
+      此刻動 progress.md 也會弄髒工作樹、擋掉下方 mutation 探針)
       〔前置:導入時先填 `scripts/cso-trigger.config.ts` 路徑表,見 docs/ADOPTION.md〕
 - [ ] `CSO_REQUIRED` → 跑一輪專責安全審
       〔預設:gstack `/cso`;無 gstack 降級:Claude Code 內建 `security-review` skill〕,
       findings 分類同 Step 5(`[CRITICAL]` 必修),fix commit 標 `修復: <feature> 安全審 findings — <finding>`
 - [ ] `CSO_REQUIRED` = 本 sprint 進**高風險車道**(見頂部風險車道對照表),另加兩件事:
   - **破壞性 mutation 探針**:對每個命中域的新增/修改機制跑**至少一條**探針,
-    預設用 `npm run mutate`(`scripts/mutate.ts`,三道 fail-closed 閘),label 寫明
+    預設用 `npm run mutate`(`scripts/mutate.ts`,三道 fail-closed 閘;**乾淨工作樹
+    才可跑——先把本輪改動 commit 再跑**),label 寫明
     「對應哪個命中域的哪條不變量」。結果(被抓/存活)暫記 plan file 或 scratchpad,
     Step 5 集中寫進 progress entry(慣例同下一條)
-  - **記下 baseline SHA**(就是 Step 4 送審前固定的那個):Step 5 的審查要在
-    worktree 乾淨 checkout 上跑,依據見 Step 5〔僅高風險車道〕條目
+  - **標記高風險車道**:Step 5 的第二道 review 要在拋棄式 worktree 上跑
+    (SHA 在 Step 5 派工前才記,**不是**沿用 Step 4 的 baseline SHA——fix round
+    會讓 HEAD 前進;見 Step 5〔僅高風險車道〕條目)
 - [ ] `CSO_NOT_REQUIRED` → 自問一次「diff 是否含腳本路徑表沒涵蓋的安全敏感邏輯?」
       (**機器判定是下限不是上限**);無 → **暫記於 plan file 或 scratchpad**
       (progress entry Step 5 才寫、此刻寫會破 Step 5「最後一個 commit」的 partial-lifecycle
@@ -271,9 +275,14 @@ Step 6/7 收尾照走。
       無 gstack 降級:Claude Code 內建 `/code-review` + 派**一個** `.claude/agents/adversarial-reviewer.md`
       對 diff 獨立審(注意:它要從 diff 本身出發,**不是**去驗證前面 review 的結論——
       那會複製盲點。**一個就夠,不要開多個**)〕
-- [ ] 〔僅高風險車道,即 Step 4.5 判 `CSO_REQUIRED`〕adversarial-reviewer 以
-      `isolation: worktree` 派出(拋棄式 git worktree = 乾淨 checkout),prompt 附
-      Step 4.5 記下的 baseline SHA、要求它開工先核對(核對規則見該 agent 定義檔)。
+- [ ] 〔僅高風險車道,即 Step 4.5 判 `CSO_REQUIRED`〕本步 review 的**執行環境**改為
+      拋棄式 git worktree(乾淨 checkout)——是同一道 review 換環境,**不是多開一個
+      reviewer**。做法:派工前記 `review-tip SHA = 當下 HEAD`、寫進 prompt 要求開工
+      先核對(核對規則見 agent 定義檔)。
+      ⚠️ **不要拿 Step 4 的 baseline SHA 核對**——fix round 已讓 HEAD 前進,必然
+      mismatch;baseline SHA 只供 finding 來源分類。
+      〔預設 gstack `/review`:先 `git worktree add <dir> <review-tip SHA>`、在該目錄跑;
+      降級:adversarial-reviewer 以 `isolation: worktree` 派出〕。
       目的:抓「依賴本地未提交狀態 / 工作樹污染」的錯——`scripts/mutate.ts` 檔頭
       指出的同一類極限。輕/標準車道不掛,避免 ceremony
 - [ ] Findings 分類(severity 與 confidence 是兩條獨立軸):
