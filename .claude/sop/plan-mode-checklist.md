@@ -371,7 +371,15 @@ docs-only 是**唯一、且窄**的例外;**判不準 = 當非文件、跑完整
 - 純格式整理
 - Owner 明確說「快速做就好」「不用問」
 
-**自我檢驗**:這個改動會不會影響任何 customer-facing behavior?會 → 走完整流程。
+🔴 **本例外受上方「適用範圍 — 完整 SOP vs docs-only」判準約束**:
+- 若改動命中 docs-only 判準的**任何一條 🔴 完整 SOP 條件**(spec / 決策 / 計畫 / 安全 /
+  權限 / 部署 ops / 專案治理 / 任何非純說明檔),**一律不適用本例外**——即使只是「顯而
+  易見的單行修改」。單行改 auth 邏輯、CI gate、守門腳本、migration 都是本規則要擋的。
+- 只有**同時**是「不影響 customer-facing behavior」+「不碰安全邊界」+「不改 spec /
+  治理」的 typo / 格式,才走本例外。
+
+**自我檢驗**:①改動會不會影響 customer-facing behavior?②會不會碰上方 docs-only 判準
+列的任何一條 🔴 完整 SOP 條件?**任一為「會」→ 走完整流程,不適用本例外。**
 
 ## Plan Mode 邊界提醒
 
@@ -426,9 +434,10 @@ docs-only 是**唯一、且窄**的例外;**判不準 = 當非文件、跑完整
   「整批 UI 改版」或 mobile app 動 UI 這類**里程碑**動作,不是 per-change。
 - **性能量測 / benchmark**:小 codebase / 無 perf 敏感面時,加它進 per-change 是稅、
   不加價值;真正的性能面出現時再接進 Step 6/7。
-- **重複 L3 守門**:許多「更嚴格的守門」工具與 `scripts/git-hooks/**` + `lib/destructive-guard.ts`
-  + CODEOWNERS + branch protection 重疊,不必重複裝;唯獨會鎖 session 編輯目錄的 skill
-  屬可選 polish(freeze 類)。
+- **重複 L3 守門**:許多「更嚴格的守門」工具與模板附帶的 `scripts/git-hooks/**` +
+  `scripts/lib/destructive-guard.ts` 重疊,不必重複裝。若專案自己另加 `CODEOWNERS`
+  與 branch protection(模板未附帶),那兩層又會多蓋一次同一批面向。唯獨會鎖 session
+  編輯目錄的 skill 屬可選 polish(freeze 類)。
 - **週健檢 / 教訓機器化率等 harness 自省指標**:模板有 `scripts/weekly-health-check.ts`,
   但**先讓 Step 5 寫進 progress 的 cost field 累積幾個 sprint 的資料,再決定要不要做
   趨勢圖**(沒有資料就做趨勢＝生出看起來像量測、其實不是的數字)。
