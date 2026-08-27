@@ -49,10 +49,12 @@ import {
   type MutationSpec,
 } from "../scripts/mutate";
 
-const SCRIPT = join(
-  execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf-8" }).trim(),
-  "scripts/mutate.ts",
-);
+const REPO_ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf-8" }).trim();
+const SCRIPT = join(REPO_ROOT, "scripts/mutate.ts");
+// 🔴 用**直接 tsx binary path** 繞開 `npx` 冷啟——CI 上 npx wrapper resolve tsx +
+//    版本檢查每次 ~5-10s,對每個端到端 test 兩次 spawn(mutation + 對照)加起來
+//    容易撞 60s test timeout。直接 path 冷啟 <1s,SIGTERM / SIGINT test 才過得了。
+const TSX_BIN = join(REPO_ROOT, "node_modules/.bin/tsx");
 
 const created: string[] = [];
 afterEach(() => {
@@ -534,7 +536,7 @@ function makeRepo(
 /** 跑真腳本,回傳 {code, out}。指令非 0 不 throw。 */
 function runScript(cwd: string, args: string[]): { code: number; out: string } {
   try {
-    const out = execFileSync("npx", ["tsx", SCRIPT, ...args], { cwd, encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] });
+    const out = execFileSync(TSX_BIN, [SCRIPT, ...args], { cwd, encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] });
     return { code: 0, out };
   } catch (e) {
     const err = e as { status?: number; stdout?: string; stderr?: string };
@@ -977,7 +979,7 @@ describe("mutate — 端到端:安全契約在非快樂路徑上也要成立", (
       const cmd =
         `bash -c 'trap "" TERM; while [ $SECONDS -lt 6 ]; do :; done; printf "BAD\\n" > src/a.txt'` +
         ` </dev/null >/dev/null 2>&1 & sleep 30`;
-      const child = spawn("npx", ["tsx", SCRIPT, ...BASE, "--cmd", cmd], {
+      const child = spawn(TSX_BIN, [SCRIPT, ...BASE, "--cmd", cmd], {
         cwd: dir,
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -1006,7 +1008,7 @@ describe("mutate — 端到端:安全契約在非快樂路徑上也要成立", (
       const file = join(dir, "src/a.txt");
       const before = readFileSync(file, "utf-8");
 
-      const child = spawn("npx", ["tsx", SCRIPT, ...BASE, "--cmd", "sleep 30"], {
+      const child = spawn(TSX_BIN, [SCRIPT, ...BASE, "--cmd", "sleep 30"], {
         cwd: dir,
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -1043,7 +1045,7 @@ describe("mutate — 端到端:安全契約在非快樂路徑上也要成立", (
       const file = join(dir, "src/a.txt");
       const before = readFileSync(file, "utf-8");
 
-      const child = spawn("npx", ["tsx", SCRIPT, ...BASE, "--cmd", "sleep 30"], {
+      const child = spawn(TSX_BIN, [SCRIPT, ...BASE, "--cmd", "sleep 30"], {
         cwd: dir,
         stdio: ["ignore", "pipe", "pipe"],
       });
