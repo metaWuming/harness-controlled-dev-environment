@@ -64,7 +64,8 @@ docs-only 是**唯一、且窄**的例外;**判不準 = 當非文件、跑完整
 切「純 docs commit」規避跨模型審。
 
 **docs-only 仍必須**:fresh review 對任何技術陳述 **verify against ground truth**;
-四關(CI 對主線的 PR 跑)照綠;Step 6/7 收尾照走。
+本地 gate 與 CI checks(lint / typecheck / test / build,依專案實情替換)照綠;
+Step 6/7 收尾照走。
 
 **理由**:純說明文字、無 spec / 安全意涵時,跨模型把關邊際價值低,fresh-context +
 事實查核已足。但 ADR / 安全 / 策略文件屬 spec → 這條線上一律完整 SOP。
