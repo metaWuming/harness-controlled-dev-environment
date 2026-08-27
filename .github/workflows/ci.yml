@@ -11,10 +11,15 @@ name: CI
 # 任何一步失敗就擋 PR。建議設 GitHub branch protection:主線分支要求 CI pass 才能 merge。
 
 on:
+  # 🔴 Codex batch 6 round 4 P2:branch filter 需涵蓋所有常見 default_branch 命名。
+  # workflow 底下的 `if: … default_branch …` 若 event filter 在更上層就把該 branch 過濾掉、
+  # 整個 workflow 都不會觸發、動態條件形同虛設。列常見 delivery branch names
+  # (main / master / trunk / develop);導入者若用其他命名(release、prod、production 等),
+  # 依 docs/ADOPTION 也需同步更新這裡與 workflow 內 `if:` 條件。
   push:
-    branches: [main, develop, 'feature/**']
+    branches: [main, master, trunk, develop, 'feature/**']
   pull_request:
-    branches: [main, develop]
+    branches: [main, master, trunk, develop]
 
 # 同一 PR / branch 的舊 run 自動取消,省 CI 分鐘
 concurrency:
