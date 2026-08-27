@@ -227,14 +227,15 @@ Step 6/7 收尾照走。
       〔預設:gstack `/cso`;無 gstack 降級:Claude Code 內建 `security-review` skill〕,
       findings 分類同 Step 5(`[CRITICAL]` 必修),fix commit 標 `修復: <feature> 安全審 findings — <finding>`
 - [ ] `CSO_REQUIRED` = 本 sprint 進**高風險車道**(見頂部風險車道對照表),另加兩件事:
-  - **破壞性 mutation 探針**:對每個命中域的新增/修改機制跑**至少一條**探針,
-    預設用 `npm run mutate`(`scripts/mutate.ts`,三道 fail-closed 閘;**乾淨工作樹
-    才可跑——先把本輪改動 commit 再跑**),label 寫明
-    「對應哪個命中域的哪條不變量」。結果(被抓/存活)暫記 plan file 或 scratchpad,
-    Step 5 集中寫進 progress entry(慣例同下一條)
-  - **標記高風險車道**:Step 5 的第二道 review 要在拋棄式 worktree 上跑
-    (SHA 在 Step 5 派工前才記,**不是**沿用 Step 4 的 baseline SHA——fix round
-    會讓 HEAD 前進;見 Step 5〔僅高風險車道〕條目)
+  - **破壞性 mutation 探針**:對每個命中域的新增/修改機制跑**至少一條**探針,預設
+    `npm run mutate -- --file <檔> --find '<原樣>' --replace '<改壞>' --label '<命中域:哪條不變量>'`
+    (多條用 `--spec` 批次;`scripts/mutate.ts` 三道 fail-closed 閘,**乾淨工作樹
+    才可跑——先把本輪改動 commit 再跑**)。**exit 0(全部 mutant 被抓)才算過**:
+    exit 1 = 覆蓋缺口 → 補測試再跑;exit 2 = 無法判定 → 排除障礙再跑。
+    結果暫記 plan file 或 scratchpad,Step 5 集中寫進 progress entry(慣例同下一條)
+  - **標記高風險車道**:Step 5 要**多加一道** worktree 獨立審(SHA 在 Step 5
+    派工前才記,**不是**沿用 Step 4 的 baseline SHA——fix round 會讓 HEAD 前進;
+    做法見 Step 5〔僅高風險車道〕條目)
 - [ ] `CSO_NOT_REQUIRED` → 自問一次「diff 是否含腳本路徑表沒涵蓋的安全敏感邏輯?」
       (**機器判定是下限不是上限**);**有 → 視同 `CSO_REQUIRED`**(跑安全審 +
       上一條的高風險車道兩項加強),並照下方條目把新路徑補進路徑表、重跑判定;
@@ -243,7 +244,8 @@ Step 6/7 收尾照走。
       grep;Step 5 集中把這裡的 REQUIRED/NOT + 命中域 + 理由寫進 entry),進 Step 5
 - [ ] 本 sprint 新增了安全敏感模組 → 同步把路徑加進 `scripts/cso-trigger.config.ts` 路徑表
 
-**STOP point**:安全審 critical findings 全修才進 Step 5。
+**STOP point**:安全審 critical findings 全修;高風險車道的 mutation 探針全部
+exit 0(被抓)——才進 Step 5。
 
 ## Step 4.6:條件式視覺關(diff 碰 UI 才觸發) 🎚️ `medium`
 
@@ -286,6 +288,10 @@ Step 6/7 收尾照走。
       ⚠️ 每輪 fix commit 後 HEAD 前進 → 下一輪派工**重記 review-tip、派新 agent**
       (= 新 worktree;舊 worktree 隨舊 agent 作廢,不重用)。Step 4 的 baseline SHA
       只供 finding 來源分類,**不拿來核對**——fix round 後必然 mismatch。
+      ⚠️ 收乾後的 bookkeeping commit(progress / BACKLOG / TODOS,見下方條目)是
+      **機械核對例外**:不為它重跑 worktree 審,但要機械核對該 commit 的 diff
+      **只含記憶層檔**(`.claude/memory/**`、`TODOS.md`、BACKLOG 類追蹤檔)——
+      混入任何其他檔就不是 bookkeeping,要再跑一輪。
       目的:抓「依賴本地未提交狀態 / 工作樹污染」的錯——`scripts/mutate.ts` 檔頭
       指出的同一類極限。輕/標準車道不掛,避免 ceremony
 - [ ] Findings 分類(severity 與 confidence 是兩條獨立軸):
