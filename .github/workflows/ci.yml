@@ -103,9 +103,12 @@ jobs:
         # 分支不存在時略過,腳本會退回 HEAD)
         # 🔴 Codex round 1 P2:不能整個 push event 都 skip——mainline push(main/develop)
         # 到達時 PR 已 squash merge、self-PR 引用找得到 merge 證據、不會踩死鎖,而且
-        # README §一組「CI 常駐閘門」對外承諾 CI 驗 completion claims。只 skip feature
-        # branch 的 push(此時 PR 通常還沒 merge、self-PR 引用會找不到證據)。
-        if: github.event_name != 'push' || !startsWith(github.ref, 'refs/heads/feature/')
+        # README §一組「CI 常駐閘門」對外承諾 CI 驗 completion claims。只 skip 非
+        # delivery branch 的 push(此時 PR 通常還沒 merge、self-PR 引用會找不到證據)。
+        # 🔴 Codex round 2 P2:判定用 delivery branch 白名單而非「feature/*」硬碼
+        # prefix——docs/ADOPTION L82 明說導入者可加 fix/**、chore/** 等 trigger;
+        # 用 prefix 會漏它們、重演 self-PR 死鎖。
+        if: github.event_name != 'push' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
         run: |
           git fetch --no-tags origin main:refs/remotes/origin/main || echo "note: main ref fetch 略過"
           git fetch --no-tags origin develop:refs/remotes/origin/develop || echo "note: develop ref fetch 略過(未採 develop 主線則屬正常)"
@@ -119,9 +122,12 @@ jobs:
         # 增量價值反而擋 branch push。詳見 LESSONS「self-PR citation 三處撞去識別化 denylist」。
         # 🔴 Codex round 1 P2:不能整個 push event 都 skip——mainline push(main/develop)
         # 到達時 PR 已 squash merge、self-PR 引用找得到 merge 證據、不會踩死鎖,而且
-        # README §一組「CI 常駐閘門」對外承諾 CI 驗 completion claims。只 skip feature
-        # branch 的 push(此時 PR 通常還沒 merge、self-PR 引用會找不到證據)。
-        if: github.event_name != 'push' || !startsWith(github.ref, 'refs/heads/feature/')
+        # README §一組「CI 常駐閘門」對外承諾 CI 驗 completion claims。只 skip 非
+        # delivery branch 的 push(此時 PR 通常還沒 merge、self-PR 引用會找不到證據)。
+        # 🔴 Codex round 2 P2:判定用 delivery branch 白名單而非「feature/*」硬碼
+        # prefix——docs/ADOPTION L82 明說導入者可加 fix/**、chore/** 等 trigger;
+        # 用 prefix 會漏它們、重演 self-PR 死鎖。
+        if: github.event_name != 'push' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
         env:
           MARKER_SELF_PR: ${{ github.event.pull_request.number }}
         run: npx tsx scripts/check-todos-markers.ts

@@ -86,7 +86,7 @@ Harness backsync 批 5 sprint(TODOS P3 三支清理,squashed as #30)在 Step 6 p
 **之後該怎麼避免**
 - **格式紀律**:所有 TODOS / progress / PR body 內的 **self-PR 引用一律用 `(#N)` 格式**——check-todos-markers 認、denylist 不擋(pattern 是 `PR #[0-9]`、不含裸 `(#`)。已用示範:progress entry `📅 2026-08-27 ②`
 - **test fixture 紀律**:寫 test fixture 需要 PR # 引用時,**不寫 `PR #<num>` 字面**——用 `(#<num>)` 或「已交付/完工」代替
-- **workflow yml 修法**(值得新開 P3):`.github/workflows/ci.yml` 的 push event 也讀 branch → 找對應 open PR → 傳 `MARKER_SELF_PR`。或者更省事——TODOS Markers Check step 加 `if: github.event_name == 'pull_request'` 只在 PR event 跑
+- **workflow yml 修法**(已在批 6 交付):`.github/workflows/ci.yml` 的 TODOS Markers Check step 用 `if: github.event_name != 'push' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'`——**只 skip 非 delivery branch 的 push**(feature/* fix/* chore/* 等),PR event 與 mainline push 都仍驗。⚠️ 早期版本曾用 `if: github.event_name == 'pull_request'`(完全 skip push event)——批 6 review round 1 抓到這會把 mainline push 的 marker 驗證也擋掉、違背 README §一組對外承諾;round 2 又抓到「用 `feature/*` prefix 判非 delivery」對加 `fix/**` 等 trigger 的導入者失效——所以最終答案是**delivery branch 白名單**,不是黑名單
 - **教訓階梯升級預備**:三處撞同一 denylist,再踩第 4 次就該機器化——把 self-PR # 檢測從 denylist regex 提升成**上下文感知的 checker**(check-no-source-terms.sh 縮減 pattern 集豁免加 `TODOS.md` / `progress.md`,或用 CODEOWNERS-style ownership 判定)
 
 
