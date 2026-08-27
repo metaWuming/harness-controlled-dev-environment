@@ -95,12 +95,17 @@ done
 #       換行(BSD 不換行、GNU 換 76,tr 兩邊都安全)。
 #    ⑵ `base64 -D` 是 BSD 選項、GNU 用 `-d`——**兩邊都認 `-d`**(BSD 支援 `-d` 或
 #       `--decode`),統一改 `-d`。
+# 🔴 Fresh review P2(這一輪抓到):$RESOLVED 內插進雙引號 heredoc 時,
+#    含 `'` 或 shell metachar 的 repo 路徑會破單引號配對 → 語法錯誤或 command
+#    injection(malicious 路徑 `/tmp/x';echo pwn;#` 這種)。改用 positional
+#    parameter 把路徑當**資料**傳進 subshell(用單引號固定 script body、
+#    透過 `-- "$RESOLVED"` 把路徑放進 $1),shell 不會對 `$1` 值內容做解析。
 pattern_output=$(
-  bash -c "
+  bash -c '
     set +u
-    . '$RESOLVED/code-pattern.sh' 2>/dev/null || exit 91
-    printf '__SSOT_SENTINEL_OK__\n%s\n%s\n' \"\$(printf '%s' \"\$NON_CODE_PATTERN\" | base64 | tr -d '\r\n')\" \"\$(printf '%s' \"\$PROTECTED_DOCS\" | base64 | tr -d '\r\n')\"
-  " 2>/dev/null
+    . "$1/code-pattern.sh" 2>/dev/null || exit 91
+    printf "__SSOT_SENTINEL_OK__\n%s\n%s\n" "$(printf "%s" "$NON_CODE_PATTERN" | base64 | tr -d "\r\n")" "$(printf "%s" "$PROTECTED_DOCS" | base64 | tr -d "\r\n")"
+  ' -- "$RESOLVED" 2>/dev/null
 )
 subshell_ec=$?
 if [ $subshell_ec -eq 91 ]; then

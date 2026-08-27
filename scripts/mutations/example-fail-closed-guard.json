@@ -3,6 +3,6 @@
     "file": "scripts/check-doc-size.ts",
     "find": "return { doc: b.doc, bytes: 0, maxBytes: b.maxBytes, over: true, missing: true, remedy: b.remedy };",
     "replace": "return { doc: b.doc, bytes: 0, maxBytes: b.maxBytes, over: false, missing: false, remedy: b.remedy };",
-    "label": "拿掉 check-doc-size 缺檔 fail-closed → tests/check-doc-size.test.ts「檔案不存在 → fail-closed」測試應該轉紅"
+    "label": "拿掉 check-doc-size 缺檔 fail-closed(missingResult helper 內部)→ tests/check-doc-size.test.ts 的『檔案不存在』與『directory』『symlink』三條負對照應該轉紅"
   }
 ]

@@ -83,6 +83,15 @@ export interface SizeResult {
   remedy: string;
 }
 
+// 🔴 Fresh review round 1 P1:抽 helper 讓「missing」return 只寫一次。
+//    R1 修改把 `existsSync + statSync` 拆成 `lstatSync(catch) + !isFile`
+//    兩個 return literal 完全一樣 → `scripts/mutations/example-fail-closed-guard.json`
+//    的 find 樣本命中 2 處、mutate 拒跑、新使用者第一次跑 example spec 就撞牆。
+//    抽成 helper 讓 mutation 樣本能精準 target 到「missing 狀態」而不是特定 literal。
+function missingResult(b: DocBudget): SizeResult {
+  return { doc: b.doc, bytes: 0, maxBytes: b.maxBytes, over: true, missing: true, remedy: b.remedy };
+}
+
 export function checkDocSizes(repoRoot: string, budgets: DocBudget[] = BUDGETS): SizeResult[] {
   return budgets.map((b) => {
     const abs = path.resolve(repoRoot, b.doc);
@@ -95,10 +104,10 @@ export function checkDocSizes(repoRoot: string, budgets: DocBudget[] = BUDGETS):
     try {
       st = fs.lstatSync(abs);
     } catch {
-      return { doc: b.doc, bytes: 0, maxBytes: b.maxBytes, over: true, missing: true, remedy: b.remedy };
+      return missingResult(b);
     }
     if (!st.isFile()) {
-      return { doc: b.doc, bytes: 0, maxBytes: b.maxBytes, over: true, missing: true, remedy: b.remedy };
+      return missingResult(b);
     }
     return { doc: b.doc, bytes: st.size, maxBytes: b.maxBytes, over: st.size > b.maxBytes, missing: false, remedy: b.remedy };
   });

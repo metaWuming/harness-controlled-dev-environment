@@ -8,7 +8,7 @@
 //    等於當場重演同一個錯。
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -130,5 +130,35 @@ describe("check-doc-size — 記錄檔肥大守門", () => {
       encoding: "utf-8",
     });
     expect(out).toContain("✅");
+  });
+
+  // 🔴 Fresh review P1(這一輪抓到):shipped example mutation spec 的 find 樣本
+  //    必須在 target 檔內**恰好 1 次**——不然 mutate 閘② 拒跑,新使用者第一次
+  //    跑 example spec 就撞牆。R1 修 P2 F1 把 fail-closed missing 拆成 catch +
+  //    !isFile 兩個 return literal,讓樣本從 1 處變 2 處、範例失效但沒人守到。
+  //    這條就是那個守門。
+  it("🔴 shipped example mutation spec 的 find 樣本必須在 target 檔內唯一出現", () => {
+    const repoRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      encoding: "utf-8",
+    }).trim();
+    const specPath = join(repoRoot, "scripts/mutations/example-fail-closed-guard.json");
+    const specs = JSON.parse(readFileSync(specPath, "utf-8")) as Array<{
+      file: string;
+      find: string;
+      replace: string;
+      all?: boolean;
+    }>;
+    for (const spec of specs) {
+      const targetPath = join(repoRoot, spec.file);
+      const source = readFileSync(targetPath, "utf-8");
+      const count = source.split(spec.find).length - 1;
+      // 若 all=true,允許多處;否則必須恰好 1 處
+      if (spec.all) {
+        expect(count, `find 樣本在 ${spec.file} 應出現 >= 1 次(all=true)`).toBeGreaterThanOrEqual(1);
+      } else {
+        expect(count, `find 樣本在 ${spec.file} 出現 ${count} 次(應該剛好 1 次,否則 mutate 拒跑)`).toBe(1);
+      }
+      expect(spec.find).not.toEqual(spec.replace);
+    }
   });
 });
