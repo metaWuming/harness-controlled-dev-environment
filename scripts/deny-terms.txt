@@ -1,4 +1,4 @@
-# 去識別化 denylist — check-no-source-terms.sh 讀本檔(每行一條 extended regex,# 開頭與空行忽略)
+# 去識別化 denylist — check-no-source-terms.ts 讀本檔(每行一條 extended regex,# 開頭與空行忽略)
 #
 # 本模板抽取自一個私有專案;以下條目是「來源專案的識別詞」,模板內容與 git 史
 # 出現任何一條即 CI 紅 — 防止未來從來源專案 copy 內容時把專案語意帶進模板。

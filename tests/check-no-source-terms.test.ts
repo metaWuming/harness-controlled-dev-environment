@@ -1,0 +1,403 @@
+// @vitest-environment node
+//
+// `scripts/check-no-source-terms.ts` 的守門測試——去識別化 denylist 加上下文
+// 感知例外(context-aware)。
+//
+// 🔴 為什麼一定要有端到端幾條:context-aware 判定是「兩層檢查合流」——
+//    grep 掃出 hit → 純函式判 self-PR 引用。純函式測完只能證半條路;整條路
+//    要靠拋棄式 repo:建 commit(讓 allowedPrs 有東西)、建 working tree 檔案
+//    (讓掃描找得到 hit),跑真腳本看 exit code。
+//
+// 🔴 為什麼把 checker 搬進拋棄式 repo:checker 內用 `git rev-parse --show-toplevel`
+//    找 repo root,又讀 `scripts/deny-terms.txt` 與 `git log --all` 取 allowedPrs。
+//    對真 repo 跑,輸入就是它自己,測試會互相污染;拋棄式 repo 讓「allowedPrs
+//    有指定號碼 / working tree 引用指定號碼」都由測試自己決定。
+//
+// 🔴 為什麼 fixture 字面用 concat 拆碎(round 1 Codex P1-2 fix):
+//    non-CA denylist term(如來源專案名)若直接以完整字面出現在本測試檔 source,
+//    (a) checker 掃 working tree / 全史 blob 會 self-block,(b) 就算加 FULL_EXCLUDES
+//    豁免,那些識別詞仍會永久留在 repo history 內——違反「去識別化」設計本意。
+//    拆成 `"acti" + "va"` 的兩個字面後,repo blob 只含拆碎字串、grep -E 不會
+//    match 到完整詞。同樣理由拆 `"PR " + "#999"` 這種 CA 反例引用。
+//    FULL_EXCLUDES 也把本檔加入(見 checker constants)作雙重防護。
+
+import { execFileSync } from "node:child_process";
+import {
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  stripCommentsAndBlanks,
+  parseAllowedPrs,
+  extractPrRefsFromLine,
+  isSelfPrReferenceLine,
+  partitionPatterns,
+} from "../scripts/check-no-source-terms";
+
+const REPO_ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+  encoding: "utf-8",
+}).trim();
+const SCRIPT = join(REPO_ROOT, "scripts/check-no-source-terms.ts");
+// 🔴 直接 tsx binary path 繞開 `npx` 冷啟(跟 mutate.test.ts 同理),
+//    避免 e2e 撞 60s test timeout。
+const TSX_BIN = join(REPO_ROOT, "node_modules/.bin/tsx");
+
+// 拆碎字面:避免 source 內出現完整識別詞或完整 CA hit(見檔頭第 3 段說明)
+const FRAG_ACTI = "acti" + "va";
+const FRAG_WUM = "wu" + "ming";
+const FRAG_OPX = "OPEN" + "TIX";
+const PREF_PR = "PR " + "#";
+const PREF_PULL = "pull" + "/";
+
+const created: string[] = [];
+afterEach(() => {
+  while (created.length) rmSync(created.pop()!, { recursive: true, force: true });
+});
+
+// ───────────────────────────────────────── 純函式(單元測試)
+
+describe("stripCommentsAndBlanks — pattern 檔行過濾", () => {
+  it("去掉井號註解與空行,保留其他 pattern", () => {
+    const text = "# comment\n\npattern1\npattern2\n# another\npattern3\n";
+    expect(stripCommentsAndBlanks(text)).toEqual([
+      "pattern1",
+      "pattern2",
+      "pattern3",
+    ]);
+  });
+
+  it("🔴 round 2 P2-4 fix:pattern 內容原樣保留,不 trim 前後空白", () => {
+    // shell 版與 commit-msg hook 都用 `grep -vE '^[[:space:]]*(#|$)'` 過濾,
+    // pattern 值原樣保留(例:某條 denylist pattern 含尾空白時,grep -E 要
+    // 求該空白;trim 掉就變成無空白版本 → CI 與 hook 對齊會漂)
+    const text = "  padded_pattern  \n";
+    expect(stripCommentsAndBlanks(text)).toEqual(["  padded_pattern  "]);
+  });
+
+  it("全註解 / 全空 → 空陣列", () => {
+    expect(stripCommentsAndBlanks("# a\n#b\n\n")).toEqual([]);
+    expect(stripCommentsAndBlanks("")).toEqual([]);
+  });
+});
+
+describe("parseAllowedPrs — 從 git log subject 抽 self-PR 號集合", () => {
+  it("squash 尾綴被抽到", () => {
+    const subjects = "功能: 加了東西 (#30)\n修復: fix (#31)\n";
+    const set = parseAllowedPrs(subjects);
+    expect(set.has(30)).toBe(true);
+    expect(set.has(31)).toBe(true);
+    expect(set.size).toBe(2);
+  });
+
+  it("Merge pull request 訊息開頭被抽到", () => {
+    const subjects = "Merge pull request #42 from user/branch\n";
+    const set = parseAllowedPrs(subjects);
+    expect(set.has(42)).toBe(true);
+  });
+
+  it("🔴 round 1 P2-3 fix:subject 中間的 (井號+N) 不被算入(不是 squash 尾綴)", () => {
+    // canonical squash marker 只出現在 subject 尾;subject 中間寫「(井號+7)」
+    // 通常是引用另一個 PR、不代表本 commit 就是 PR 7 的 merge
+    const subjects = "投資 (#7) 的工作 continued\nfix note about (#8) earlier\n";
+    const set = parseAllowedPrs(subjects);
+    expect(set.size).toBe(0);
+  });
+
+  it("🔴 body(如果誤傳)不被算入:parseAllowedPrs 只掃 subject 每一行", () => {
+    // 呼叫端(loadAllowedPrs)用 --format=%s 只給 subject。這個測試守著契約:
+    // 就算 subjectsOnly 內有多行,每行都只當一個 subject 判定(尾綴或開頭)
+    const looseInput = "some subject text\nnested (#777) mention\n";
+    expect(parseAllowedPrs(looseInput).size).toBe(0);
+  });
+
+  it("空 subject 序列 → 空 set", () => {
+    expect(parseAllowedPrs("").size).toBe(0);
+  });
+
+  it("混合 squash 與 merge subject,去重", () => {
+    const subjects =
+      "feat (#5)\nfix (#5)\nMerge pull request #5 from x\nother (#7)\n";
+    const set = parseAllowedPrs(subjects);
+    expect(Array.from(set).sort((a, b) => a - b)).toEqual([5, 7]);
+  });
+
+  it("極大數字(超過 1e9)被拒", () => {
+    expect(parseAllowedPrs("feat (#9999999999)\n").size).toBe(0);
+  });
+});
+
+describe("extractPrRefsFromLine — hit line 抽 PR 引用", () => {
+  it("正常 PR 引用被抽", () => {
+    expect(extractPrRefsFromLine("see " + PREF_PR + "30 for detail")).toEqual([30]);
+  });
+
+  it("pull/N 被抽", () => {
+    expect(
+      extractPrRefsFromLine("github.com/foo/bar/" + PREF_PULL + "42/files")
+    ).toEqual([42]);
+  });
+
+  it("同行多個引用都被抽", () => {
+    expect(
+      extractPrRefsFromLine(
+        "compare " + PREF_PR + "10 with " + PREF_PR + "20 and " + PREF_PULL + "30"
+      )
+    ).toEqual([10, 20, 30]);
+  });
+
+  it("純字面 pattern 值(左方括號 + 0-9 + 右方括號)→ 不 match,回空", () => {
+    // 這是 checker 本身的 CONTEXT_AWARE_PATTERNS 常數字面——「[」不是數字
+    expect(extractPrRefsFromLine('const p = "' + PREF_PR + '[0-9]"')).toEqual([]);
+  });
+
+  it("🔴 round 2 P1-2 fix:數字後直接接字母(30day)→ 抽出前綴數字 30", () => {
+    // 舊版有右 `\b` 邊界會回空,但 CA grep pattern `PR 井號+[0-9]` 只要求首個
+    // 數字、對 `30day` 仍會命中;extractor 若抽不出來,會讓合法+未知混合行被
+    // 誤放行(見下方 round 2 P1-2 反例)。修法:extractor 抽首個數字序列。
+    expect(extractPrRefsFromLine(PREF_PR + "30day is a typo")).toEqual([30]);
+  });
+
+  it("🔴 round 2 P1-2 反例:合法 + 未知混合(999day + 7)→ 抽 [999, 7]", () => {
+    // 若 extractor 只抽 7,而 7 ∈ allowedPrs → 誤放行整行(999 洩露漏抓)。
+    // 修法後兩個都被抽,判 self-PR 時 999 ∉ allowedPrs → 擋
+    expect(
+      extractPrRefsFromLine(PREF_PR + "999day plus " + PREF_PR + "7")
+    ).toEqual([999, 7]);
+  });
+
+  it("小寫 pr 井號 N 也 match(case-insensitive)", () => {
+    expect(extractPrRefsFromLine("see pr " + "#15 too")).toEqual([15]);
+  });
+});
+
+describe("isSelfPrReferenceLine — CA-scan hit 的 self-PR 判定", () => {
+  const allowed = new Set<number>([30, 31]);
+
+  it("引用已 merge 的 self-PR → 放行", () => {
+    expect(isSelfPrReferenceLine("see " + PREF_PR + "30", allowed)).toBe(true);
+    expect(
+      isSelfPrReferenceLine("compare " + PREF_PULL + "31 with others", allowed)
+    ).toBe(true);
+  });
+
+  it("引用未知 PR 號 → 擋", () => {
+    expect(isSelfPrReferenceLine(PREF_PR + "999999", allowed)).toBe(false);
+  });
+
+  it("行內混合 self + unknown PR → 擋(全數必須 ∈ allowedPrs)", () => {
+    expect(
+      isSelfPrReferenceLine(PREF_PR + "30 and " + PREF_PR + "999", allowed)
+    ).toBe(false);
+  });
+
+  it("🔴 round 2 P1-2 反例整合:同行未知號 typo + 合法 self-PR 號 → 擋", () => {
+    // extractor 修法後兩個號都抽出 → refs=[999, 30] → 999 ∉ allowed → 擋
+    // 修法前 extractor `\b` 會漏 999 → refs=[30] → every ∈ {30, 31} → 假放行
+    expect(
+      isSelfPrReferenceLine(
+        PREF_PR + "999day plus " + PREF_PR + "30",
+        allowed
+      )
+    ).toBe(false);
+  });
+
+  it("抽不到 PR 號(fail-safe)→ 擋", () => {
+    // CA-scan 的 hit 理論上一定有數字;若構造一個沒 digit 的邊界輸入,
+    // isSelfPrReferenceLine 依 fail-safe 契約回 false
+    expect(isSelfPrReferenceLine(PREF_PR + "X", allowed)).toBe(false);
+  });
+});
+
+describe("partitionPatterns — 把 denylist 切成 CA / non-CA", () => {
+  it("兩條 CA 條目挑出,其餘進 non-CA", () => {
+    const patterns = [FRAG_ACTI, FRAG_WUM, "PR " + "#[0-9]", PREF_PULL + "[0-9]", FRAG_OPX];
+    const { nonCa, ca } = partitionPatterns(patterns);
+    expect(ca).toEqual(["PR " + "#[0-9]", PREF_PULL + "[0-9]"]);
+    expect(nonCa).toEqual([FRAG_ACTI, FRAG_WUM, FRAG_OPX]);
+  });
+
+  it("全 non-CA:CA 為空,nonCa 全收", () => {
+    const patterns = [FRAG_ACTI, FRAG_OPX];
+    const { nonCa, ca } = partitionPatterns(patterns);
+    expect(ca).toEqual([]);
+    expect(nonCa).toEqual(patterns);
+  });
+});
+
+// ───────────────────────────────────────── 端到端(拋棄式 git repo)
+
+/**
+ * 建拋棄式 repo,含最小 `scripts/deny-terms.txt` 與若干 commits。
+ * 回傳 repo root(絕對路徑)。
+ */
+function makeRepo(opts: {
+  deny: string[];
+  commits: Array<{ message: string; files?: Record<string, string> }>;
+  workingTree?: Record<string, string>;
+  /** round 2 P2-5 新加:寫進工作樹但不 commit(給 tracked-but-modified 情境用) */
+  workingTreeUnstaged?: Record<string, string>;
+}): string {
+  const wrap = mkdtempSync(join(tmpdir(), "cnst-e2e-"));
+  created.push(wrap);
+  const dir = join(wrap, "repo");
+  mkdirSync(join(dir, "scripts"), { recursive: true });
+  const git = (...a: string[]) =>
+    execFileSync("git", a, { cwd: dir, stdio: "ignore" });
+  // round 2 P1-1 相關:確保 default branch = main,讓 buildDeliveryRefs 的
+  // last-resort fallback(本地 main / develop)找得到 ref。避免因 host git
+  // config init.defaultBranch = master 導致 allowedPrs 空 → 假紅
+  git("init", "-q", "-b", "main");
+  git("config", "user.email", "t@example.com");
+  git("config", "user.name", "t");
+
+  writeFileSync(
+    join(dir, "scripts/deny-terms.txt"),
+    opts.deny.join("\n") + "\n",
+    "utf-8"
+  );
+  git("add", "-A");
+  git("commit", "-qm", "init: deny-terms.txt");
+
+  for (const c of opts.commits) {
+    if (c.files) {
+      for (const [rel, body] of Object.entries(c.files)) {
+        const abs = join(dir, rel);
+        mkdirSync(dirname(abs), { recursive: true });
+        writeFileSync(abs, body, "utf-8");
+      }
+      git("add", "-A");
+      git("commit", "-qm", c.message);
+    } else {
+      git("commit", "--allow-empty", "-qm", c.message);
+    }
+  }
+  if (opts.workingTree) {
+    for (const [rel, body] of Object.entries(opts.workingTree)) {
+      const abs = join(dir, rel);
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, body, "utf-8");
+    }
+    git("add", "-A");
+    git("commit", "-qm", "add working tree fixtures");
+  }
+  // round 2 P2-5 修法:未 commit 的 tracked file 內容,只出現在 working tree,
+  // history 內沒有這條 hit → working-tree scan 是唯一 leg 能抓到
+  if (opts.workingTreeUnstaged) {
+    for (const [rel, body] of Object.entries(opts.workingTreeUnstaged)) {
+      const abs = join(dir, rel);
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, body, "utf-8");
+    }
+    // 加進 index 但不 commit → tracked-but-modified 效果
+    git("add", "-A");
+  }
+  return dir;
+}
+
+function runChecker(cwd: string): { code: number; out: string } {
+  try {
+    const out = execFileSync(TSX_BIN, [SCRIPT], {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return { code: 0, out };
+  } catch (e) {
+    const err = e as { status?: number; stdout?: string; stderr?: string };
+    return { code: err.status ?? -1, out: `${err.stdout ?? ""}${err.stderr ?? ""}` };
+  }
+}
+
+describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
+  it("🔴 正對照:working tree 引用已 merge self-PR → exit 0 且印「放行」", () => {
+    const dir = makeRepo({
+      deny: ["PR " + "#[0-9]", PREF_PULL + "[0-9]"],
+      commits: [
+        { message: "feat: 加了東西 (#7)", files: { "src/foo.md": "hello\n" } },
+      ],
+      workingTree: {
+        "docs/note.md": "see " + PREF_PR + "7 for context\n",
+      },
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("self-PR 引用放行");
+    expect(out).toContain("✅ 去識別化掃描全數通過");
+    expect(code).toBe(0);
+  });
+
+  it("🔴 反對照:引用未知 PR 號 → exit 1", () => {
+    const dir = makeRepo({
+      deny: ["PR " + "#[0-9]", PREF_PULL + "[0-9]"],
+      commits: [
+        { message: "feat: 加了東西 (#7)", files: { "src/foo.md": "hello\n" } },
+      ],
+      workingTree: {
+        "docs/note.md": "see " + PREF_PR + "999 which is not merged\n",
+      },
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("含未知 PR/pull 引用");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 non-CA denylist term(來源專案識別詞)一律嚴格擋 → exit 1", () => {
+    const dir = makeRepo({
+      deny: ["forbidden_term", "PR " + "#[0-9]"],
+      commits: [
+        { message: "feat: init (#1)", files: { "src/foo.md": "hello\n" } },
+      ],
+      workingTree: {
+        "docs/note.md": "this file has forbidden_term inside\n",
+      },
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 round 1 P2-3 fix e2e:body 內 (井號+N) 引用不會被算入 allowedPrs", () => {
+    // 建一個 commit 訊息 subject 沒 canonical squash marker、但 body 內寫
+    // 括號尾綴 PR 號放在 commit body 而不是 subject;working tree 引用同一 PR
+    // 號。若 loadAllowedPrs 誤收 body,該號會被放行 → gate 假綠。修法後只收
+    // subject,body 內的號不 ∈ allowedPrs → 擋
+    const dir = makeRepo({
+      deny: ["PR " + "#[0-9]"],
+      commits: [
+        {
+          message:
+            "feat: some work\n\ninvestigated issue (#777) in body\nnot a squash marker",
+          files: { "src/foo.md": "hello\n" },
+        },
+      ],
+      workingTree: {
+        "docs/note.md": "see " + PREF_PR + "777 which is only in body\n",
+      },
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("含未知 PR/pull 引用");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 round 2 P2-5 fix:working tree 未 commit 的內容(non-CA hit)→ working-tree scan 抓", () => {
+    // workingTreeUnstaged 內容只出現在工作樹、history 沒有這條 hit;
+    // 若 working-tree scan 失效,history scan 不會看到這行 → 只有 working-tree
+    // scan 能揭發。用 non-CA denylist term 驗證(context-aware 無關)
+    const dir = makeRepo({
+      deny: ["forbidden_wip_term"],
+      commits: [
+        { message: "feat: init (#1)", files: { "src/foo.md": "hello\n" } },
+      ],
+      workingTreeUnstaged: {
+        "docs/wip.md": "this contains forbidden_wip_term inline\n",
+      },
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+});

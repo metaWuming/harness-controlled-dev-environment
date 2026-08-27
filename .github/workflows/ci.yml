@@ -153,7 +153,7 @@ jobs:
       - name: Source-term scan (de-identification gate)
         # 去識別化常駐 gate:本模板抽取自私有專案,掃「來源專案識別詞」殘留
         # (working tree + git 全史)。導入者不需要時可連同 scripts/deny-terms.txt 移除。
-        run: bash scripts/check-no-source-terms.sh
+        run: npm run check:no-source-terms
 
       - name: Test (vitest)
         run: npx vitest run
