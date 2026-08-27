@@ -144,23 +144,27 @@ export function parseAllowedPrs(subjectsOnly: string): Set<number> {
 /**
  * 從一行 hit 內容抽出所有引用的 PR 號(限 context-aware pattern 對應的兩種)。
  *
- * ⚠️ 沒有右 `\b` 邊界(round 2 P1-2 修法):
- *    CA grep 用寬鬆 pattern(deny-terms.txt 的兩條 CA 條目只要求「PR 井號 一位
- *    數字」開頭)。若 extractor 加右 `\b` 邊界,「未知 PR 號 typo(如尾綴接
- *    字母)+ 合法 self-PR 號」同行時,extractor 只抽合法號 → 若該號 ∈ allowedPrs
- *    整行被誤放行、typo 洩露漏抓。修法:extractor 抽首個數字序列(不管尾綴),
- *    讓「grep 命中」與「extractor 抽出」對齊。
+ * ⚠️ extractor pattern 精確對齊 CA grep pattern(round 2 P1-2 + round 4 P2-2 修法):
+ *    - 沒有右 `\b` 邊界(round 2):CA grep 只要求 `PR #<單一數字>` 開頭,若
+ *      extractor 加右 `\b`,「未知 PR 號 typo(如尾綴接字母)+ 合法 self-PR 號」
+ *      同行時只抽合法號 → 誤放行、typo 洩露漏抓
+ *    - 沒有左 `\b` 邊界(round 4):同理,grep pattern 沒左邊界,若 extractor 加
+ *      `\bPR`,同行含「任意前綴 + 未知 PR 號 + 合法 self-PR 號」時,前綴讓左
+ *      邊界不成立、extractor 只抽合法號 → 未知號洩露漏抓
+ *    - 用 literal space 不用 `\s+`(round 4):grep pattern 用字面空格,若 extractor
+ *      用 `\s+` 會抽出 grep 根本沒命中的 tab / 多空白形式(過度抽取)
+ *    修法:extractor pattern 逐字元對齊 CA denylist ERE。
  *
  * 邊界:
  *   PR 井號 + 30 後接字母 → 抽出 30(判 self-PR:若 30 ∈ allowedPrs 則放行)
- *   同行未知號 typo + 合法 self-PR 號(如 allowed={7})→ 兩個號都抽出,
- *     未知號 ∉ allowed → 擋
+ *   任意前綴 + PR 井號 + 未知 + 合法混合 → 兩個都抽出,未知 ∉ allowed → 擋
+ *   tab / 多空白 分隔 → 不 match(對齊 grep)
  *   純字面「PR 井號 中括號 0-9 中括號」(deny-terms.txt pattern 表達式本身)
  *     → 不 match,回空
  */
 export function extractPrRefsFromLine(line: string): number[] {
   const refs: number[] = [];
-  const patterns = [/\bPR\s+#(\d+)/gi, /\bpull\/(\d+)/gi];
+  const patterns = [/PR #(\d+)/gi, /pull\/(\d+)/gi];
   for (const re of patterns) {
     let m: RegExpExecArray | null;
     while ((m = re.exec(line))) {

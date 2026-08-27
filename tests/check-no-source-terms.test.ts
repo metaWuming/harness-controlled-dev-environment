@@ -170,6 +170,20 @@ describe("extractPrRefsFromLine — hit line 抽 PR 引用", () => {
     ).toEqual([999, 7]);
   });
 
+  it("🔴 round 4 P2-2 反例:左邊界前綴(xPR #999 plus PR #7)→ 抽 [999, 7]", () => {
+    // 舊版有左 `\b`,「xPR #999」不 match(因為 `x` 前綴)→ 只抽 7 → 未知 999
+    // 漏抓。extractor 精確對齊 CA grep pattern(無左右邊界)後兩個都抽
+    expect(
+      extractPrRefsFromLine("x" + PREF_PR + "999 plus " + PREF_PR + "7")
+    ).toEqual([999, 7]);
+  });
+
+  it("🔴 round 4 P2-2 對齊:tab 分隔不 match(grep pattern 用字面空格)", () => {
+    // CA grep pattern deny-terms.txt 用字面空格,tab / 多空白不 match;
+    // extractor 用 `\s+` 會抽 grep 沒命中的 → 過度抽取。修法後用字面空格對齊
+    expect(extractPrRefsFromLine("PR\t#7 with tab")).toEqual([]);
+  });
+
   it("小寫 pr 井號 N 也 match(case-insensitive)", () => {
     expect(extractPrRefsFromLine("see pr " + "#15 too")).toEqual([15]);
   });
