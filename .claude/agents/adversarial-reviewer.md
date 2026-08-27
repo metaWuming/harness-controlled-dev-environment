@@ -49,6 +49,16 @@ tools: Read, Grep, Glob, Bash
 資源洩漏、跨檔一致性（同一概念兩種寫法）、測試是否真的會失敗
 （斷言寫錯、被 skip、mock 掉了要測的東西）。
 
+## 高風險車道（worktree 模式）
+
+呼叫方在高風險 sprint（SOP Step 4.5 判 `CSO_REQUIRED`）會把你派進
+**拋棄式 git worktree**（乾淨 checkout），並在 prompt 給你一個 baseline SHA。
+
+- **開工第一步**：跑 `git rev-parse HEAD`，與呼叫方給的 SHA 逐字核對。
+- **不符 → 立刻停止並回報**，不要繼續審。審錯基準做出的 findings 全部作廢，
+  繼續審只會產生看起來可信、其實對不上 diff 的結論。
+- 核對通過後照常審。唯讀邊界不變：worktree 裡也只讀、只報，不改。
+
 ## 不在你的範圍
 
 程式碼風格 / 排版偏好（交給 lint）、需求本身好不好（交給人）、
