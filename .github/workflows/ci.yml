@@ -11,10 +11,15 @@ name: CI
 # 任何一步失敗就擋 PR。建議設 GitHub branch protection:主線分支要求 CI pass 才能 merge。
 
 on:
+  # 🔴 Codex batch 6 round 4 P2:branch filter 需涵蓋所有常見 default_branch 命名。
+  # workflow 底下的 `if: … default_branch …` 若 event filter 在更上層就把該 branch 過濾掉、
+  # 整個 workflow 都不會觸發、動態條件形同虛設。列常見 delivery branch names
+  # (main / master / trunk / develop);導入者若用其他命名(release、prod、production 等),
+  # 依 docs/ADOPTION 也需同步更新這裡與 workflow 內 `if:` 條件。
   push:
-    branches: [main, develop, 'feature/**']
+    branches: [main, master, trunk, develop, 'feature/**']
   pull_request:
-    branches: [main, develop]
+    branches: [main, master, trunk, develop]
 
 # 同一 PR / branch 的舊 run 自動取消,省 CI 分鐘
 concurrency:
@@ -101,15 +106,48 @@ jobs:
         # check-todos-markers 用主線分支的 git 史判 PR merge 證據;pull_request event 下
         # checkout 是 detached merge ref,顯式 fetch 建 remote-tracking ref(best-effort:
         # 分支不存在時略過,腳本會退回 HEAD)
+        # 🔴 Delivery-branch 白名單:PR event 一律跑;push event 只在**進 delivery branch
+        # 之後**跑(此時 PR 已 squash merge、self-PR 引用找得到 merge 證據、不會踩死鎖)。
+        # 非 delivery branch 的 push(feature/* fix/* chore/* release/* …)一律 skip——
+        # 那時 PR 通常還沒 merge、self-PR 引用會找不到證據。
+        # `default_branch` 動態抓,自動涵蓋 main / master / trunk 等 repo 主線命名;
+        # 對 GitFlow 專案的 `develop` 明列補齊。
+        # 🔴 導入者注意:若你的 delivery branch 不是 default_branch 或 develop(例:
+        # `release/**`),同步把它加進下面的條件,否則 mainline push 的 marker 治理
+        # 會被靜默跳過(Codex batch 6 round 3 P2)。
+        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/develop'
+        # 🔴 Codex batch 6 round 6 P2 + Step 5 #6/#8:改用 default_branch 動態抓 +
+        # `git remote set-head` 讓 origin/HEAD 指向 default,check-todos-markers 走
+        # origin/HEAD 唯一權威來源、不再無條件 resolve master/trunk 造成 legacy branch
+        # 假通過。額外 delivery branch 導入者透過 env `DELIVERY_REFS` 加(見 script)。
+        # env 傳 default_branch(不用 shell string interpolation),避免罕見的
+        # branch 名含 shell metacharacter 情境;若 set-head 失敗仍有 env 提供 fallback。
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          git fetch --no-tags origin main:refs/remotes/origin/main || echo "note: main ref fetch 略過"
+          git fetch --no-tags origin "$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH" || echo "note: $DEFAULT_BRANCH ref fetch 略過"
+          git remote set-head origin -a || echo "note: origin/HEAD set-head 略過"
           git fetch --no-tags origin develop:refs/remotes/origin/develop || echo "note: develop ref fetch 略過(未採 develop 主線則屬正常)"
 
       - name: TODOS Markers Check
         # marker 治理:TODOS.md 完成宣稱(✅/完工)必須引用有 merge 證據的 PR 號,
-        # 防打錯號 / 投機性標 ✅。MARKER_SELF_PR 解「同 PR 翻 marker 引用本 PR#」死鎖。
+        # 防打錯號 / 投機性標 ✅。MARKER_SELF_PR 解「同 PR 翻 marker 引用本 PR」死鎖。
+        # 🔴 Delivery-branch 白名單:PR event 一律跑;push event 只在**進 delivery branch
+        # 之後**跑(此時 PR 已 squash merge、self-PR 引用找得到 merge 證據、不會踩死鎖)。
+        # 非 delivery branch 的 push(feature/* fix/* chore/* release/* …)一律 skip——
+        # 那時 PR 通常還沒 merge、self-PR 引用會找不到證據。
+        # `default_branch` 動態抓,自動涵蓋 main / master / trunk 等 repo 主線命名;
+        # 對 GitFlow 專案的 `develop` 明列補齊。
+        # 🔴 導入者注意:若你的 delivery branch 不是 default_branch 或 develop(例:
+        # `release/**`),同步把它加進下面的條件,否則 mainline push 的 marker 治理
+        # 會被靜默跳過(Codex batch 6 round 3 P2)。
+        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/develop'
         env:
           MARKER_SELF_PR: ${{ github.event.pull_request.number }}
+          # 🔴 Step 5 #6:belt-and-suspenders——若 `git remote set-head` 因網路 hiccup
+          # 失敗、origin/HEAD 讀不到,script 靠這條 env 顯式指定 default_branch remote-tracking,
+          # 避免整支 CI 只因 set-head 失敗而 fail-hard(fetch step 已把 default_branch fetch 好)
+          DELIVERY_REFS: origin/${{ github.event.repository.default_branch }}
         run: npx tsx scripts/check-todos-markers.ts
 
       - name: Source-term scan (de-identification gate)

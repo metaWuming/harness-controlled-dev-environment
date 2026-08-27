@@ -75,6 +75,19 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-08-27 ③ — **Harness backsync 批 6:LESSONS 記 self-PR gate 踩坑 + CI workflow delivery-branch 契約**
+
+> **緣起**:批 5(#30)Step 6 連續踩 3 個 self-PR # citation 撞去識別化 denylist 變體(fixture / TODOS 補號 / CI push event 缺 `MARKER_SELF_PR`),Owner 拍板打包收。
+> **改動**:3 檔——LESSONS 記三處變體;`.github/workflows/ci.yml`(delivery-branch 白名單:PR event 一律跑 / push 只在 default_branch 或 develop;event filter 涵蓋 main/master/trunk/develop;fetch 用 `default_branch` 動態 + `set-head` + `DELIVERY_REFS` env belt-and-suspenders);`scripts/check-todos-markers.ts`(refs 四條合流:①origin/HEAD ②env DELIVERY_REFS ③fallback origin/develop ④last-resort 本地;`execFileSync + SAFE_REF_RE` 擋 shell/option injection)。
+> **審查**:Codex 7 rounds(round 1-6 各一條 P2 行為級——delivery-branch 定義的完整一致性契約被逐輪拆:event filter 上層過濾 / default_branch 硬碼 / DELIVERY_REF_CANDIDATES 沒同步 / 擴充候選反成 legacy 假通過;round 7 收乾)。安全關:`check:cso` fail-closed(表空)+ 人工判定「強化既有守門面」不進高風險車道。視覺關未觸發。Step 5:0 CRITICAL / 8 INFORMATIONAL,修 7(docstring drift、origin/develop 換位重演 = round 6 flaw、shell injection 防護、warning 例子改直覺、workflow env belt-and-suspenders),skip 1(YAML 邊角)。cross-model agreement ≈ 0(Codex 全在 delivery-branch 一致性軸、Step 5 首次抓 shell injection + origin/develop 換位重演 + doc drift × 3)。
+> **驗證**:typecheck / lint 綠;15 檔 388 tests;doc-refs 140 引用 0 失效;check:todos 綠(#30 驗 merge);check:no-source-terms 三段綠。
+> **⭐ 教訓**:①「加一個 if condition」小改動、實際展開成 delivery-branch 完整一致性契約——round 1-6 拆新面向,教訓:改跨系統契約前先盤「三處/四處都涵蓋了嗎」。②cross-model agreement ≠ correctness meta 教訓再次驗證(Codex 與 Step 5 看的軸完全不重疊)。
+> **⏭️ 下一棒候選**:A. `buildMergedPrSet` 補分岐測試(現只覆蓋純函式 checkTodosMarkers);B. workflow yml 邏輯端 e2e test harness;C. `check-no-source-terms.sh` denylist `PR #[0-9]` 升成上下文感知 checker(第 4 次同類誤觸就該機器化)。
+> **check:claims 逐條處置**:命中 0 處(本 sprint 全 CI/script 邏輯層,新增行未觸發量詞)。
+> 📊 成本:CC ~2h / 跨模型 review 7 rounds + Step5 1 / P1 0 個 / P2 8 個 / Step5 獨立發現 8 個
+> 📐 量測:主迴圈 claude-opus-4-7 預設 effort;Codex r1-6 non-interactive review 預設 / baseline SHA:`7ed0d7d` / 來源分佈:初始 patch 內既有 2・漏改外部 consumer 3(三處同步)・baseline 後新增引入 3(round 5 擴充成 round 6 flaw / round 4 動態抓暴露 event filter / Step 5 origin/develop 挪位)
+> **7 步 checklist 狀態**:1-5 ✅ / 4.5 ✅(強化既有守門面)/ 4.6 ✅(未觸發)/ Step 6-7 待執行
+
 📅 2026-08-27 ② — **Harness backsync 批 5:TODOS P3 清理(README 風險車道同步 + mutate HEAD 綁定 + bookkeeping allowlist 機器化)**
 
 > **緣起**:上一 sprint(#29 風險車道升級)收尾時 defer 進 TODOS P3 段的 3 支候選一批做——都是 #29 直接 follow-up、範圍小(合計 ~2.5h)、審查一次比審三次省。起手 git 核實:main 乾淨、`.gbrain-source` untracked 不動、#29 entry 標的三支候選 = TODOS 現存的 3 條 P3、hint 對得上 truth、無矛盾。

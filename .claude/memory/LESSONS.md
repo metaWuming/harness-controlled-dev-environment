@@ -68,6 +68,28 @@ type: note
 
 <!-- 教訓從這裡開始,新的在最上面 -->
 
+## [2026-08-27] self-PR # citation 三處撞去識別化 denylist:test fixture / TODOS 補號 / CI push event
+
+**情境**
+Harness backsync 批 5 sprint(TODOS P3 三支清理,squashed as #30)在 Step 6 push + CI 時,連續踩到**同一類問題**的三個變體——都是「self-PR # 引用」被去識別化 gate 誤判為「來源專案 PR 引用洩漏」。
+
+**錯誤/誤判**
+- (1)**test fixture**:`tests/check-bookkeeping-commit.test.ts` 內寫 fixture 字串直接用「PR 井號+虛構編號」語法(此處刻意用中性描述避免本檔又踩同樣的 gate)→ local commit 綠、但 push 前跑 `check:no-source-terms` 掃 git 全史 blob 命中「PR 井號+數字」denylist、扣紅。fix:rebase 那個 commit + 改 fixture 為「(已交付)」避開 pattern
+- (2)**TODOS 補 self-PR**:Step 6 開 PR 拿到本 PR 號後補進 TODOS.md 三個 placeholder 用「PR 井號+號」格式 → commit-msg hook 掃訊息也擋、掃 working tree 也擋。fix:改用「(#N)」格式(check-todos-markers.ts 明說也支援這格式,`#` 開頭+數字不撞 denylist)
+- (3)**CI push event 沒傳 MARKER_SELF_PR**:PR CI 兩個 run,pull_request event pass、push event fail。SOP L410 說 `MARKER_SELF_PR` 允許 CI 驗自我引用,但 workflow yml push event 沒對齊 SOP、缺這個 env
+
+**為什麼會發生**
+- deny list `scripts/deny-terms.txt` 用**純 regex** 擋 `PR #[0-9]`——這條原本是為了防「來源專案的 PR 引用文字」洩漏,但 regex 沒辦法區分「來源專案 PR」vs「本 repo self-PR」
+- 現有豁免只覆蓋 `check-todos-markers.{ts,test.ts}`(縮減 pattern 集豁免),SOP 也只在 CI env `MARKER_SELF_PR` 針對 CI 一處補位——**沒覆蓋:test fixture 用示例 PR 號、TODOS 補 self-PR 引用、CI push event 補位漏**
+- 這三處都在**第一次真的走到 Step 6 補 citation** 的 sprint 才被連續踩到——#29 sprint 也沒補 PR 號到 TODOS,所以是首次接觸
+
+**之後該怎麼避免**
+- **格式紀律**:所有 TODOS / progress / PR body 內的 **self-PR 引用一律用 `(#N)` 格式**——check-todos-markers 認、denylist 不擋(pattern 是 `PR #[0-9]`、不含裸 `(#`)。已用示範:progress entry `📅 2026-08-27 ②`
+- **test fixture 紀律**:寫 test fixture 需要 PR # 引用時,**不寫 `PR #<num>` 字面**——用 `(#<num>)` 或「已交付/完工」代替
+- **workflow yml 修法**(已在批 6 交付):`.github/workflows/ci.yml` 的 TODOS Markers Check step 用 `if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/develop'`——**只 skip 非 delivery branch 的 push**(feature/* fix/* chore/* 等),PR event 與 default_branch(main/master/…)/develop push 都仍驗。⚠️ 三輪 review 收斂:round 1 拆掉「完全 skip push event」的黑名單(mainline gate 缺口)、round 2 拆掉「以 feature/* prefix 判非 delivery」的硬碼(對 fix/** chore/** 導入者失效)、round 3 拆掉「main/develop 硬碼名稱」(改 default_branch 動態抓、涵蓋 main/master/trunk)——最終規則是 **delivery branch 白名單、default_branch 動態抓 + develop 補 GitFlow**;導入者若加**固定名的**額外 delivery(如 `release`),**三處**都要同步——(1)`on.push.branches` / `on.pull_request.branches` event filter(在更上層擋觸發)+(2)workflow 內 `if:` 條件(default_branch 動態抓自動涵蓋主線 rename,額外 delivery branch 要手動加)+(3)給 marker check 傳 env `DELIVERY_REFS=<refs>`(逗號分隔,如 `origin/release`——remote-tracking ref 需先 fetch 進 local)——**不是**在 script 內硬碼慣例名(round 6 抓到:legacy master/trunk 分支存在時,無條件 resolve 那些慣例名會讓非 delivery branch 的 `(#N)` 假通過)。⚠️ **glob 不支援**——`release/**` 這種 versioned release branch 要自己延伸 script(rev-parse 不展開 glob;workflow `if:` 也只做字面比較)。script 本身用**四條來源**依序合流:①`origin/HEAD` 動態抓當前 default → ②env `DELIVERY_REFS` → ③fallback origin/develop → ④last-resort 本地 main/develop(仍有 round 6-like 風險但命中率極低,tolerate 作離線 fallback)。三處錯任一 → gate 假紅或 silent skip
+- **教訓階梯升級預備**:三處撞同一 denylist,再踩第 4 次就該機器化——把 self-PR # 檢測從 denylist regex 提升成**上下文感知的 checker**(check-no-source-terms.sh 縮減 pattern 集豁免加 `TODOS.md` / `progress.md`,或用 CODEOWNERS-style ownership 判定)
+
+
 ## [2026-08-27] 外部 review 工具的「額度重置時間」訊息不可信,降級路徑要當常態預案
 
 **情境**

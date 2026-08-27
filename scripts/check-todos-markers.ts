@@ -50,7 +50,7 @@
 // Usage:  npx tsx scripts/check-todos-markers.ts
 // CI:     .github/workflows/ci.yml 加 step「TODOS Markers Check」
 
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -300,55 +300,104 @@ export function checkTodosMarkers(
   return { violations, advisories, verifiedPrs, totalCompletionPrs };
 }
 
-/** 交付分支候選(依序試 resolve;預設分支非 main/develop 的 repo 請把你的交付分支加進來) */
-const DELIVERY_REF_CANDIDATES = ['origin/main', 'origin/develop', 'main', 'develop'];
+/** 交付分支候選來源四條(依序試 resolve,取所有能 resolve 的組成 trusted set):
+ *   ①`origin/HEAD` 偵測到的當前 default branch(涵蓋 main / master / trunk 等 rename)
+ *   ②env `DELIVERY_REFS`(逗號分隔的額外 delivery refs;**只支援固定 ref 名**、
+ *      **不支援 glob**——`release/**` 這種要自己延伸 script)
+ *   ③fallback:①②都空 → `origin/develop`(GitFlow 慣例;放這裡而不是無條件並列,
+ *      避免 abandoned/legacy `origin/develop` 分支上的 `(#N)` subject 假通過——
+ *      Step 5 review #2 抓到的 round 6 flaw 換位置重演)
+ *   ④last-resort dev-mode fallback:①②③都空 → 本地 `main` / `develop`
+ *      (僅開發環境未 clone 時有效;CI 有 origin/HEAD 走不到這;⚠️ 仍有 round 6-like
+ *      風險:本地實驗分支同名時會被信任、無法區分)
+ *
+ * 🔴 Codex batch 6 round 6 P2:不再無條件並列 `master` / `trunk` / 本地慣例名。
+ * 🔴 Step 5 sanity check #2:origin/develop 挪到 fallback,不與 origin/HEAD 並列。
+ *
+ * env 值嚴格 whitelist:只認 `[A-Za-z0-9_./-]`,擋 shell metacharacter/option injection
+ * (`--all` 會繞掉 hardening、`;pwd` 走 shell 拆兩條)。 */
+const DEFAULT_DELIVERY_ENV = 'DELIVERY_REFS';
+const SAFE_REF_RE = /^[A-Za-z0-9_./-]+$/;
 
 /**
  * git IO:從「交付分支」commit subject 建「有 merge 證據的 PR 號集合」。
  * 只認交付分支的 ancestry —— **不用 `git log --all`**(會掃未合併 feature 分支的 `(#N)`),
  * **也絕不退回 HEAD**(feature 分支 HEAD 含未合併 commit,其 `(#N)` 會假「已交付」——
  * Codex review:HEAD fallback 會讓未合併 commit 充當 merge 證據,gate 假綠)。
- * 候選全不 resolve 時再試 origin/HEAD 偵測預設分支;仍無 → 回空集合(有宣稱時 fail-closed,
- * 警告訊息指引使用者設定 DELIVERY_REF_CANDIDATES)。
+ * 候選來源與 fallback 順序見上面 `DEFAULT_DELIVERY_ENV` docstring;refs 全空 → 回空集合
+ * (有宣稱時 fail-closed,警告訊息指引使用者設定 env `DELIVERY_REFS` 或確認 origin/HEAD)。
  */
 function buildMergedPrSet(): Set<number> {
   const merged = new Set<number>();
+  // ref 存不存在:改用 execFileSync + arg array,擋 shell injection(env `DELIVERY_REFS`
+  // 可能來自不受信任的來源;字串 interpolation 會讓 `main;pwd` 走 shell 拆兩條)
   const resolves = (r: string) => {
+    if (!SAFE_REF_RE.test(r)) return false; // whitelist,擋 `--all` / `;` / space
     try {
-      execSync(`git rev-parse --verify --quiet ${r}`, { cwd: REPO_ROOT, stdio: 'pipe' });
+      execFileSync('git', ['rev-parse', '--verify', '--quiet', r], {
+        cwd: REPO_ROOT,
+        stdio: 'pipe',
+      });
       return true;
     } catch {
       return false;
     }
   };
-  const deliveryRefs = DELIVERY_REF_CANDIDATES.filter(resolves);
-  if (deliveryRefs.length === 0) {
-    // 候選名單全不在 → 試 origin/HEAD 偵測遠端預設分支(涵蓋 master 等非慣例命名)
-    try {
-      const def = execSync('git symbolic-ref --quiet refs/remotes/origin/HEAD', {
-        cwd: REPO_ROOT,
-        encoding: 'utf-8',
-        stdio: 'pipe',
-      })
-        .trim()
-        .replace('refs/remotes/', '');
-      if (def && resolves(def)) deliveryRefs.push(def);
-    } catch {
-      /* origin/HEAD 未設(常見於非 clone 的 repo)→ 走下方空集合路徑 */
-    }
+  const refs: string[] = [];
+  const seen = new Set<string>();
+  const push = (r: string) => {
+    if (!r || seen.has(r)) return;
+    if (!resolves(r)) return;
+    seen.add(r);
+    refs.push(r);
+  };
+
+  // ①origin/HEAD 偵測 default_branch(涵蓋 main / master / trunk 等 repo 主線 rename)
+  try {
+    const def = execFileSync('git', ['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf-8',
+      stdio: 'pipe',
+    })
+      .trim()
+      .replace('refs/remotes/', '');
+    if (def) push(def);
+  } catch {
+    /* origin/HEAD 未設(常見於非 clone 的 repo)→ 走下方 fallback */
   }
-  const refs = deliveryRefs;
+
+  // ②env DELIVERY_REFS(逗號分隔)——導入者用固定 release branch 或其他自訂 delivery。
+  //    ⚠️ 只支援固定 ref 名、不支援 glob(rev-parse 不展開 `release/**`)
+  const extras = (process.env[DEFAULT_DELIVERY_ENV] ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const r of extras) push(r);
+
+  // ③fallback:①②都空 → origin/develop(GitFlow 慣例)。放這裡而不是無條件並列,
+  //    避免 abandoned origin/develop 上的 `(#N)` subject 假通過(Step 5 review #2)
+  if (refs.length === 0) push('origin/develop');
+
+  // ④last-resort dev-mode fallback:①②③都空 → 本地 main / develop
+  //    (僅開發環境未 clone 時有效;CI 有 origin/HEAD 不會走這條;仍有 round 6-like 風險
+  //    但命中率極低,tolerate 作為離線 fallback。要嚴格 fail-closed 者可拿掉本區塊)
+  if (refs.length === 0) {
+    push('main');
+    push('develop');
+  }
+
   if (refs.length === 0) {
     console.warn(
-      '⚠️ 找不到任何交付 ref(origin/main / origin/develop / main / develop / origin/HEAD)。' +
+      '⚠️ 找不到任何交付 ref(origin/HEAD / env DELIVERY_REFS / origin/develop / 本地 main / 本地 develop 都不存在)。' +
         '不以 HEAD 充當 merge 證據(未合併 commit 會假交付)——若 TODOS 有完成宣稱將直接失效。' +
-        '請把你的交付分支加進 scripts/check-todos-markers.ts 的 DELIVERY_REF_CANDIDATES。'
+        '請在 CI 或本地設 DELIVERY_REFS env(如 `origin/release`——remote-tracking ref 需先 fetch 進 local),或確認 origin/HEAD 已設。'
     );
     return merged;
   }
   let log = '';
   try {
-    log = execSync(`git log ${refs.join(' ')} --oneline --no-color`, {
+    // execFileSync + arg array:與 resolves() 同樣 fail-closed(refs 已通過 SAFE_REF_RE)
+    log = execFileSync('git', ['log', ...refs, '--oneline', '--no-color'], {
       cwd: REPO_ROOT,
       encoding: 'utf-8',
       maxBuffer: 64 * 1024 * 1024,
