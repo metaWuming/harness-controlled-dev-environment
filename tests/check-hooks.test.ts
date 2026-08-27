@@ -170,8 +170,9 @@ describe("check-hooks.sh — 守門腳本自己的 liveness", () => {
   // 🔴 Codex R2 P1(R1 fix 引入的新表面):R1 版用 `\n` 分隔 subshell 輸出,
   //    如果 pattern 本身**含換行**、父端會把 pattern 的第二半誤讀成 PROTECTED_DOCS、
   //    真正的 PROTECTED_DOCS 內容漂到第 4 行被丟掉。冒煙測試仍可能過、命令 exit 0,
-  //    但 SSOT 已經死了。修法改 NUL 分隔 + 欄位數斷言。這條就是那條防護的正對照。
-  it("🔴 code-pattern.sh 定義多行 pattern → fail-closed(sentinel 協定欄位錯位不得被靜默接受)", () => {
+  //    但 SSOT 已經死了。修法改為每個欄位 base64 單行編碼,並斷言輸出行數;
+  //    base64 解碼後,多行 pattern 會完整還原。這條就是那條防護的正對照。
+  it("🔴 code-pattern.sh 定義多行 pattern → 不得欄位錯位(base64 encode 保護位置對齊)", () => {
     const dir = makeRepo();
     writeFileSync(
       join(dir, "scripts/git-hooks/code-pattern.sh"),
@@ -181,9 +182,9 @@ describe("check-hooks.sh — 守門腳本自己的 liveness", () => {
     const { code, err } = runGate(dir);
     expect(code).toBe(1);
     expect(err).not.toMatch(/unbound variable/); // 不是崩潰
-    // 用「欄位數不對」或「PROTECTED_DOCS 對不到 CLAUDE.md」擋——不論走哪條、都是 fail-closed
-    // (NUL 分隔後多行 pattern 其實會正常讀進去 → 走到 PROTECTED_DOCS='NO_MATCH' 對不到 CLAUDE.md 的冒煙檢查)
-    expect(err).toMatch(/欄位數不對|對不到 CLAUDE\.md/);
+    // base64 encode 後多行 pattern 會完整還原 → 走到冒煙檢查:
+    // PROTECTED_DOCS='NO_MATCH' 對 CLAUDE.md 完全不 match → 冒煙 fail-closed
+    expect(err).toContain("對不到 CLAUDE.md");
   });
 
   it("🔴 code-pattern.sh 用 `return` 提早退出、變數還沒定義 → fail-closed", () => {

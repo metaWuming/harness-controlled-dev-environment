@@ -426,15 +426,28 @@ export function classifyRun(
   //    區間——`bash -c 'exit 200'`、`exit 128`、`exit 255` 都是合法且可直接產生的
   //    exit code,使用者可能用它們當自訂 test 失敗訊號。原本「一律歸 infra」把
   //    `grep -q FOO src/x || exit 200` 這種合法用法誤判 inconclusive。
-  //    折衷:**只認 137(SIGKILL / OOM)與 143(SIGTERM)** 為 infra——這兩個是
-  //    CI / 容器 / kubectl 最常見的砍法,其他 128-255 恢復當 red。
+  //
+  // 🔴 Codex review round 3 P1(擴回 R2 縮太多):只認 137/143 又漏了 SIGSEGV(139)、
+  //    SIGABRT(134)、SIGINT(130)、SIGPIPE(141)、SIGXCPU(152) 這些同樣是「程序
+  //    崩潰或被砍」情境。折衷:認**已知常見 fatal signal 對應的 128+signum**,
+  //    其他 128-255 恢復當 red。
   //    ⚠️ 誠實界線:單靠 exit code 分不出「使用者明確 exit 137」與「子程序被 SIGKILL
-  //    後 bash 回 137」——這是接受的損失,實務上 test runner 罕用 137/143 當自訂碼。
-  //    真的踩到請把 test 命令包一層 map 回 1-127 常規失敗碼。
-  if (status === 137 || status === 143) {
+  //    後 bash 回 137」——這是接受的損失。**test runner 罕用這些碼當自訂 fail 碼**,
+  //    但**若真的碰到、請把 test 命令包一層 map 回 1-127** 常規失敗碼。
+  const SIGNAL_EXITS: Record<number, string> = {
+    130: "SIGINT",
+    134: "SIGABRT",
+    137: "SIGKILL / OOM",
+    139: "SIGSEGV",
+    141: "SIGPIPE",
+    143: "SIGTERM",
+    152: "SIGXCPU",
+  };
+  const signalName = SIGNAL_EXITS[status];
+  if (signalName) {
     return {
       outcome: "infra",
-      detail: `驗證指令 exit ${status}(${status === 137 ? "SIGKILL / OOM" : "SIGTERM"}——bash 子程序被砍時的常見退出碼)——不是「測試轉紅」`,
+      detail: `驗證指令 exit ${status}(${signalName}——bash 子程序被砍時的常見退出碼)——不是「測試轉紅」`,
     };
   }
   return status === 0 ? { outcome: "green" } : { outcome: "red" };

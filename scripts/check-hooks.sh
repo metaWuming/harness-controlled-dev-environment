@@ -87,11 +87,19 @@ done
 #
 #    (⚠️ 曾試過用 NUL 分隔 `awk RS="\0"`——macOS 內建 BSD awk 只讀第一段就停,
 #    行為不可攜,棄用。base64 是可攜的 lingua franca。)
+#
+# 🔴 Codex R3 P1(R2 base64 fix 又引入的新表面):
+#    ⑴ GNU coreutils `base64` **預設每 76 字元換行**——健康 PROTECTED_DOCS 的 base64
+#       已達 112 字元、在 Ubuntu CI 上會被拆成兩行、父端 sed 拿第 3 行只讀到後半,
+#       decode fail、健康路徑也 fail-closed。修法:encode 後 `tr -d '\r\n'` 剝掉
+#       換行(BSD 不換行、GNU 換 76,tr 兩邊都安全)。
+#    ⑵ `base64 -D` 是 BSD 選項、GNU 用 `-d`——**兩邊都認 `-d`**(BSD 支援 `-d` 或
+#       `--decode`),統一改 `-d`。
 pattern_output=$(
   bash -c "
     set +u
     . '$RESOLVED/code-pattern.sh' 2>/dev/null || exit 91
-    printf '__SSOT_SENTINEL_OK__\n%s\n%s\n' \"\$(printf '%s' \"\$NON_CODE_PATTERN\" | base64)\" \"\$(printf '%s' \"\$PROTECTED_DOCS\" | base64)\"
+    printf '__SSOT_SENTINEL_OK__\n%s\n%s\n' \"\$(printf '%s' \"\$NON_CODE_PATTERN\" | base64 | tr -d '\r\n')\" \"\$(printf '%s' \"\$PROTECTED_DOCS\" | base64 | tr -d '\r\n')\"
   " 2>/dev/null
 )
 subshell_ec=$?
@@ -107,9 +115,9 @@ pattern_var2_b64=$(printf '%s\n' "$pattern_output" | sed -n '3p')
 if [ "$pattern_sentinel" != "__SSOT_SENTINEL_OK__" ]; then
   fail "code-pattern.sh 提早退出（sentinel 沒印出——可能被人誤貼了 exit / return 語句）"
 fi
-# base64 -D 還原;空 blob 或無效 base64 → 變數空 → 下一個 [ -n ] fail-closed
-NON_CODE_PATTERN=$(printf '%s' "$pattern_var1_b64" | base64 -D 2>/dev/null)
-PROTECTED_DOCS=$(printf '%s' "$pattern_var2_b64" | base64 -D 2>/dev/null)
+# base64 -d 還原;空 blob 或無效 base64 → 變數空 → 下一個 [ -n ] fail-closed
+NON_CODE_PATTERN=$(printf '%s' "$pattern_var1_b64" | base64 -d 2>/dev/null)
+PROTECTED_DOCS=$(printf '%s' "$pattern_var2_b64" | base64 -d 2>/dev/null)
 [ -n "$NON_CODE_PATTERN" ] || fail "code-pattern.sh 沒有定義 NON_CODE_PATTERN（兩支 hook 會靜默放行 code）"
 [ -n "$PROTECTED_DOCS" ] || fail "code-pattern.sh 沒有定義 PROTECTED_DOCS（PR-only 文件會被放行）"
 

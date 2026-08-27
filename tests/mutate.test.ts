@@ -284,18 +284,29 @@ describe("mutate — 驗證指令的收場分類(紅 vs 壞掉)", () => {
   //    (bash 自己沒被砍),舊版把 137/143 當成「測試轉紅」→ mutant 被錯報成 killed
   //    → 工具 exit 0 宣稱「全部被抓到」。
   //
-  // 🔴 Codex review round 2 P2:縮到只認 137/143,其他 128-255 恢復當 red——
-  //    `exit 200`/`exit 255` 都是使用者可能用的自訂 fail code,不該被誤判 infra。
-  it("🔴 137 (SIGKILL / OOM) 與 143 (SIGTERM) → infra(bash 子程序被砍的常見退出碼)", () => {
-    expect(classifyRun(137, null).outcome).toBe("infra");
-    expect(classifyRun(143, null).outcome).toBe("infra");
-    expect(classifyRun(137, null).detail).toContain("SIGKILL");
-    expect(classifyRun(143, null).detail).toContain("SIGTERM");
+  // 🔴 Codex review round 2 P2:縮到只認 137/143,其他 128-255 恢復當 red。
+  // 🔴 Codex review round 3 P1:又擴回涵蓋常見 fatal signal 對應 128+signum——
+  //    130 (SIGINT)、134 (SIGABRT)、137 (SIGKILL)、139 (SIGSEGV)、141 (SIGPIPE)、
+  //    143 (SIGTERM)、152 (SIGXCPU) 全歸 infra(程序崩潰或被砍情境)。
+  it("🔴 常見 fatal signal 對應 exit code(130/134/137/139/141/143/152)→ infra", () => {
+    const signals: Array<[number, string]> = [
+      [130, "SIGINT"],
+      [134, "SIGABRT"],
+      [137, "SIGKILL"],
+      [139, "SIGSEGV"],
+      [141, "SIGPIPE"],
+      [143, "SIGTERM"],
+      [152, "SIGXCPU"],
+    ];
+    for (const [code, name] of signals) {
+      expect(classifyRun(code, null).outcome).toBe("infra");
+      expect(classifyRun(code, null).detail).toContain(name);
+    }
   });
 
-  it("🔴 其他 128-255 exit code 仍歸 red(使用者可用 200/255 當自訂 test 失敗碼)", () => {
-    expect(classifyRun(128, null).outcome).toBe("red"); // SIGHUP - 罕見
-    expect(classifyRun(130, null).outcome).toBe("red"); // SIGINT - CI 罕用
+  it("🔴 128-255 內的其他 exit code 仍歸 red(使用者可用 200/255 當自訂 test 失敗碼)", () => {
+    expect(classifyRun(128, null).outcome).toBe("red"); // SIGHUP 罕見
+    expect(classifyRun(131, null).outcome).toBe("red"); // SIGQUIT 罕見
     expect(classifyRun(200, null).outcome).toBe("red"); // 使用者自訂
     expect(classifyRun(255, null).outcome).toBe("red"); // 使用者自訂
   });
@@ -706,6 +717,21 @@ describe("mutate — 端到端:安全契約在非快樂路徑上也要成立", (
     ]);
     expect(code).toBe(0);
     expect(out).toContain("✅ 抓到"); // 該被判 killed、不是 inconclusive
+  });
+
+  // 🔴 Codex R3 P1 正對照:mutant 執行時觸發 SIGSEGV(bash 回 139)不得被誤判 killed。
+  //    只當 mutant 造成程序崩潰、對照回綠——真實 CI 情境是 mutation 讓被測程序 crash,
+  //    工具必須誠實回報「基礎設施死了」而不是「測試抓到了」。
+  it("🔴 mutant 觸發 SIGSEGV(bash 回 139)→ infra 不是 killed(避免程序崩潰被誤報)", () => {
+    // 守衛在時 exit 0、被拿掉時 kill 自己的 subshell 觸發 SIGSEGV(sh -c 'kill -SEGV $$')。
+    // 外層 bash 見子 shell 死於 SIGSEGV → 通常回 139;現在該歸 infra。
+    const { code, out } = runScript(makeRepo(), [
+      ...BASE,
+      "--cmd", "if grep -q GUARD_ON src/a.txt; then exit 0; else sh -c 'kill -SEGV $$'; fi",
+    ]);
+    expect(code).toBe(2); // inconclusive
+    expect(out).toContain("SIGSEGV");
+    expect(out).not.toContain("✅ 抓到");
   });
 
   // 🔴 Codex 用「mutant 輸出 2 MB、對照正常」的指令重現過:舊版 execFileSync 撞到預設
