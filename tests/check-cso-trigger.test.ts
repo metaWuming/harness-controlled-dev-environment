@@ -111,10 +111,12 @@ describe('evaluateCsoTrigger — 域別命中(注入範例路徑表)', () => {
 
 describe('collectChangedFiles — 完整變更面聯集', () => {
   it('committed + staged + unstaged + untracked 聯集去重', () => {
+    // 🔴 三支 git diff 都會帶 `--no-renames`(P1 修:防 rename 繞道)。fake 用
+    //    substring 比對而非 exact 字串,以免下次改 flag 又要一起改測試。
     const fake = (cmd: string): string => {
       if (cmd.includes('...HEAD')) return 'src/lib/payment/charge.ts\ndocs/a.md\n';
       if (cmd.includes('--cached')) return 'src/lib/payment/charge.ts\n'; // 與 committed 重複
-      if (cmd === 'git diff --name-only') return 'src/lib/pricing.ts\n';
+      if (cmd.includes('git diff --name-only')) return 'src/lib/pricing.ts\n'; // unstaged (含 --no-renames)
       return 'scripts/new-untracked.ts\n'; // ls-files --others
     };
     const files = collectChangedFiles('develop', fake);
@@ -125,9 +127,26 @@ describe('collectChangedFiles — 完整變更面聯集', () => {
 
   it('未 commit 的安全敏感檔編輯照樣觸發(核心情境:腳本在 commit 前被跑)', () => {
     const fake = (cmd: string): string =>
-      cmd === 'git diff --name-only' ? 'src/lib/payment/charge.ts\n' : '';
+      cmd.includes('git diff --name-only') && !cmd.includes('--cached') && !cmd.includes('...HEAD')
+        ? 'src/lib/payment/charge.ts\n'
+        : '';
     const r = evaluateCsoTrigger(collectChangedFiles('develop', fake), SAMPLE_PATTERNS);
     expect(r.required).toBe(true);
+  });
+
+  it('--no-renames 顯式傳給每個 git diff 呼叫(P1:防 rename 繞道 fixture)', () => {
+    const capturedCmds: string[] = [];
+    const fake = (cmd: string): string => {
+      capturedCmds.push(cmd);
+      return '';
+    };
+    collectChangedFiles('develop', fake);
+    // 三支 git diff 都必須帶 --no-renames;ls-files --others 沒 rename 語意、不需要
+    const diffCmds = capturedCmds.filter((c) => c.startsWith('git diff'));
+    expect(diffCmds.length).toBe(3);
+    for (const cmd of diffCmds) {
+      expect(cmd).toContain('--no-renames');
+    }
   });
 });
 
