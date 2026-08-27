@@ -150,6 +150,39 @@ describe("check-hooks.sh — 守門腳本自己的 liveness", () => {
     expect(err).toContain("無法 source");
   });
 
+  // 🔴 Codex R1 P1:code-pattern.sh 若因誤貼、被人動過而含 `exit 0`,主 shell 直接
+  //    `.` source 會**立刻退出**整支 check-hooks.sh、後續變數存在檢查與冒煙測試
+  //    全部 skip、命令卻回傳 0——「hooks 活著」的宣稱與現實脫節。
+  //    修法把 source 移到 subshell + sentinel;這條就是那個修法的正對照。
+  it("🔴 code-pattern.sh 含 `exit 0` → 不得靜默放行(前面 source 退出後續斷言都 skip)", () => {
+    const dir = makeRepo();
+    writeFileSync(
+      join(dir, "scripts/git-hooks/code-pattern.sh"),
+      // 誤貼 exit 0 在最頂端;若主 shell 直接 source 這行會讓 check-hooks.sh 也 exit 0
+      "exit 0\nNON_CODE_PATTERN='[.](md|html)$'\nPROTECTED_DOCS='CLAUDE[.]md'\n",
+    );
+    const { code, err } = runGate(dir);
+    expect(code).toBe(1);
+    expect(err).toContain("提早退出");
+    expect(err).toContain("setup-hooks");
+  });
+
+  it("🔴 code-pattern.sh 用 `return` 提早退出、變數還沒定義 → fail-closed", () => {
+    const dir = makeRepo();
+    writeFileSync(
+      join(dir, "scripts/git-hooks/code-pattern.sh"),
+      // return 終止 source、變數定義那兩行不會被跑
+      "return 0\nNON_CODE_PATTERN='[.](md|html)$'\nPROTECTED_DOCS='CLAUDE[.]md'\n",
+    );
+    const { code, err } = runGate(dir);
+    expect(code).toBe(1);
+    // return 在 sourced 檔是合法的:它終止該次 source,回到父 script。
+    // 於是 sentinel 有印(subshell 沒退)、但變數空。應被「NON_CODE_PATTERN 沒有定義」
+    // 或「PROTECTED_DOCS 沒有定義」擋住——**變數缺失分支也是 fail-closed 的一種**。
+    expect(err).toContain("沒有定義");
+    expect(err).not.toMatch(/unbound variable/); // 不是崩潰
+  });
+
   /**
    * 這個檔算不算 shell 腳本?**純函式,單獨測得到**(選檔規則的完整性不能只靠
    * 「三個既有檔案有被找到」這種正對照)。

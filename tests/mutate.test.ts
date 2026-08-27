@@ -273,9 +273,23 @@ describe("mutate — 驗證指令的收場分類(紅 vs 壞掉)", () => {
     expect(classifyRun(0, null).outcome).toBe("green");
   });
 
-  it("非 0 的**數字** exit code → red(這才是「測試轉紅」)", () => {
+  it("非 0 但 <128 的數字 exit code → red(這才是「測試轉紅」)", () => {
     expect(classifyRun(1, null).outcome).toBe("red");
     expect(classifyRun(127, null).outcome).toBe("red");
+  });
+
+  // 🔴 Codex review round 1 P1:我們監看的是 `bash -c`,真正的 test 程序在它裡面跑。
+  //    子程序被 SIGKILL / OOM 殺掉時,bash 通常**正常退出**並回傳 128+signum
+  //    (shell 慣例:SIGKILL→137、SIGTERM→143、SIGINT→130)。這條路徑上
+  //    `signal` 永遠是 null(bash 自己沒被砍),舊版把 137/143 當成「測試轉紅」→
+  //    mutant 被錯報成 killed → 工具 exit 0 宣稱「全部被抓到」。
+  it("🔴 shell 訊號區間 exit code(128-255)→ infra(bash 子程序被 SIGKILL/OOM 砍掉)", () => {
+    expect(classifyRun(128, null).outcome).toBe("infra"); // SIGHUP
+    expect(classifyRun(130, null).outcome).toBe("infra"); // SIGINT
+    expect(classifyRun(137, null).outcome).toBe("infra"); // SIGKILL / OOM
+    expect(classifyRun(143, null).outcome).toBe("infra"); // SIGTERM
+    expect(classifyRun(255, null).outcome).toBe("infra");
+    expect(classifyRun(137, null).detail).toContain("shell 訊號區間");
   });
 
   it("🔴 spawn 失敗 → infra,不是 red(舊版把它當成「測試抓到了」)", () => {
@@ -656,6 +670,22 @@ describe("mutate — 端到端:安全契約在非快樂路徑上也要成立", (
     expect(out).not.toContain("✅ 抓到");
   });
 
+  // 🔴 Codex review round 1 P1:上一條殺的是 wrapper bash 本身(pid `$$`),
+  //    bash 沒機會回傳 exit code、Node 用 `signal='SIGKILL'` 收場。
+  //    真正的常見情境是**測試程序**被 SIGKILL / OOM 砍掉、bash wrapper 正常退出
+  //    並回傳 shell 慣例的 137(128+9)。前者被 `signal` 分支擋到,後者
+  //    (實務上遠更常見)過去會被誤判成 red。用 `exit 137` 直接模擬 bash 的
+  //    這種收場,驗新加的 128-255 infra 分類端到端成立。
+  it("🔴 bash 回 exit 137(子程序被 SIGKILL/OOM)→ infra 不是 red、mutant 不得被錯報 killed", () => {
+    const { code, out } = runScript(makeRepo(), [...BASE, "--cmd", "exit 137"]);
+    expect(code).toBe(2);
+    // 斷言要對到新加的分類自己的訊息——只寫 toContain("infra") 拿掉 128-255 分支
+    // 也照樣過(對照那輪的 `run.outcome === "infra"` 也會走同一條 detail 分支)
+    expect(out).toContain("shell 訊號區間");
+    expect(out).not.toContain("✅ 抓到");
+    expect(out).not.toContain("🔴 存活");
+  });
+
   // 🔴 Codex 用「mutant 輸出 2 MB、對照正常」的指令重現過:舊版 execFileSync 撞到預設
   //    maxBuffer 拋例外,被當成「測試轉紅」→ 工具 exit 0 宣稱「全部被抓到」,
   //    實際上驗證程序根本沒跑完。偵測假綠的工具自己報了假綠。
@@ -942,6 +972,43 @@ describe("mutate — 端到端:安全契約在非快樂路徑上也要成立", (
 
       const started = Date.now();
       child.kill("SIGINT");
+      const code = await new Promise<number>((resolve) => {
+        child.on("close", (c) => resolve(c ?? -1));
+      });
+
+      expect(readFileSync(file, "utf-8")).toBe(before); // 還原了
+      expect(code).toBe(2);
+      expect(Date.now() - started).toBeLessThan(20_000); // 沒有傻等 sleep 30
+    },
+    60_000,
+  );
+
+  // 🔴 Codex R1 P2:上面兩條「忽略 SIGTERM 的孫程序」與「SIGINT」都覆蓋不到
+  //    「**外部**對 runner 發 SIGTERM」這條路。CI / 容器 timeout / kubectl kill
+  //    通常先送 SIGTERM,若 `process.on("SIGTERM", ...)` handler 壞掉、runner 會
+  //    被拖到外部 SIGKILL,mutation 永久留在磁碟。
+  //    這條就是那條 handler 的正對照。
+  it(
+    "🔴 外部送 SIGTERM 給 runner → 走完 teardown、還原檔案、exit 2(不得被拖到 SIGKILL 才收場)",
+    async () => {
+      const dir = makeRepo();
+      const file = join(dir, "src/a.txt");
+      const before = readFileSync(file, "utf-8");
+
+      const child = spawn("npx", ["tsx", SCRIPT, ...BASE, "--cmd", "sleep 30"], {
+        cwd: dir,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+
+      // 等 mutation 真的落到磁碟上,才代表我們中斷在「檔案是壞的」那個視窗裡
+      const deadline = Date.now() + 20_000;
+      while (readFileSync(file, "utf-8") === before) {
+        if (Date.now() > deadline) throw new Error("mutation 一直沒被套用,這條測試沒測到該測的東西");
+        await new Promise((r) => setTimeout(r, 50));
+      }
+
+      const started = Date.now();
+      child.kill("SIGTERM");
       const code = await new Promise<number>((resolve) => {
         child.on("close", (c) => resolve(c ?? -1));
       });

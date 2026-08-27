@@ -8,7 +8,7 @@
 //    等於當場重演同一個錯。
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -63,6 +63,33 @@ describe("check-doc-size — 記錄檔肥大守門", () => {
     expect(r[0].missing).toBe(true);
     expect(r[0].over).toBe(true);
     expect(formatReport(r).ok).toBe(false);
+  });
+
+  // 🔴 Codex R1 P2:「檔案存在但不是 regular file」的每一種形狀都要 fail-closed——
+  //    directory / symlink / device 都會讓舊版 `existsSync + statSync` 拿到一個
+  //    無意義的 size(可能低於額度),閘門報綠、實際要治理的記錄檔已不存在。
+  it("🔴 是 directory 而不是檔案 → fail-closed(missing)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "doc-size-dir-"));
+    created.push(dir);
+    // 造一個叫 a/one.md 的**目錄**——舊版 statSync 會回它,size 通常很小
+    mkdirSync(join(dir, "a", "one.md"), { recursive: true });
+    const r = checkDocSizes(dir, BUDGET);
+    expect(r[0].missing).toBe(true);
+    expect(r[0].over).toBe(true);
+  });
+
+  it("🔴 是 symlink(可能指到 repo 外)→ fail-closed(missing,不跟隨)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "doc-size-link-"));
+    created.push(dir);
+    mkdirSync(join(dir, "a"), { recursive: true });
+    // 造一個 symlink 指到 /tmp/some-small-file,舊版跟隨後可能拿到低於額度的 size
+    const tinyTarget = mkdtempSync(join(tmpdir(), "doc-size-tiny-"));
+    created.push(tinyTarget);
+    writeFileSync(join(tinyTarget, "tiny.md"), "x"); // 1 byte
+    symlinkSync(join(tinyTarget, "tiny.md"), join(dir, "a", "one.md"));
+    const r = checkDocSizes(dir, BUDGET);
+    expect(r[0].missing).toBe(true);
+    expect(r[0].over).toBe(true);
   });
 
   it("額度表本身不得為空——空表會讓這道閘永遠綠", () => {

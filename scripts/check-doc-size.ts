@@ -43,6 +43,15 @@ export interface DocBudget {
  * 預設額度只涵蓋**模板本身實際附帶**的記錄檔(progress.md、LESSONS.md)。
  * 導入者依自己的讀清單增補;每個新增條目都要寫下 remedy 說「超了要做什麼」。
  *
+ * ⚠️ **20 KB / 60 KB 是刻意的寬鬆 headroom ceiling、不是模板現況 × 1.2-1.6**
+ * (Codex R1 P2):現況只有 progress 4.6 KB / LESSONS 3.8 KB,直接照抄意味著
+ * LESSONS 可膨脹近 16 倍才會響——**失去「回到肥大前先響」的宣稱**。這兩個數字
+ * 是上游來源專案實測「成熟專案運作一段時間後、需要壓縮但還沒到危險」的大小,
+ * 拿給還沒有累積的新專案用是**刻意過鬆**、當「暫時不會被打擾」的初始值。
+ *
+ * **導入者建立自己的專案後應該把上限重算成「該檔預計常態運作大小 × 1.2-1.6」**,
+ * 否則會像本模板現況一樣要等超過 4-16 倍才響。
+ *
  * 🔴 缺檔 → fail-closed(見 `checkDocSizes`):列在 BUDGETS 裡的檔案必須存在,
  *    否則被改名／刪掉會讓這道閘靜靜變成 0 個檢查。**如果專案還沒建某個檔,
  *    先別把它列進 BUDGETS**,建了再加。
@@ -76,11 +85,20 @@ export function checkDocSizes(repoRoot: string, budgets: DocBudget[] = BUDGETS):
   return budgets.map((b) => {
     const abs = path.resolve(repoRoot, b.doc);
     // 缺檔 → fail-closed。檔案被改名／刪掉不該讓這道閘靜靜變成 0 個檢查。
-    if (!fs.existsSync(abs)) {
+    // 🔴 Codex R1 P2:用 `lstatSync` 而不是 `existsSync + statSync`——後者跟隨 symlink,
+    //    把 `progress.md` 換成 directory 或指向 repo 外小檔的 symlink 都會回一個
+    //    低於額度的 size,閘門報綠、實際要治理的記錄檔已不存在。
+    //    現在:非 regular file(symlink / directory / device / socket)一律歸 missing。
+    let st: fs.Stats;
+    try {
+      st = fs.lstatSync(abs);
+    } catch {
       return { doc: b.doc, bytes: 0, maxBytes: b.maxBytes, over: true, missing: true, remedy: b.remedy };
     }
-    const bytes = fs.statSync(abs).size;
-    return { doc: b.doc, bytes, maxBytes: b.maxBytes, over: bytes > b.maxBytes, missing: false, remedy: b.remedy };
+    if (!st.isFile()) {
+      return { doc: b.doc, bytes: 0, maxBytes: b.maxBytes, over: true, missing: true, remedy: b.remedy };
+    }
+    return { doc: b.doc, bytes: st.size, maxBytes: b.maxBytes, over: st.size > b.maxBytes, missing: false, remedy: b.remedy };
   });
 }
 

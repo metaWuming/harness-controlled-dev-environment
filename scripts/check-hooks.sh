@@ -66,12 +66,35 @@ done
 # 🔴 真的 source 並斷言兩個變數非空：本檔頭原本就寫「code-pattern.sh 存在且**可被 source**」，
 #    但只做 `[ -f ]` 等於沒驗到重點——「變數被改名／打錯字」正是會讓兩支 hook 靜默放行的
 #    那個失效模式。
+#
+# 🔴 Codex R1 P1（這一輪抓到的）：在主 shell 直接 `.` source 有一個更陰險的失效模式
+#    ——若 `code-pattern.sh` 因誤貼、被人動過而含 `exit 0`（或 `return`），整支
+#    check-hooks.sh 會**立刻退出**、後面的變數存在檢查與冒煙測試全部 skip，
+#    但 exit code 仍是 0。命令會宣稱「hooks 活著」，而 SSOT 其實已經死了。
+#    （pre-commit / pre-push 也是同一 bug class、需另外收——見批 1 遺留。）
+#    修法：在**子 shell** source，以 sentinel 標示「有跑完 source 且變數存在」，
+#    父 shell parse。子 shell 提前退出時看不到 sentinel、fail-closed。
+#
 # shellcheck source=/dev/null
-if ! . "$RESOLVED/code-pattern.sh" 2>/dev/null; then
+pattern_output=$(
+  bash -c "
+    set +u
+    . '$RESOLVED/code-pattern.sh' 2>/dev/null || exit 91
+    printf '__SSOT_SENTINEL_OK__\n%s\n%s\n' \"\$NON_CODE_PATTERN\" \"\$PROTECTED_DOCS\"
+  " 2>/dev/null
+)
+subshell_ec=$?
+if [ $subshell_ec -eq 91 ]; then
   fail "code-pattern.sh 無法 source（語法錯誤？）"
 fi
-[ -n "${NON_CODE_PATTERN:-}" ] || fail "code-pattern.sh 沒有定義 NON_CODE_PATTERN（兩支 hook 會靜默放行 code）"
-[ -n "${PROTECTED_DOCS:-}" ] || fail "code-pattern.sh 沒有定義 PROTECTED_DOCS（PR-only 文件會被放行）"
+# 沒看到 sentinel = 子 shell 沒跑到 printf（可能因為 `exit`/`return` 提早退出）
+if ! printf '%s' "$pattern_output" | head -n 1 | grep -q '^__SSOT_SENTINEL_OK__$'; then
+  fail "code-pattern.sh 提早退出（sentinel 沒印出——可能被人誤貼了 exit / return 語句）"
+fi
+NON_CODE_PATTERN=$(printf '%s' "$pattern_output" | sed -n '2p')
+PROTECTED_DOCS=$(printf '%s' "$pattern_output" | sed -n '3p')
+[ -n "$NON_CODE_PATTERN" ] || fail "code-pattern.sh 沒有定義 NON_CODE_PATTERN（兩支 hook 會靜默放行 code）"
+[ -n "$PROTECTED_DOCS" ] || fail "code-pattern.sh 沒有定義 PROTECTED_DOCS（PR-only 文件會被放行）"
 # 冒煙測試：拿樣本驗 pattern 的方向沒有反過來
 echo "src/x.ts" | grep -qEv "$NON_CODE_PATTERN" || fail "NON_CODE_PATTERN 把 .ts 判成文件（方向反了）"
 echo "docs/x.md" | grep -qE "$NON_CODE_PATTERN" || fail "NON_CODE_PATTERN 把 .md 判成 code（方向反了）"
