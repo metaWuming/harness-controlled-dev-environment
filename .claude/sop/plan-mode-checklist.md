@@ -232,7 +232,12 @@ Step 6/7 收尾照走。
     (多條用 `--spec` 批次;`scripts/mutate.ts` 三道 fail-closed 閘,**乾淨工作樹
     才可跑——先把本輪改動 commit 再跑**)。**exit 0(全部 mutant 被抓)才算過**:
     exit 1 = 覆蓋缺口 → 補測試再跑;exit 2 = 無法判定 → 排除障礙再跑。
-    結果暫記 plan file 或 scratchpad,Step 5 集中寫進 progress entry(慣例同下一條)
+    結果**連同跑探針時的 HEAD SHA** 暫記 plan file 或 scratchpad,Step 5 集中寫進
+    progress entry(慣例同下一條)。
+    ⚠️ 後續(Step 4 fix round / 4.6 / Step 5)又對命中域機制做**行為級修改** →
+    在新 HEAD **重跑對應探針**。最後一次 exit 0 必須綁**最後一個非 bookkeeping
+    commit** 的 SHA、且在派最終 worktree 審之前完成——探針與 worktree 審循環,
+    直到兩者對同一個 SHA 成立
   - **標記高風險車道**:Step 5 要**多加一道** worktree 獨立審(SHA 在 Step 5
     派工前才記,**不是**沿用 Step 4 的 baseline SHA——fix round 會讓 HEAD 前進;
     做法見 Step 5〔僅高風險車道〕條目)
@@ -288,10 +293,11 @@ exit 0(被抓)——才進 Step 5。
       ⚠️ 每輪 fix commit 後 HEAD 前進 → 下一輪派工**重記 review-tip、派新 agent**
       (= 新 worktree;舊 worktree 隨舊 agent 作廢,不重用)。Step 4 的 baseline SHA
       只供 finding 來源分類,**不拿來核對**——fix round 後必然 mismatch。
-      ⚠️ 收乾後的 bookkeeping commit(progress / BACKLOG / TODOS,見下方條目)是
-      **機械核對例外**:不為它重跑 worktree 審,但要機械核對該 commit 的 diff
-      **只含記憶層檔**(`.claude/memory/**`、`TODOS.md`、BACKLOG 類追蹤檔)——
-      混入任何其他檔就不是 bookkeeping,要再跑一輪。
+      ⚠️ 收乾後的 bookkeeping commit(見下方條目)是**機械核對例外**:不為它重跑
+      worktree 審,但該 commit 的 diff 只允許**狀態簿記**——progress.md 的 sprint
+      entry、TODOS / BACKLOG 類追蹤檔的狀態標記與 PR citation。
+      **LESSONS.md 與任何規則 / 安全文字的改動不在例外內**(那是治理內容,
+      見頂部 docs-only 判準的 🔴 條件)——含這類改動就要再跑一輪。
       目的:抓「依賴本地未提交狀態 / 工作樹污染」的錯——`scripts/mutate.ts` 檔頭
       指出的同一類極限。輕/標準車道不掛,避免 ceremony
 - [ ] Findings 分類(severity 與 confidence 是兩條獨立軸):
