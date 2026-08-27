@@ -39,17 +39,47 @@ import path from "node:path";
 /**
  * 判斷單一 repo-relative 路徑是不是 bookkeeping。
  *
- * 判準三條(全部要同時符合才 true):
- *   ① 必須在 `.claude/memory/` 底下(包含子目錄,例:`progress-archive/`)
- *   ② 必須以 `.md` 結尾
- *   ③ 不能是 `.claude/memory/LESSONS.md` 本身(那是治理內容;archive 目錄下的
- *      LESSONS 快照算 bookkeeping,只擋當前 canonical LESSONS.md)
+ * 🔴 Codex review round 2 P1+P2:第一版用「.claude/memory/ 前綴 + .md 尾綴」
+ *   太寬(把歸檔慣例 README.md 放行、又錯過 root TODOS.md)。改成精確 exact
+ *   allowlist + archive snapshot glob。
+ *
+ * 判準:
+ *   A. 精確 allowlist(EXACT_ALLOW)——列出所有正典 bookkeeping 檔;
+ *      TODOS / BACKLOG / TODOS-done 兩處(root 與 `.claude/memory/`)都收,
+ *      因為 SOP 文字與實際慣例都有出現、寬版才不會誤擋 Step 6 補 PR # 的 commit
+ *   B. Archive snapshot(季度封存)—— `.claude/memory/progress-archive/*.md`、
+ *      `.claude/memory/LESSONS-archive/*.md`,**但 basename 不能是 `README.md`**
+ *      (那是歸檔慣例文件、含 SOP 指示,屬 governance,見 SOP L319-322)。
+ *      不進子目錄。
  */
+
+const EXACT_ALLOW: ReadonlySet<string> = new Set([
+  ".claude/memory/progress.md",
+  "TODOS.md",
+  ".claude/memory/TODOS.md",
+  "BACKLOG.md",
+  ".claude/memory/BACKLOG.md",
+  "TODOS-done.md",
+  ".claude/memory/TODOS-done.md",
+]);
+
+const ARCHIVE_DIRS: readonly string[] = [
+  ".claude/memory/progress-archive/",
+  ".claude/memory/LESSONS-archive/",
+];
+
 export function isBookkeepingPath(file: string): boolean {
-  if (!file.startsWith(".claude/memory/")) return false;
-  if (!file.endsWith(".md")) return false;
-  if (file === ".claude/memory/LESSONS.md") return false;
-  return true;
+  if (EXACT_ALLOW.has(file)) return true;
+  for (const dir of ARCHIVE_DIRS) {
+    if (!file.startsWith(dir)) continue;
+    const rest = file.slice(dir.length);
+    if (rest.length === 0) return false; // 目錄本身
+    if (rest.includes("/")) return false; // 不進子目錄
+    if (!rest.endsWith(".md")) return false;
+    if (rest === "README.md") return false; // 歸檔慣例、屬 governance
+    return true;
+  }
+  return false;
 }
 
 /**
