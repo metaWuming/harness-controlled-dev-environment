@@ -70,6 +70,18 @@ Step 6/7 收尾照走。
 **理由**:純說明文字、無 spec / 安全意涵時,跨模型把關邊際價值低,fresh-context +
 事實查核已足。但 ADR / 安全 / 策略文件屬 spec → 這條線上一律完整 SOP。
 
+### 風險車道對照表(既有機制的地圖,不新增流程)
+
+| 車道 | 判定 | 流程差異 |
+|---|---|---|
+| 輕(docs-only) | 本節上方判準(意圖判定,判不準從嚴) | 略 Step 4 跨模型,跑 Step 5 fresh review |
+| 標準 | 預設(非 docs-only、安全關未觸發) | 完整 7 步 |
+| 高風險 | `npm run check:cso` 判 `CSO_REQUIRED`(機器判定是下限不是上限) | 完整 7 步 + Step 4.5 安全審 + 兩項加強:破壞性探針、Step 5 worktree 審查(見各步條目) |
+
+三條車道**都是既有判準**,本表只把它們放進同一張地圖:風險越高,驗證強度越高
+(對應治理架構常見的風險分級驗證矩陣精神)。輕車道的完整判準以上方「適用範圍」
+為唯一正本,本表不重複敘述。
+
 ## Step 1:Plan(寫 plan file) 🎚️ `high`
 
 - [ ] Plan file 寫在 `~/.claude/plans/*.md`(plan mode 強制)
@@ -190,7 +202,7 @@ Step 6/7 收尾照走。
 > 🔴 **散文級怎麼收尾**:照抄替換句 → 自己做一次機械核對(把套用後的文字與替換句逐字對一遍)→ 就這樣,**不因為它多跑一輪**。若那一輪**行為級還沒歸零** → 散文修正跟著下一輪一起被看到(順帶,不是為它跑的);若**行為級已經 0、只剩散文** → **套用完就出貨,不再送審**。⚠️ 後者的殘餘風險:替換句本身不準不會再被下一輪發現——這是接受的風險,所以散文級仍須精確照抄並機械核對。
 >
 > **⑵ 「自檢一遍」加硬成三句可執行**(「自檢一遍」不可執行,實測仍可能漏掉多項問題):
-> - **修法引入新機制**(新函式／新 timer／新守衛／新狀態)→ 送下一輪前對它跑**至少一條 mutation 探針**(手動改壞 → 看某條測試轉紅 → 還原)。工作樹髒時用手動探針即可,但**要明講那不是完整的 mutation 掃描**。
+> - **修法引入新機制**(新函式／新 timer／新守衛／新狀態)→ 送下一輪前對它跑**至少一條 mutation 探針**(手動改壞 → 看某條測試轉紅 → 還原;repo 有 `scripts/mutate.ts` 時優先用 `npm run mutate`——乾淨工作樹才可跑)。工作樹髒時用手動探針即可,但**要明講那不是完整的 mutation 掃描**。
 > - **修法改了任何時序常數、或把某個動作往後排** → 先回答「**哪一條既有測試的 tick 現在推不到它了?**」真實案例:把破壞性動作從 15 秒延到 75 秒、而那條測試只推進到 30 秒 → 同一條 mutation 從被抓變成存活、測試一個字都沒改。**答案若是「沒有任何既有測試推得到」→ 補一條測試涵蓋新時序、或把既有測試的 tick 往後推;不補就是問了卻不行動＝fail-open,不得送審**。⚠️ **只推進 tick 不算數**:推完要確認該測試對新時序**真的有斷言**、且把時序改壞的 mutation 會讓它轉紅——否則 tick 推了、mutation 照樣存活,等於沒守。
 > - **修法寫了新的宣稱句** → 對**這一輪的 diff** 跑量詞自檢器(掃新增行裡的量詞與絕對化措辭、產待處置清單),**base 指定成「上一輪送審的 HEAD」**。🔴 **base 一定要指定、不要用預設**:預設 base 是主線,round 2 之後每次都會把整支 PR 重掃一遍,**前幾輪早處置完的幾十個命中會把本輪新增那幾句淹掉**——正好抵銷這條規則的用意。🔴 **那個 base 從哪來**:靠每輪 fix 都 commit(見 checklist 的 fix commit 條目)、HEAD 才會前進;送審的 prompt 裡寫上 `git rev-parse HEAD` 的值,下一輪拿它當 base。(該輪未提交的修法仍會被 `git diff <base>` 一起收進去,不必為了掃描先 commit——但**輪與輪之間要 commit**,否則 base 不動、下一輪會重掃上一輪已處置的。)
 >   ⚠️ **前置**:此步用的量詞自檢器(`check:claims`)不一定存在於每個 repo。你的 repo 沒有它時,這一句改成**人工核對本輪新增的宣稱句**。
@@ -209,6 +221,13 @@ Step 6/7 收尾照走。
 - [ ] `CSO_REQUIRED` → 跑一輪專責安全審
       〔預設:gstack `/cso`;無 gstack 降級:Claude Code 內建 `security-review` skill〕,
       findings 分類同 Step 5(`[CRITICAL]` 必修),fix commit 標 `修復: <feature> 安全審 findings — <finding>`
+- [ ] `CSO_REQUIRED` = 本 sprint 進**高風險車道**(見頂部風險車道對照表),另加兩件事:
+  - **破壞性 mutation 探針**:對每個命中域的新增/修改機制跑**至少一條**探針,
+    預設用 `npm run mutate`(`scripts/mutate.ts`,三道 fail-closed 閘),label 寫明
+    「對應哪個命中域的哪條不變量」。結果(被抓/存活)暫記 plan file 或 scratchpad,
+    Step 5 集中寫進 progress entry(慣例同下一條)
+  - **記下 baseline SHA**(就是 Step 4 送審前固定的那個):Step 5 的審查要在
+    worktree 乾淨 checkout 上跑,依據見 Step 5〔僅高風險車道〕條目
 - [ ] `CSO_NOT_REQUIRED` → 自問一次「diff 是否含腳本路徑表沒涵蓋的安全敏感邏輯?」
       (**機器判定是下限不是上限**);無 → **暫記於 plan file 或 scratchpad**
       (progress entry Step 5 才寫、此刻寫會破 Step 5「最後一個 commit」的 partial-lifecycle
@@ -249,6 +268,11 @@ Step 6/7 收尾照走。
       無 gstack 降級:Claude Code 內建 `/code-review` + 派**一個** `.claude/agents/adversarial-reviewer.md`
       對 diff 獨立審(注意:它要從 diff 本身出發,**不是**去驗證前面 review 的結論——
       那會複製盲點。**一個就夠,不要開多個**)〕
+- [ ] 〔僅高風險車道,即 Step 4.5 判 `CSO_REQUIRED`〕adversarial-reviewer 以
+      `isolation: worktree` 派出(拋棄式 git worktree = 乾淨 checkout),prompt 附
+      Step 4.5 記下的 baseline SHA、要求它開工先核對(核對規則見該 agent 定義檔)。
+      目的:抓「依賴本地未提交狀態 / 工作樹污染」的錯——`scripts/mutate.ts` 檔頭
+      指出的同一類極限。輕/標準車道不掛,避免 ceremony
 - [ ] Findings 分類(severity 與 confidence 是兩條獨立軸):
   - `[CRITICAL]` finding → **一律必修**(severity 軸)
   - `[INFORMATIONAL]` finding → 依 confidence 軸:
