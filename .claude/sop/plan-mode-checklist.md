@@ -234,10 +234,14 @@ Step 6/7 收尾照走。
     exit 1 = 覆蓋缺口 → 補測試再跑;exit 2 = 無法判定 → 排除障礙再跑。
     結果**連同跑探針時的 HEAD SHA** 暫記 plan file 或 scratchpad,Step 5 集中寫進
     progress entry(慣例同下一條)。
-    ⚠️ 後續(Step 4 fix round / 4.6 / Step 5)又對命中域機制做**行為級修改** →
-    在新 HEAD **重跑對應探針**。最後一次 exit 0 必須綁**最後一個非 bookkeeping
-    commit** 的 SHA、且在派最終 worktree 審之前完成——探針與 worktree 審循環,
-    直到兩者對同一個 SHA 成立
+    **每個命中域至少一條「實際執行且 exit 0」的探針——0 條不算通過**(空集合
+    不是真值)。刪除 / 搬出型改動沒有新機制可改壞 → 探針對象改為「刪除後**接手
+    該不變量的防線**」(把它改壞、看測試轉紅);指不出接手防線 → 這本身就是要
+    帶進安全審的 finding,不是探針可略的理由。
+    ⚠️ 後續(Step 4 fix round / 4.6 / Step 5 / Step 6 CI 修復)又對命中域機制做
+    **行為級修改** → 在新 HEAD **重跑對應探針**。最後一次 exit 0 必須綁
+    **最後一個非 bookkeeping commit** 的 SHA、且在派最終 worktree 審之前完成——
+    探針與 worktree 審循環,直到兩者對同一個 SHA 成立
   - **標記高風險車道**:Step 5 要**多加一道** worktree 獨立審(SHA 在 Step 5
     派工前才記,**不是**沿用 Step 4 的 baseline SHA——fix round 會讓 HEAD 前進;
     做法見 Step 5〔僅高風險車道〕條目)
@@ -391,7 +395,10 @@ exit 0(被抓)——才進 Step 5。
       「post-merge 才要另開 PR 補 TODOS」的坑。
 - [ ] 等 CI 綠 → **squash merge** 進開發主線(review 修復 round + progress commit +
       bookkeeping fill-placeholder commit 壓成單一乾淨 commit)
-- [ ] CI 若抓到本地沒抓的(env / DB / build 差異)→ 修一輪再 push,屬正常
+- [ ] CI 若抓到本地沒抓的(env / DB / build 差異)→ 修一輪再 push,屬正常。
+      〔僅高風險車道〕任何**非 bookkeeping** 的修復 commit → 回 Step 4.5 / Step 5:
+      對命中域重跑對應探針、重派一輪 worktree 審(都綁新 SHA),兩者成立才 merge
+      (否則最後的探針 exit 0 與 worktree 審都停在舊 SHA,綁定形同虛設)
 
 **STOP point**:CI 綠 + squash merge 完成才進 Step 7。
 
