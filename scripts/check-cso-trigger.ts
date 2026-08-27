@@ -77,8 +77,8 @@ export function evaluateCsoTrigger(
 /**
  * 預設 diff base:develop 優先(feature→develop 工作流),不存在時退 main。
  * 也試 `origin/*`:fresh clone 只會有預設分支的本機 branch,沒有 `develop` →
- * 舊版會退到 `main`,把「develop 全部的 delta」算進本 sprint(幾乎永遠 REQUIRED,
- * 方向安全但工具失去訊號量)。
+ * 舊版兩個 ref 都試不到就 return 'develop' 讓後續 base 檢查 fail-closed;
+ * fresh clone 只有 origin refs 時就整支失敗、拿不到自動 base。
  */
 function resolveDefaultBase(): string {
   for (const ref of ['develop', 'origin/develop', 'main', 'origin/main']) {

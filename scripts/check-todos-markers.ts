@@ -125,9 +125,11 @@ export interface CheckResult {
  *    filter regex (例:`/sprint\s*#\d+/gi`)。
  */
 export function extractPrCitations(text: string): number[] {
-  // 先剝掉「issue 井號N」引用(大小寫不敏感),避免 issue 號被誤當 PR 號
+  // 先剝掉「issue[s] 井號N」引用(大小寫不敏感),避免 issue 號被誤當 PR 號
+  // 🔴 Fresh F2 修:`issues?` 涵蓋複數形式;GitHub `closes issues #13, #14` 這種常見寫法
+  //    若不涵蓋複數、`#13` 會被誤當 PR 號。
   const cleaned = text.replace(
-    /(?<![A-Za-z])(?:github\s+)?issue[\s:：（(]*#\s*\d+[)）]?/gi,
+    /(?<![A-Za-z])(?:github\s+)?issues?[\s:：（(]*#\s*\d+[)）]?/gi,
     ''
   );
   const out = new Set<number>();

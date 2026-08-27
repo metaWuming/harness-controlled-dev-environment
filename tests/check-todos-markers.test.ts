@@ -70,6 +70,13 @@ describe('extractPrCitations', () => {
     // `notaissue #77` 前接 `a` = 字母 → 不剝
     expect(extractPrCitations('notaissue #77 完工')).toEqual([77]);
   });
+
+  it('複數 issues 也要剝 (Fresh review F2 P3)', () => {
+    // GitHub `closes issues #13, #14` 這種常見寫法
+    expect(extractPrCitations('closes issues #13,PR #150 完工')).toEqual([150]);
+    expect(extractPrCitations('issues #42 已 close')).toEqual([]);
+    expect(extractPrCitations('關聯 issues #13')).toEqual([]);
+  });
 });
 
 describe('parseTodosMarkers', () => {
