@@ -210,6 +210,27 @@ export function partitionPatterns(patterns: string[]): {
   return { nonCa, ca };
 }
 
+/**
+ * 把 git grep 輸出行的 `filename:line_number:` 前綴剝掉,只保留 content。
+ *
+ * ⚠️ round 5 P2-1 修法:git grep -n 輸出格式是 `filename:line:content`
+ *    (rev 掃時是 `rev:filename:line:content`)。舊 processScan 對整行呼叫
+ *    isSelfPrReferenceLine,若 filename 恰好含 CA pattern 字面(如
+ *    `docs/PR-井號 999 notes.md`),extractor 會從 filename 部分抽出未知號 →
+ *    合法 self-PR 引用被誤擋。
+ *
+ *    策略:找首個 `:數字:` segment,取其後為 content。這對 working tree scan
+ *    (`filename:line:content`)與 history blob scan(`rev:filename:line:content`)
+ *    都成立,因為兩者的 line number 位置都是「path-like prefix 之後」。第 3 段
+ *    commit-msg scan 用 strict mode 不呼叫本函式,不受影響。
+ *
+ *    格式異常或抓不到 `:數字:` → fail-safe 回原文(判定端仍會嚴格擋)。
+ */
+export function stripGitGrepPrefix(line: string): string {
+  const m = /:\d+:(.*)$/.exec(line);
+  return m ? m[1] : line;
+}
+
 // ───────────────────────────────────────── I/O helpers
 
 function repoRoot(): string {
@@ -504,10 +525,14 @@ function processScan(scan: Scan, allowedPrs: Set<number>): boolean {
     return false;
   }
   // mode === "self-pr":逐行走 self-PR 判定
+  // 🔴 round 5 P2-1 修法:先剝掉 grep filename:line: 前綴,只把 content 傳給
+  // 判定——避免 filename 含 CA 字面時 extractor 從 filename 部分抽出未知號、
+  // 讓合法 self-PR 引用被誤擋
   const real: string[] = [];
   const allowed: string[] = [];
   for (const line of scan.hits) {
-    if (isSelfPrReferenceLine(line, allowedPrs)) allowed.push(line);
+    const content = stripGitGrepPrefix(line);
+    if (isSelfPrReferenceLine(content, allowedPrs)) allowed.push(line);
     else real.push(line);
   }
   if (allowed.length > 0) {

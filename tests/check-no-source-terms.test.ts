@@ -37,6 +37,7 @@ import {
   extractPrRefsFromLine,
   isSelfPrReferenceLine,
   partitionPatterns,
+  stripGitGrepPrefix,
 } from "../scripts/check-no-source-terms";
 
 const REPO_ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], {
@@ -227,6 +228,36 @@ describe("isSelfPrReferenceLine — CA-scan hit 的 self-PR 判定", () => {
   });
 });
 
+describe("stripGitGrepPrefix — 剝 grep filename:line: 前綴(round 5 P2-1)", () => {
+  it("working tree 掃輸出:filename:line:content → 抽 content", () => {
+    expect(stripGitGrepPrefix("docs/note.md:5:see " + PREF_PR + "7")).toBe(
+      "see " + PREF_PR + "7"
+    );
+  });
+
+  it("history 掃輸出:rev:filename:line:content → 抽 content", () => {
+    expect(
+      stripGitGrepPrefix("abc1234:docs/note.md:5:some content")
+    ).toBe("some content");
+  });
+
+  it("🔴 P2-1 反例:filename 含 CA 字面 → content 不含,避免誤擋", () => {
+    // 舊 processScan 對整行呼叫 extractor,filename 內 999 會被抽出 → 合法 PR 7
+    // 引用被判「未知 999 洩漏」誤擋。修法後只看 content 部分
+    const line =
+      "docs/" + PREF_PR + "999 notes.md:5:see " + PREF_PR + "7 legit";
+    const content = stripGitGrepPrefix(line);
+    expect(content).toBe("see " + PREF_PR + "7 legit");
+    expect(extractPrRefsFromLine(content)).toEqual([7]);
+  });
+
+  it("格式異常 → fail-safe 回原文", () => {
+    expect(stripGitGrepPrefix("no line number here")).toBe(
+      "no line number here"
+    );
+  });
+});
+
 describe("partitionPatterns — 把 denylist 切成 CA / non-CA", () => {
   it("兩條 CA 條目挑出,其餘進 non-CA", () => {
     const patterns = [FRAG_ACTI, FRAG_WUM, "PR " + "#[0-9]", PREF_PULL + "[0-9]", FRAG_OPX];
@@ -251,7 +282,12 @@ describe("partitionPatterns — 把 denylist 切成 CA / non-CA", () => {
  */
 function makeRepo(opts: {
   deny: string[];
-  commits: Array<{ message: string; files?: Record<string, string> }>;
+  commits: Array<{
+    message: string;
+    files?: Record<string, string>;
+    /** round 5 P2-2:刪除既有檔案再 commit(給 history-only 污染案用) */
+    deletions?: string[];
+  }>;
   workingTree?: Record<string, string>;
   /** round 2 P2-5 新加:寫進工作樹但不 commit(給 tracked-but-modified 情境用) */
   workingTreeUnstaged?: Record<string, string>;
@@ -283,6 +319,12 @@ function makeRepo(opts: {
         const abs = join(dir, rel);
         mkdirSync(dirname(abs), { recursive: true });
         writeFileSync(abs, body, "utf-8");
+      }
+      git("add", "-A");
+      git("commit", "-qm", c.message);
+    } else if (c.deletions) {
+      for (const rel of c.deletions) {
+        rmSync(join(dir, rel), { force: true });
       }
       git("add", "-A");
       git("commit", "-qm", c.message);
@@ -401,6 +443,45 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     });
     const { code, out } = runChecker(dir);
     expect(out).toContain("含未知 PR/pull 引用");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 round 5 P2-2 fix:history 曾有 non-CA hit、HEAD 已刪乾淨 → history scan 抓", () => {
+    // 先 commit 一份含 forbidden 內容的檔、再 commit 刪除它 → HEAD tree 乾淨,
+    // 但 git 全史 blob 仍能看到那個 blob → 只有 scanGitHistoryBlobs 能揭發。
+    // 若把該 scan 整段砍掉,working-tree 與 commit-msg scan 都不會抓到
+    const dir = makeRepo({
+      deny: ["forbidden_hist_term"],
+      commits: [
+        {
+          message: "add polluted",
+          files: { "src/polluted.md": "this contains forbidden_hist_term inline\n" },
+        },
+        {
+          message: "remove polluted",
+          deletions: ["src/polluted.md"],
+        },
+      ],
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("git 歷史 blob 含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 round 5 P2-2 fix:檔案全乾淨、commit 訊息含 non-CA term → commit-msg scan 抓", () => {
+    // 檔案內容全乾淨、只有 commit subject 含 forbidden term。若把 scanCommitMessages
+    // 改成永遠 clean,現有 e2e 都不會轉紅 → 這個 case 專責釘住第 3 段掃描
+    const dir = makeRepo({
+      deny: ["forbidden_msg_term"],
+      commits: [
+        {
+          message: "feat: forbidden_msg_term in commit subject",
+          files: { "src/clean.md": "no forbidden here\n" },
+        },
+      ],
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("commit 訊息");
     expect(code).toBe(1);
   });
 
