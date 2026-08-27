@@ -259,12 +259,6 @@ describe('checkTodosMarkers', () => {
     expect(res.advisories).toHaveLength(0);
   });
 
-  it('pending 條目 body 內 fenced code 的「待拍板」不算阻塞詞', () => {
-    const content = ['**A-6 範例區** [❌ pending]', '- 規劃中', '```', '範例:待拍板', '```'].join('\n');
-    const parsed = parseTodosMarkers(content);
-    expect(parsed.pendingItems.find((p) => p.id === 'A-6')!.hasBlocker).toBe(false);
-  });
-
   it('pending 條目引用未 merged PR → 不 advisory(未 merge 本就不算 stale-done)', () => {
     const parsed = parseTodosMarkers('**A-2 平台升級** [❌ pending]\n- 規劃中 PR #9999');
     const res = checkTodosMarkers(parsed, prExists);

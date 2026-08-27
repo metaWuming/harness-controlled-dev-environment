@@ -76,11 +76,11 @@ Step 6/7 收尾照走。
 |---|---|---|
 | 輕(docs-only) | 本節上方判準(意圖判定,判不準從嚴) | 略 Step 4 跨模型,跑 Step 5 fresh review |
 | 標準 | 預設(非 docs-only、安全關未觸發) | 完整 7 步 |
-| 高風險 | `npm run check:cso` 判 `CSO_REQUIRED`,或人工視同(機器判定是下限不是上限,見 Step 4.5) | 完整 7 步 + Step 4.5 安全審 + 兩項加強:破壞性探針、Step 5 worktree 審查(見各步條目) |
+| 高風險 | `npm run check:cso` 判 `CSO_REQUIRED` **且輸出有命中域清單**,或人工視同(機器判定是下限不是上限;fail-closed 的 REQUIRED 另有處理——都見 Step 4.5) | 完整 7 步 + Step 4.5 安全審 + 兩項加強:破壞性探針、Step 5 worktree 審查(見各步條目) |
 
 三條車道**都是既有判準**,本表只把它們放進同一張地圖:風險越高,驗證強度越高
-(對應治理架構常見的風險分級驗證矩陣精神)。輕車道的完整判準以上方「適用範圍」
-為唯一正本,本表不重複敘述。
+(對應治理架構常見的風險分級驗證矩陣精神)。輕車道的完整判準**與流程義務**以
+上方「適用範圍」為唯一正本,本表不重複敘述。
 
 ## Step 1:Plan(寫 plan file) 🎚️ `high`
 
@@ -205,7 +205,7 @@ Step 6/7 收尾照走。
 > 🔴 **散文級怎麼收尾**:照抄替換句 → 自己做一次機械核對(把套用後的文字與替換句逐字對一遍)→ 就這樣,**不因為它多跑一輪**。若那一輪**行為級還沒歸零** → 散文修正跟著下一輪一起被看到(順帶,不是為它跑的);若**行為級已經 0、只剩散文** → **套用完就出貨,不再送審**。⚠️ 後者的殘餘風險:替換句本身不準不會再被下一輪發現——這是接受的風險,所以散文級仍須精確照抄並機械核對。
 >
 > **⑵ 「自檢一遍」加硬成三句可執行**(「自檢一遍」不可執行,實測仍可能漏掉多項問題):
-> - **修法引入新機制**(新函式／新 timer／新守衛／新狀態)→ 送下一輪前對它跑**至少一條 mutation 探針**(手動改壞 → 看某條測試轉紅 → 還原;repo 有 `scripts/mutate.ts` 時優先用 `npm run mutate`——乾淨工作樹才可跑)。工作樹髒時用手動探針即可,但**要明講那不是完整的 mutation 掃描**。
+> - **修法引入新機制**(新函式／新 timer／新守衛／新狀態)→ 送下一輪前對它跑**至少一條 mutation 探針**(手動改壞 → 看某條測試轉紅 → 還原;repo 有 `scripts/mutate.ts` 時優先用 `npm run mutate`——乾淨工作樹才可跑)。工作樹髒時用手動探針即可,但**要明講那不是完整的 mutation 掃描**。〔高風險車道對命中域另有更嚴的探針關(mutate exit 0、SHA 綁定),以 Step 4.5 為準〕
 > - **修法改了任何時序常數、或把某個動作往後排** → 先回答「**哪一條既有測試的 tick 現在推不到它了?**」真實案例:把破壞性動作從 15 秒延到 75 秒、而那條測試只推進到 30 秒 → 同一條 mutation 從被抓變成存活、測試一個字都沒改。**答案若是「沒有任何既有測試推得到」→ 補一條測試涵蓋新時序、或把既有測試的 tick 往後推;不補就是問了卻不行動＝fail-open,不得送審**。⚠️ **只推進 tick 不算數**:推完要確認該測試對新時序**真的有斷言**、且把時序改壞的 mutation 會讓它轉紅——否則 tick 推了、mutation 照樣存活,等於沒守。
 > - **修法寫了新的宣稱句** → 對**這一輪的 diff** 跑量詞自檢器(掃新增行裡的量詞與絕對化措辭、產待處置清單),**base 指定成「上一輪送審的 HEAD」**。🔴 **base 一定要指定、不要用預設**:預設 base 是主線,round 2 之後每次都會把整支 PR 重掃一遍,**前幾輪早處置完的幾十個命中會把本輪新增那幾句淹掉**——正好抵銷這條規則的用意。🔴 **那個 base 從哪來**:靠每輪 fix 都 commit(見 checklist 的 fix commit 條目)、HEAD 才會前進;送審的 prompt 裡寫上 `git rev-parse HEAD` 的值,下一輪拿它當 base。(該輪未提交的修法仍會被 `git diff <base>` 一起收進去,不必為了掃描先 commit——但**輪與輪之間要 commit**,否則 base 不動、下一輪會重掃上一輪已處置的。)
 >   ⚠️ **前置**:此步用的量詞自檢器(`check:claims`)不一定存在於每個 repo。你的 repo 沒有它時,這一句改成**人工核對本輪新增的宣稱句**。
@@ -223,6 +223,10 @@ Step 6/7 收尾照走。
       (Step 5 集中寫進 progress entry;理由見下方 `CSO_NOT_REQUIRED` 條目——
       此刻動 progress.md 也會弄髒工作樹、擋掉下方 mutation 探針)
       〔前置:導入時先填 `scripts/cso-trigger.config.ts` 路徑表,見 docs/ADOPTION.md〕
+- [ ] ⚠️ **fail-closed 的 `CSO_REQUIRED`**(輸出**沒有命中域清單**:空路徑表 /
+      base 非法 / git 變更面取不到)= 判定工具未導入或壞掉,**先排除障礙、重跑
+      判定**。它不是高風險車道觸發(沒有命中域就沒有探針對象),也不可拿來略過
+      任何關卡——排除障礙前不得進 Step 5
 - [ ] `CSO_REQUIRED` → 跑一輪專責安全審
       〔預設:gstack `/cso`;無 gstack 降級:Claude Code 內建 `security-review` skill〕,
       findings 分類同 Step 5(`[CRITICAL]` 必修),fix commit 標 `修復: <feature> 安全審 findings — <finding>`
@@ -230,23 +234,25 @@ Step 6/7 收尾照走。
   - **破壞性 mutation 探針**:對每個命中域的新增/修改機制跑**至少一條**探針,預設
     `npm run mutate -- --file <檔> --find '<原樣>' --replace '<改壞>' --label '<命中域:哪條不變量>'`
     (多條用 `--spec` 批次;`scripts/mutate.ts` 三道 fail-closed 閘,**乾淨工作樹
-    才可跑——先把本輪改動 commit 再跑**)。**exit 0(全部 mutant 被抓)才算過**:
+    才可跑——先把本輪改動 commit 再跑**;無法 commit 的本機殘留〔未追蹤的工具
+    狀態檔〕→ 加進 `.gitignore`,mutate 的乾淨檢查不含 ignored 檔;不宜 ignore 的
+    → 退手動探針並在 progress entry 明講「非 mutate.ts、非完整掃描」)。
+    **exit 0(全部 mutant 被抓)才算過**:
     exit 1 = 覆蓋缺口 → 補測試再跑;exit 2 = 無法判定 → 排除障礙再跑。
     結果**連同跑探針時的 HEAD SHA** 暫記 plan file 或 scratchpad,Step 5 集中寫進
-    progress entry(慣例同下一條)。
+    progress entry(慣例同下方 `CSO_NOT_REQUIRED` 條目)。
     **每個命中域至少一條「實際執行且 exit 0」的探針——0 條不算通過**(空集合
-    不是真值)。刪除 / 搬出型改動沒有新機制可改壞 → 探針對象改為「刪除後**接手
+    不是真值;命中域以判定輸出的清單為準,人工視同時自行點名敏感面當命中域)。刪除 / 搬出型改動沒有新機制可改壞 → 探針對象改為「刪除後**接手
     該不變量的防線**」(把它改壞、看測試轉紅);指不出接手防線 → 這本身就是要
     帶進安全審的 finding,不是探針可略的理由。
     ⚠️ 探針 exit 0 之後,只要再出現**任何非 bookkeeping commit**(Step 4 fix
-    round / 4.6 / Step 5 / Step 6 CI 修復,**不限是否碰命中域**)→ 在新 HEAD
-    **重跑對應探針**。判準刻意統一:逐 commit 判定「有沒有碰到命中域」判錯的
+    round / 4.6 / Step 5 / Step 6 CI 修復,**不限是否碰命中域**;bookkeeping 的
+    定義以 Step 5 worktree 條目為唯一正本)→ 在新 HEAD **重跑對應探針**。判準刻意統一:逐 commit 判定「有沒有碰到命中域」判錯的
     成本比重跑高,而探針是 targeted、重跑便宜。最後一次 exit 0 因此永遠綁
     **最後一個非 bookkeeping commit** 的 SHA、且在派最終 worktree 審之前完成——
     探針與 worktree 審循環,直到兩者對同一個 SHA 成立
-  - **標記高風險車道**:Step 5 要**多加一道** worktree 獨立審(SHA 在 Step 5
-    派工前才記,**不是**沿用 Step 4 的 baseline SHA——fix round 會讓 HEAD 前進;
-    做法見 Step 5〔僅高風險車道〕條目)
+  - **標記高風險車道**:Step 5 要**多加一道** worktree 獨立審(做法與 SHA 規則
+    見 Step 5〔僅高風險車道〕條目,不在此重抄)
 - [ ] `CSO_NOT_REQUIRED` → 自問一次「diff 是否含腳本路徑表沒涵蓋的安全敏感邏輯?」
       (**機器判定是下限不是上限**);**有 → 視同 `CSO_REQUIRED`**(跑安全審 +
       上一條的高風險車道兩項加強),並照下方條目把新路徑補進路徑表、重跑判定;
@@ -293,15 +299,17 @@ exit 0(被抓)——才進 Step 5。
 - [ ] 〔僅高風險車道,即 Step 4.5 判 `CSO_REQUIRED`(含人工視同)〕本步**多加一道
       worktree 獨立審**:adversarial-reviewer 以 `isolation: worktree` 派出(每次派工
       = 全新拋棄式 worktree、乾淨 checkout),prompt 附**派工當下**的
-      `review-tip SHA = HEAD`,要求開工先核對(SHA + 工作樹乾淨度,規則見 agent
-      定義檔)。預設(gstack)與降級路徑做法相同——這是高風險車道**刻意增加的
+      `review-tip SHA = HEAD`(完整 40 字元,取自 `git rev-parse HEAD`——短 SHA
+      會讓逐字核對誤判 mismatch),要求開工先核對(SHA + 工作樹乾淨度,規則見
+      agent 定義檔)。預設(gstack)與降級路徑做法相同——這是高風險車道**刻意增加的
       一輪**,不受上一條「一個就夠」限制(那條講的是同一道 review 不要重複開)。
       ⚠️ 每輪 fix commit 後 HEAD 前進 → 下一輪派工**重記 review-tip、派新 agent**
       (= 新 worktree;舊 worktree 隨舊 agent 作廢,不重用)。Step 4 的 baseline SHA
       只供 finding 來源分類,**不拿來核對**——fix round 後必然 mismatch。
-      ⚠️ 收乾後的 bookkeeping commit(見下方條目)是**機械核對例外**:不為它重跑
-      worktree 審,但該 commit 的 diff 只允許**狀態簿記**——progress.md 的 sprint
-      entry、TODOS / BACKLOG 類追蹤檔的狀態標記與 PR citation。
+      ⚠️ 收乾後的 bookkeeping commit(見下方條目)是**機械核對例外**——
+      **「bookkeeping」的定義以本段為唯一正本**(4.5 / Step 6 用到這個詞時都指
+      回這裡):不為它重跑 worktree 審,但該 commit 的 diff 只允許**狀態簿記**——
+      progress.md 的 sprint entry、TODOS / BACKLOG 類追蹤檔的狀態標記與 PR citation。
       **LESSONS.md 與任何規則 / 安全文字的改動不在例外內**(那是治理內容,
       見頂部 docs-only 判準的 🔴 條件)——含這類改動就要再跑一輪。
       目的:抓「依賴本地未提交狀態 / 工作樹污染」的錯——`scripts/mutate.ts` 檔頭
@@ -350,7 +358,9 @@ exit 0(被抓)——才進 Step 5。
     **分類依 finding 成因、不依修法位置**,判準見 `docs/EFFORT.md`)
     ⚠️ **這三項是人工填、人工讀**——`health:weekly` 的 collector **不解析**它們,
     而且它是 3–5 sprint 的 calibration window、不是永久欄位(理由見 `docs/EFFORT.md`)
-  - 安全關與視覺關的觸發結果各記一行(`CSO_REQUIRED` / 未觸發 + 理由;視覺關同)
+  - 安全關與視覺關的觸發結果各記一行(`CSO_REQUIRED` / 未觸發 + 理由;視覺關同);
+    高風險車道再記:命中域清單、每條探針的 label + exit code + 綁定 SHA、
+    worktree 獨立審的 review-tip SHA 與結論
   - 把 Step 1-5 的 checklist 最終狀態貼上去
   - 下一棒議題選項貼上去(給接手 session 用)
   - `check:claims` 逐條處置(留 A / 降級 B)貼進 entry,同時貼進 Step 6 的 PR 描述
@@ -398,9 +408,10 @@ exit 0(被抓)——才進 Step 5。
 - [ ] 等 CI 綠 → **squash merge** 進開發主線(review 修復 round + progress commit +
       bookkeeping fill-placeholder commit 壓成單一乾淨 commit)
 - [ ] CI 若抓到本地沒抓的(env / DB / build 差異)→ 修一輪再 push,屬正常。
-      〔僅高風險車道〕任何**非 bookkeeping** 的修復 commit → 回 Step 4.5 / Step 5:
-      對命中域重跑對應探針、重派一輪 worktree 審(都綁新 SHA),兩者成立才 merge
-      (否則最後的探針 exit 0 與 worktree 審都停在舊 SHA,綁定形同虛設)
+      〔僅高風險車道〕任何**非 bookkeeping** 的修復 commit(bookkeeping 定義見
+      Step 5 worktree 條目,以該處為唯一正本)→ 回 Step 4.5 / Step 5 照該兩步的
+      重跑規則走(探針重跑**不限是否碰命中域**、worktree 審綁新 SHA),兩者對
+      新 SHA 成立才 merge(否則探針 exit 0 與 worktree 審都停在舊 SHA,綁定形同虛設)
 
 **STOP point**:CI 綠 + squash merge 完成才進 Step 7。
 

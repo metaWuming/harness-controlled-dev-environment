@@ -70,7 +70,8 @@ const MARKER_DOCS = ['TODOS.md'];
 const COMPLETION_TOKENS = ['✅', '完工', '已晉升', '已 merge', '已 merged'];
 // 軟 advisory 的阻塞詞 escape:pending/partial 條目 body 含任一 = 合理待辦(非 stale-done)。
 // ⚠️ 子字串比對(「卡」「待拍板」都是):否定句(「不再待拍板」)照樣命中——這是接受的
-//    邊界,不加 lookbehind 去解析語意(每補一次就換一個洞,見 SOP 守門紀律)。操作面
+//    邊界,不加 lookbehind 去解析語意(每補一次就換一個洞;理由詳見
+//    .claude/sop/plan-mode-checklist.md〈壓輪數的三條紀律〉⑶ 的守門段)。操作面
 //    的解法寫在 TODOS.md 檔頭:阻塞解除時直接刪詞,不寫否定句。
 // 導入時可按你的 repo 慣用語擴充。
 const BLOCKER_RE =
