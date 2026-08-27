@@ -226,7 +226,9 @@ Step 6/7 收尾照走。
 - [ ] ⚠️ **fail-closed 的 `CSO_REQUIRED`**(輸出**沒有命中域清單**:空路徑表 /
       base 非法 / git 變更面取不到)= 判定工具未導入或壞掉,**先排除障礙、重跑
       判定**。它不是高風險車道觸發(沒有命中域就沒有探針對象),也不可拿來略過
-      任何關卡——排除障礙前不得進 Step 5
+      任何關卡——排除障礙前不得進 Step 5。
+      唯一例外:**模板 repo 本身**(路徑表刻意出廠為空、填表屬導入步驟)——
+      以人工自問代替判定,並在 entry 記明「模板 repo、表空為設計」+ 人工判定結果
 - [ ] `CSO_REQUIRED` → 跑一輪專責安全審
       〔預設:gstack `/cso`;無 gstack 降級:Claude Code 內建 `security-review` skill〕,
       findings 分類同 Step 5(`[CRITICAL]` 必修),fix commit 標 `修復: <feature> 安全審 findings — <finding>`
