@@ -75,6 +75,19 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-08-28 — **批 7:check-no-source-terms 升上下文感知 checker(前置攔截第 4 次同類踩坑)**
+
+> **緣起**:批 6(#31)一輪 sprint 內三度撞同類「self-PR 引用被去識別化 denylist 誤觸」(fixture / TODOS / marker env),每次都用不同 workaround 繞開;LESSONS L90 記載「再踩第 4 次就該機器化」。本 sprint 前置攔截。
+> **改動**:9 檔 —— 新建 `scripts/check-no-source-terms.ts`(三段掃描 + 兩路 grep 架構、pure functions 抽出);刪 `.sh`;`scripts/git-hooks/commit-msg` 註記分層策略;`scripts/deny-terms.txt` L1 標頭;新建 `tests/check-no-source-terms.test.ts`(45 case);`docs/ADOPTION.md` 檔名 rename;`.github/workflows/ci.yml` 改指 npm run + 加 DELIVERY_REFS env;`package.json` script 改指 tsx;`.claude/memory/LESSONS.md` L90 canonical 描述;`TODOS.md` P3 加 F2 / round 6 P2-2 兩條 defer;本 entry。
+> **審查**:Codex CLI 6 rounds(21 findings 累計、18 修 + 3 defer)—— r1 4 條(workflow consumer / fixture self-block / allowedPrs 全 body 過寬 / ERE vs JS regex)、r2 6 條(--all 洩未合併分支 / extractor 右邊界不對稱 / test 檔盲區 / stripCommentsAndBlanks 語義漂 / e2e fixture 全 commit / denylist 標頭)、r3 4 條(FULL_EXCLUDES 缺對稱 / workflow env / staged fixture / LESSONS 舊指引)、r4 2 條(DELIVERY_REFS 只列一 ref / extractor 左邊界不對稱)、r5 2 條(stripGitGrepPrefix regex 猜邊界 / CA-in-commit-msg 無測試)、r6 3 條(workflow MARKER_SELF_PR defer / filename 含 sub-path / CA commit-msg strict 測試)。Owner 拍板 r6 P2-2 defer。安全關:`check:cso` fail-closed(表空)→ 套模板 repo 例外人工判定不進高風險車道。視覺關:未觸發。Step 5:adversarial-reviewer fresh 審 —— 0 CRITICAL / 6 INFORMATIONAL,confidence 7-8 修 3(F1 CA 常數 vs denylist 漂移守門、F3 SYNTAX_EXEMPT scan e2e 覆蓋、F4 ADOPTION 移除清單漏 test 檔),confidence 3-4 skip 2(F5 hook 同源不同宿主、F6 cherry-pick 邊界),F2 confidence 7 defer TODOS P3(buildDeliveryRefs fallback 三路無 e2e、修法要新增設 env 的 disposable-repo pattern 較大)。cross-model agreement ≈ 0(Codex 全在 pure fn / 邏輯層,Step 5 全在守門缺口 / e2e 覆蓋盲區 / 外部 consumer 漏改)——**meta 教訓再次驗證**。
+> **驗證**:typecheck / lint / test 433(388 baseline + 45 sprint)/ dogfood 三段皆綠(22 allowedPrs) / doc-refs 145 / todos / claims 各輪增量 0 處量詞 / mutation 探針一輪(round 1、手動、改壞 isSelfPrReferenceLine 讓 4 tests 轉紅)。
+> **⭐ 教訓**:①**Review round 遞迴陷阱**——批 7 走 6 輪 codex + 1 輪 Step 5,累計 27 findings 才收乾。scope note 有寫「排除 D4 defer」但無法解 root cause 2「每輪 fix 本身是新表面」(SOP L18-23 明講:scope note 不解此);6 輪後 Owner 主動喊停「太多輪 Codex」→ 才用 AskUserQuestion 拍板收乾 + defer。教訓:**5 輪後主動評估收乾**,不要等 Owner 喊停;findings 開始挑理論邊界(檔名含 `:數字:` sub-path、workflow MARKER_SELF_PR)時就是「該做更多」型信號、defer TODOS P3 而非本 sprint 修。②**squash+amend 讓 branch history 乾淨**——round 1/2 fix 期間 dogfood 掃到自己 branch 的中間 commits 舊 blob(未 concat 版 test fixture),用 `git reset --soft main` + 單 commit 消掉 branch 內部歷史。之後 round 3-6 fix 各自單 commit(保留 review 軌跡)。③**cross-model agreement ≈ 0 = 常態**——Codex 抓 pure fn/邏輯層,Step 5 fresh 抓守門缺口/漏改 consumer;軸完全不重疊、兩層都不可省。
+> **⏭️ 下一棒候選**(hint 非 truth,起手 git 核實):A. F2 buildDeliveryRefs fallback 三路 e2e 覆蓋(TODOS P3);B. Round 6 P2-2 workflow MARKER_SELF_PR env(TODOS P3);C. Step 5 F5 hook vs checker 第 3 段對齊 e2e(散文級預備、若有第 2 次同類漂移再機器化)。
+> **check:claims 逐條處置**:0 處(各輪增量與最終 base=main 掃全綠;新增註解量詞在本 entry 內少數位置多屬集合可窮舉、留 A)。
+> 📊 成本:CC ~6h / 跨模型 review 6 rounds + Step5 1 / P1 5 個(round 1-2)/ P2 20 個 / Step5 獨立發現 6 個(3 修 3 skip/defer)/ 累計 27 findings。
+> 📐 量測(供 `docs/EFFORT.md` sweep;人工填):主迴圈 claude-opus-4-7 預設 effort / Codex r1-6 non-interactive review medium / adversarial-reviewer default / baseline SHA:`c7572f836deb059d5c113724ccc3c088e829cf12` / 來源分佈:初始 patch 內既有缺陷 18・初始 patch 漏改的外部 consumer 4(workflow yml consumer / ADOPTION 檔名 / LESSONS 舊指引 / ADOPTION 缺 test 檔)・baseline 後新增/修改引入 5(round 2 fix P2-3 引入 FULL_EXCLUDES 半修 → round 3 抓;round 5 引入 stripGitGrepPrefix regex → round 6 抓 filename sub-path;round 5 引入 e2e test 未守 CA commit-msg → round 6 抓;各 fix round 引入再修)
+> **7 步 checklist 狀態**:1 ✅ / 2 ✅(D1-D8 全 sensible default 通過)/ 3 ✅(3 phase atomic commits + round 1-2 squash + round 3-6 各獨立 fix commit + Step 5 fix commit)/ 4 ✅(6 rounds 收乾 + Owner 拍板 r6 P2-2 defer)/ 4.5 ✅(模板 repo 例外人工判定不進高風險車道)/ 4.6 ✅(未觸發)/ 5 ✅(fresh 審 + 本 entry bookkeeping)/ 6-7 待執行
+
 📅 2026-08-27 ③ — **Harness backsync 批 6:LESSONS 記 self-PR gate 踩坑 + CI workflow delivery-branch 契約**
 
 > **緣起**:批 5(#30)Step 6 連續踩 3 個 self-PR # citation 撞去識別化 denylist 變體(fixture / TODOS 補號 / CI push event 缺 `MARKER_SELF_PR`),Owner 拍板打包收。
@@ -101,50 +114,5 @@ type: note
 > 📐 量測(供 `docs/EFFORT.md` sweep;人工填):每輪 model＋effort:主迴圈 claude-opus-4-7(session 預設 effort);Codex exec r1-5 預設(non-interactive review)/ baseline SHA:1952affa6b3e80f20b8948d59e5cb30ec59db10d(初始 3 phase 完成、review 第一輪前的 HEAD)/ 來源分佈:初始 patch 內既有缺陷 6(r1×4 + r2×2 allowlist 太寬)・初始 patch 漏改的外部 consumer 0・baseline 後新增/修改引入 8(r2 EXACT_ALLOW 引入太窄一個新洞→r3 LESSONS-archive 也不算 → r4 e2e 缺 → r5 SOP 敘述漂移 → Step5 F1 SSOT 位置錯 → Step5 F2 template 標題斷 SSOT + F1 副作用把「機器化核對」段位置改到)
 > **7 步 checklist 狀態**:Step 1 ✅ / Step 2 ✅(無真實取捨,D0-D7 全 sensible default 通過)/ Step 3 ✅(3 phase atomic commits、每 phase gate 綠)/ Step 4 ✅(5 輪收乾,r5 散文級不消耗確認輪)/ 4.5 ✅(模板 repo 例外人工判定、不進高風險車道)/ 4.6 ✅(未觸發)/ Step 5 ✅(含本 entry bookkeeping)/ Step 6-7 待執行
 
-📅 2026-08-27 ① — **風險車道升級:高風險車道兩項加強 + DECISION_REQUEST + 待拍板**
 
-> **緣起**:Owner 拿外部「雙 Session + 多 Agent + Project GPT」治理架構圖與本 harness
-> 比較,拍板吸收 4 個與單人規模相容的機制(風險分級對照、乾淨環境驗證、待拍板阻塞詞、
-> 決策請求格式),全掛條件觸發、標準車道零加重。起手 git 核實:對話第一輪讀到的 SOP
-> 是 #28 前舊版(343 行),已核實現版(444 行,含 docs-only 判準與節奏分層)並重校
-> 4 項建議——2 項因此改設計(不動 check-cso-trigger 腳本、狀態詞彙縮成一詞)。
-> **改動**:8 檔——`.claude/sop/plan-mode-checklist.md`(風險車道對照表;Step 4.5
-> fail-closed 區分+模板 repo 例外+高風險兩項加強:mutate 探針 exit 0 gate、SHA 綁定
-> 與重跑循環;Step 5 高風險 worktree 獨立審:review-tip 完整 SHA、逐輪重建、bookkeeping
-> 例外含時序;Step 3 決策請求指引;Step 6 高風險 CI 修復導回;entry 模板補高風險欄);
-> `.claude/sop/decision-request-template.md`(新,四段格式);`.claude/agents/
-> adversarial-reviewer.md`(worktree 模式:SHA+乾淨度核對、無 SHA fail-closed);
-> `scripts/check-todos-markers.ts`+`TODOS.md`+`tests/`(阻塞詞加「待拍板」+測試);
-> `CLAUDE.md`(5.5 review 輪例外、4.5 摘要)、`docs/DEGRADATION.md`、`docs/EFFORT.md` 同步。
-> **審查**:Step 4 Codex exec rounds 1-7(累計 P1 x10 / P2 x8,逐輪修到剩 1 P2);
-> Codex 額度耗盡(訊息稱 16:48 重置、實測過時仍擋)→ round 8 依 DEGRADATION 降級:
-> 內建 /code-review high(8-angle+驗證),10 findings(9 CONFIRMED / 1 PLAUSIBLE)全修。
-> 安全關:`check:cso` fail-closed(表空)→ 適用本 sprint 新加的「模板 repo 例外」人工
-> 自問 → diff 無安全敏感邏輯(BLOCKER_RE 屬 advisory 分支)、非高風險車道;dogfooding
-> 當場抓到 fail-closed 規則對模板 repo 自我死鎖、補例外條款。視覺關:未觸發(無 UI 檔)。
-> Step 5:adversarial-reviewer fresh 審——0 CRITICAL / 7 INFORMATIONAL,confidence 5-6
-> x4 修(收斂條件字面不可滿足、gitignore 支線漏 commit、5.5 例外涵蓋整類、agent 無
-> SHA fail-closed),confidence 3-4 x3 依規則 skip(decision-request 只接線 Step 3、
-> spec 批次 exit 語意、CLAUDE.md 摘要漏「人工視同」)。cross-model agreement ≈ 0(再驗證)。
-> **驗證**:typecheck / lint 綠;tests 14 檔 348 passed;check:doc-refs 112 引用 0 失效;
-> check:todos 綠;check:no-source-terms 綠。
-> **⭐ 教訓**:①Codex 額度重置時間訊息不可信,降級路徑第一次實測(見 LESSONS 同日兩條)
-> ②新 SOP 規則寫完先拿自己 repo dogfood 一遍——fail-closed 自我死鎖就是這樣抓到的。
-> **⏭️ 下一棒候選**(hint 非 truth,起手 git 核實):A. README 13 關卡同步風險車道
-> (TODOS P3);B. bookkeeping 例外機器化(allowlist 檢查腳本,TODOS P3);C. mutate.ts
-> 摘要印 HEAD SHA + decision-request 接線 Step 4-6(TODOS P3)。
-> **check:claims 逐條處置**:命中 8 處全留 A——r0 x2(「判準只有一個」=原則 1 單一判準
-> 可枚舉;「唯一正本」=docs-only 敘述單一錨點)、r8 x5+carve-out x1(全是本刀刻意建立
-> 的 SSOT 錨點宣告,各集合=單一錨點,指標已去重)。0 降級 B。(同文貼 PR 描述)
-> 📊 成本:CC ~4h / 跨模型 review 7 rounds + 降級 1 + Step5 1 / P1 12 個 / P2 9 個 /
-> Step5 獨立發現 7 個
-> 📐 量測(供 `docs/EFFORT.md` sweep;人工填):每輪 model＋effort:主迴圈
-> claude-fable-5(session 預設 effort);Codex exec r1-5 medium、r6-7 high;r8 內建
-> /code-review high / baseline SHA:42c72265fbc6ae057e877b472379098689580d09 /
-> 來源分佈:初始 patch 內既有缺陷 17・初始 patch 漏改的外部 consumer 5(4.5 首彈舊文、
-> CLAUDE.md 5.5、EFFORT、DEGRADATION、Step 5 entry 模板)・baseline 後新增/修改引入 7
-> (各 fix round 引入再修)
-> **7 步 checklist 狀態**:Step 1 ✅(plan file 完整含 impact radius)/ Step 2 ✅
-> (無真實取捨,D1-D6 全 sensible default)/ Step 3 ✅(4 phases atomic commits、
-> 每 phase gate 綠)/ Step 4 ✅(9 輪收乾,含降級輪)/ 4.5 ✅(模板 repo 例外人工
-> 判定)/ 4.6 ✅(未觸發)/ Step 5 ✅(含本 entry bookkeeping)/ Step 6-7 待執行。
+> 更早的 entries(2026-08-27 ① 及之前)見 [progress-archive/progress-2026-08.md](progress-archive/progress-2026-08.md)

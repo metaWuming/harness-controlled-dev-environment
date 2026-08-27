@@ -40,6 +40,16 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 
 ## P3
 
+### ❌ pending: buildDeliveryRefs 前三條 fallback 路徑 e2e 覆蓋
+- **來源**:2026-08-28 批 7 Step 5 F2(adversarial-reviewer,confidence 7)
+- **內容**:e2e 全部走 last-resort 本地 main fallback、①origin/HEAD ②DELIVERY_REFS env ③origin/develop 三條路徑無對照。若未來 refactor 拿掉 DELIVERY_REFS env 處理,主 branch e2e 綠、CI 也綠(main push 走 ①)、只在 feature branch push 靜默倒退。補「顯式設 DELIVERY_REFS」或「不設任何 delivery ref → allowedPrs 空 → CA hit 全擋」的 e2e case
+- **工時**:0.5-1h
+
+### ❌ pending: workflow yml Source-term step 加 MARKER_SELF_PR env(sprint 內 self-reference 可過)
+- **來源**:2026-08-28 批 7 Codex round 6 P2-2(defer:「該做更多」型 finding、Owner 拍板不進本 sprint)
+- **內容**:`.github/workflows/ci.yml` Source-term scan step 加 `MARKER_SELF_PR: ${{ github.event.pull_request.number }}` env,checker 讀該 env 把當前 PR 號加入 allowedPrs(僅限 pull_request event 的可信 PR 號、其他未 merge PR 仍嚴格擋)。目前 sprint 內若 commit 訊息或 diff 引用自己的 PR 號會被 CI 誤擋——workaround 是用 `(#N)` 尾綴格式繞(仍有效)
+- **工時**:1-2h(含 checker env 讀取邏輯 + workflow yml + 1-2 條 e2e case)
+
 ### ✅ README 13 關卡敘述同步風險車道 (#30)
 - **來源**:2026-08-27 風險車道升級 sprint(Owner 拍板 defer)
 - **內容**:README 關卡⑧⑩ 補「CSO_REQUIRED 高風險車道 = 破壞性探針 + Step 5 worktree 獨立審」一句;關卡⑦不動

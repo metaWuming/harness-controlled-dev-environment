@@ -2,7 +2,7 @@
 #
 # scripts/git-hooks/commit-msg — commit 訊息的去識別化前置檢查
 #
-# 機器化教訓(2026-07-25 實際踩到):去識別化 gate(scripts/check-no-source-terms.sh)
+# 機器化教訓(2026-07-25 實際踩到):去識別化 gate(scripts/check-no-source-terms.ts)
 # 的第 3 段掃「git 全史 commit 訊息」。在這個 repo 工作時,**寫 commit 訊息去描述
 # 「被 denylist 擋下什麼」是很自然的行為**,而描述時很容易把那個詞原樣寫進去 → gate 紅。
 #
@@ -21,6 +21,15 @@
 #
 # 與 CI gate 的關係:本 hook 只看「這一則訊息」,是最便宜的第一道;
 # 完整三段掃描(working tree / 全史 blob / 全史訊息)仍以 CI 為準,兩者用同一份 denylist。
+#
+# 分層策略(2026-08-27 批 7 加):CI 版 checker(scripts/check-no-source-terms.ts)
+# 對「PR 井號+數字」與「pull/數字」兩條 pattern 走上下文感知例外——命中的 hit 若引用
+# 的 PR 號 ∈ 本 repo 已 merge 的 PR 號集合則放行,方便文件寫 self-PR 引用。
+# **但本 hook 保持嚴格擋(不做 context-aware)**,理由:
+#   1) commit 訊息應寫 squash 格式的「(井號+N)」(GitHub 尾綴),不裸寫「PR 井號+N」
+#   2) hook 邏輯要簡單、shell 穩固,不引入 git log 全掃依賴
+#   3) 分層降低耦合:hook 早擋、CI 晚審,兩者訊號互補
+# 若不小心裸寫了,改成「(井號+N)」尾綴即可通過(GitHub squash merge 也用此格式)。
 #
 # 緊急逃生:`git commit --no-verify` 跳過本 hook
 # Opt-in:`npm run setup-hooks`(設 git config core.hooksPath;已設者自動生效)

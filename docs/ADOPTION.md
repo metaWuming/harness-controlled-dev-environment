@@ -84,7 +84,7 @@ type: guide
 - [ ] 用 Next.js+Prisma → 照 `stack/nextjs-prisma/README.md` 把 L2 層裝上
       (ESLint AST 規則 + migration 守衛 + CI 片段)
 - [ ] `Source-term scan` step:本模板用它防「來源專案識別詞」殘留。
-      你不需要 → 刪 step + `scripts/deny-terms.txt` + `scripts/check-no-source-terms.sh`;
+      你不需要 → 刪 step + `scripts/deny-terms.txt` + `scripts/check-no-source-terms.ts` + `tests/check-no-source-terms.test.ts`;
       你也從自家私有專案抽模板 → 把 deny-terms.txt 換成你家的識別詞
 - [ ] `.gitleaks.toml`:保持空 allowlist;掃到誤報才按「值」精準放行(見檔內原則)
 
