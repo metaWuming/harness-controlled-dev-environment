@@ -300,16 +300,16 @@ export function checkTodosMarkers(
   return { violations, advisories, verifiedPrs, totalCompletionPrs };
 }
 
-/** 交付分支候選(依序試 resolve;預設分支非本清單的 repo 請把你的交付分支加進來)
+/** 交付分支候選來源三條(依序試 resolve,取所有能 resolve 的組成 trusted set):
+ *   ①`origin/HEAD` 偵測到的當前 default branch(涵蓋 main / master / trunk 等 rename)
+ *   ②`origin/develop`(GitFlow 慣例,只認 origin/、不認 local,避免 contributor 建的
+ *      同名 branch 被誤當 delivery)
+ *   ③env `DELIVERY_REFS`(逗號分隔的額外 delivery refs,導入者可加 release/** 等)
  *
- * 🔴 Codex batch 6 round 5 P2:清單需與 `.github/workflows/ci.yml` 的 event filter
- * (on.push.branches / on.pull_request.branches)+ workflow `if:` 條件涵蓋一致——
- * 三處(event filter / workflow if / 這裡)少一處都會造成「gate 跑但認不到 merge 證據」
- * 假紅或「gate 不跑」silent skip。 */
-const DELIVERY_REF_CANDIDATES = [
-  'origin/main', 'origin/master', 'origin/trunk', 'origin/develop',
-  'main', 'master', 'trunk', 'develop',
-];
+ * 🔴 Codex batch 6 round 6 P2:不再無條件試 `master` / `trunk` / 本地 `main` /
+ * 本地 `develop`——default_branch 是 main 但 repo 內同時存在 legacy `master` 分支時,
+ * 舊寫法會把 master 上的 `(#123)` subject 也算成 merge 證據、假通過。 */
+const DEFAULT_DELIVERY_ENV = 'DELIVERY_REFS';
 
 /**
  * git IO:從「交付分支」commit subject 建「有 merge 證據的 PR 號集合」。
@@ -329,28 +329,52 @@ function buildMergedPrSet(): Set<number> {
       return false;
     }
   };
-  const deliveryRefs = DELIVERY_REF_CANDIDATES.filter(resolves);
-  if (deliveryRefs.length === 0) {
-    // 候選名單全不在 → 試 origin/HEAD 偵測遠端預設分支(涵蓋 master 等非慣例命名)
-    try {
-      const def = execSync('git symbolic-ref --quiet refs/remotes/origin/HEAD', {
-        cwd: REPO_ROOT,
-        encoding: 'utf-8',
-        stdio: 'pipe',
-      })
-        .trim()
-        .replace('refs/remotes/', '');
-      if (def && resolves(def)) deliveryRefs.push(def);
-    } catch {
-      /* origin/HEAD 未設(常見於非 clone 的 repo)→ 走下方空集合路徑 */
-    }
+  const refs: string[] = [];
+  const seen = new Set<string>();
+  const push = (r: string) => {
+    if (!r || seen.has(r)) return;
+    if (!resolves(r)) return;
+    seen.add(r);
+    refs.push(r);
+  };
+
+  // ①origin/HEAD 偵測 default_branch(涵蓋 main / master / trunk 等 repo 主線 rename)
+  try {
+    const def = execSync('git symbolic-ref --quiet refs/remotes/origin/HEAD', {
+      cwd: REPO_ROOT,
+      encoding: 'utf-8',
+      stdio: 'pipe',
+    })
+      .trim()
+      .replace('refs/remotes/', '');
+    if (def) push(def);
+  } catch {
+    /* origin/HEAD 未設(常見於非 clone 的 repo)→ 走下方 fallback */
   }
-  const refs = deliveryRefs;
+
+  // ②GitFlow 常見的 origin/develop(只認 origin/,不認 local——避免 contributor 建的
+  //    同名 branch 被當作 delivery)
+  push('origin/develop');
+
+  // ③env DELIVERY_REFS(逗號分隔)——導入者用 release/** 或其他自訂 delivery
+  const extras = (process.env[DEFAULT_DELIVERY_ENV] ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const r of extras) push(r);
+
+  // ④本地 fallback:上面全空(沒 origin/HEAD 也沒 origin/develop 也沒 DELIVERY_REFS)
+  //    →本地 main / develop(僅開發環境 clone 前使用;CI clone 有 origin/HEAD 不會走這條)
+  if (refs.length === 0) {
+    push('main');
+    push('develop');
+  }
+
   if (refs.length === 0) {
     console.warn(
-      '⚠️ 找不到任何交付 ref(候選:main/master/trunk/develop 的 origin/ 版與本地版,以及 origin/HEAD)。' +
+      '⚠️ 找不到任何交付 ref(origin/HEAD / origin/develop / env DELIVERY_REFS / 本地 main / 本地 develop 都不存在)。' +
         '不以 HEAD 充當 merge 證據(未合併 commit 會假交付)——若 TODOS 有完成宣稱將直接失效。' +
-        '請把你的交付分支加進 scripts/check-todos-markers.ts 的 DELIVERY_REF_CANDIDATES。'
+        '請在 CI 或本地設 DELIVERY_REFS env(如 `refs/remotes/origin/release`),或確認 origin/HEAD 已設。'
     );
     return merged;
   }
