@@ -21,6 +21,7 @@
     "check:doc-size": "tsx scripts/check-doc-size.ts",
     "check:hooks": "bash scripts/check-hooks.sh",
     "check:no-source-terms": "bash scripts/check-no-source-terms.sh",
+    "check:bookkeeping": "tsx scripts/check-bookkeeping-commit.ts",
     "mutate": "tsx scripts/mutate.ts"
   },
   "devDependencies": {

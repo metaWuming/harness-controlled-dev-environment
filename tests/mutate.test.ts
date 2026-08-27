@@ -32,6 +32,7 @@ import {
   classify,
   classifyRun,
   formatSummary,
+  decideHeadBinding,
   isGitInternal,
   isInsideRepo,
   isUtf8Text,
@@ -502,6 +503,44 @@ describe("mutate — 摘要與 exit code", () => {
   it("摘要逐條印出 label——這張表要能直接貼進 PR", () => {
     expect(formatSummary([r("killed")], true).text).toContain("拿掉守衛應該讓測試轉紅");
   });
+
+  it("有 headSha → 摘要含「HEAD(綁定 SHA):<sha>」(Step 4.5 高風險車道抄的來源)", () => {
+    const sha = "abc123def456abc123def456abc123def4567890";
+    expect(formatSummary([r("killed")], true, sha).text).toContain(`HEAD(綁定 SHA):${sha}`);
+  });
+
+  it("headSha 未給 → 摘要不含 HEAD 行(保留舊行為;失敗時 main 也走這條路)", () => {
+    expect(formatSummary([r("killed")], true).text).not.toContain("HEAD(綁定 SHA):");
+  });
+});
+
+// ───────────────────────────────────────── HEAD 綁定判定(P1 fail-closed)
+
+describe("decideHeadBinding — HEAD SHA 綁定純函式(Codex round 1 P1)", () => {
+  const A = "aaaa000000000000000000000000000000000000";
+  const B = "bbbb111111111111111111111111111111111111";
+
+  it("case ① 收尾讀不到 HEAD(endHead 空)→ drifted、無 headSha", () => {
+    const r = decideHeadBinding(A, "");
+    expect(r.drifted).toBe(true);
+    expect(r.headSha).toBeUndefined();
+    expect(r.message).toContain("收尾讀不到 HEAD");
+  });
+
+  it("case ② HEAD 期間變動(不等)→ drifted、無 headSha、message 含前後 SHA", () => {
+    const r = decideHeadBinding(A, B);
+    expect(r.drifted).toBe(true);
+    expect(r.headSha).toBeUndefined();
+    expect(r.message).toContain(A);
+    expect(r.message).toContain(B);
+  });
+
+  it("case ③ 兩者相等 → 不 drifted、回傳 startHead 供摘要印", () => {
+    const r = decideHeadBinding(A, A);
+    expect(r.drifted).toBe(false);
+    expect(r.headSha).toBe(A);
+    expect(r.message).toBeUndefined();
+  });
 });
 
 // ───────────────────────────────────────── 端到端(拋棄式 git repo)
@@ -586,6 +625,27 @@ describe("mutate — 端到端(真的跑腳本)", () => {
     const { code, out } = runScript(makeRepo(), [...BASE, "--cmd", "false"]);
     expect(code).toBe(2);
     expect(out).toContain("作廢");
+  });
+
+  it("🔴 Codex round 4 P2:HEAD 期間變動(外部 clean commit)→ exit 2、不印綁定 SHA", () => {
+    // --cmd 用 `git commit --allow-empty` 模擬:另一個 shell / agent / IDE 在
+    // mutation 期間建了一支 empty commit → HEAD 前進 → 但工作樹仍乾淨(閘①、
+    // treeDirt 都看不見),舊版會直接印新 HEAD 假造綁定。本測試守 main() 內
+    // startHead ↔ endHead 的接線,單獨 unit test 純函式抓不到。
+    const dir = makeRepo();
+    const beforeHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf-8" }).trim();
+    // 執行:mutation 內 `--cmd` 建 empty commit(必然 exit 0、GUARD_ON 已被改掉,
+    // 但為求「HEAD 變動」的判定不被別的 exit 淹沒,`--cmd` 直接不去讀 mutation)
+    const { code, out } = runScript(dir, [
+      ...BASE,
+      "--cmd",
+      "git commit --allow-empty -qm advance-head",
+    ]);
+    expect(code).toBe(2);
+    expect(out).toContain("HEAD 在 mutation 期間變動");
+    expect(out).not.toContain("HEAD(綁定 SHA):");
+    const afterHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf-8" }).trim();
+    expect(afterHead).not.toBe(beforeHead); // 確認 --cmd 真的動了 HEAD
   });
 
   it("檔案不存在 → exit 2", () => {

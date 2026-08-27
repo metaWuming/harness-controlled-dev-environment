@@ -510,7 +510,42 @@ export function parseSpecs(raw: unknown): MutationSpec[] {
 
 // ───────────────────────────────────────── 摘要
 
-export function formatSummary(results: MutationResult[], controlOk: boolean): { text: string; exitCode: number } {
+/**
+ * 純函式:給起手 HEAD 與收尾 HEAD,判定 SHA 綁定是否成立。
+ *
+ * 🔴 Codex review round 1 P1 的**關鍵不變量**(壓輪數紀律 ⑵:引入新機制 → 補
+ *   單測涵蓋)——三條 case 必守:
+ *     ① 收尾讀不到 HEAD → fail-closed(drifted=true)
+ *     ② startHead !== endHead → fail-closed(drifted=true;期間 HEAD 動了)
+ *     ③ 兩者相等 → drifted=false,回 headSha 供摘要印
+ */
+export function decideHeadBinding(
+  startHead: string,
+  endHead: string,
+): { drifted: boolean; headSha?: string; message?: string } {
+  if (!endHead) {
+    return { drifted: true, message: "收尾讀不到 HEAD" };
+  }
+  if (endHead !== startHead) {
+    return {
+      drifted: true,
+      message: `HEAD 在 mutation 期間變動:${startHead} → ${endHead}(可能有外部 clean commit)`,
+    };
+  }
+  return { drifted: false, headSha: startHead };
+}
+
+export function formatSummary(
+  results: MutationResult[],
+  controlOk: boolean,
+  /**
+   * 跑完當下的 HEAD SHA(選填)。有給就印在收尾分隔線之後、判定訊息之前。
+   * 用途:高風險車道要記「exit 0 綁定的最後非 bookkeeping SHA」——這裡直接印出來,
+   * Owner／review 直接抄,不用另外跑 `git rev-parse HEAD`(手抄易錯:短 SHA 不夠、跑
+   * 完後 HEAD 又前進就更難對)。純函式保持純:不在這裡呼叫 git,由 `main()` 傳進來。
+   */
+  headSha?: string,
+): { text: string; exitCode: number } {
   const lines: string[] = [];
   const killed = results.filter((r) => r.verdict === "killed");
   const survived = results.filter((r) => r.verdict === "survived");
@@ -527,6 +562,7 @@ export function formatSummary(results: MutationResult[], controlOk: boolean): { 
     if (r.reason) lines.push(`         → ${r.reason}`);
   }
   lines.push("─".repeat(72));
+  if (headSha) lines.push(`HEAD(綁定 SHA):${headSha}`);
 
   let exitCode = 0;
   if (!controlOk) {
@@ -1106,6 +1142,18 @@ async function main(): Promise<number> {
     return 2;
   }
 
+  // 🔴 Codex review round 1 P1(HEAD 綁定):**開跑前**就把 HEAD 記下來,
+  //   收尾時再抓一次比對。若期間 HEAD 動過(外部 shell / IDE / 其他 agent 建 clean
+  //   commit)——工作樹仍乾淨、閘① 看不見,但**所有 mutation 判定的 SHA 綁定作廢**
+  //   (Step 4.5 高風險車道拿 exit 0 綁 SHA,若印的是新 HEAD、探針其實跑在舊 checkout,
+  //   等於偽造綁定、suppress 掉本該重跑的 sprint)。fail-closed:HEAD 變動 → 判定作廢。
+  const startHeadR = spawnSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf-8" });
+  if (startHeadR.status !== 0 || !startHeadR.stdout?.trim()) {
+    console.error("✗ 讀不到起手 HEAD(`git rev-parse HEAD` 失敗)——無法綁定判定 SHA,拒跑。");
+    return 2;
+  }
+  const startHead = startHeadR.stdout.trim();
+
   const results: MutationResult[] = [];
   let controlOk = false;
 
@@ -1268,7 +1316,18 @@ async function main(): Promise<number> {
     }
   }
 
-  const { text, exitCode } = formatSummary(results, controlOk);
+  // HEAD SHA 綁定:給 Step 4.5 高風險車道抄「exit 0 綁定的最後非 bookkeeping SHA」用。
+  // 🔴 Codex review round 1 P1:endHead 必須與 startHead(main 開頭抓的)相同——
+  //   期間有人 clean commit → HEAD 前進 → 印新 SHA 等於偽造綁定。fail-closed:
+  //   兩者不等 → 不印 SHA、將 exitCode 升到 2、判定全部作廢。判定邏輯在
+  //   `decideHeadBinding()` 純函式內、有單測直接覆蓋三條 case。
+  const endHeadR = spawnSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf-8" });
+  const endHead = endHeadR.status === 0 ? (endHeadR.stdout ?? "").trim() : "";
+  const binding = decideHeadBinding(startHead, endHead);
+  if (binding.drifted && binding.message) console.error(`✗ ${binding.message}——所有判定 SHA 綁定作廢,不印 SHA。`);
+
+  const { text, exitCode: rawExit } = formatSummary(results, controlOk, binding.headSha);
+  const exitCode = binding.drifted ? Math.max(rawExit, 2) : rawExit;
   console[exitCode === 0 ? "log" : "error"](text);
   return exitCode;
 }
