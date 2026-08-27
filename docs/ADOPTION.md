@@ -53,8 +53,23 @@ type: guide
 - [ ] 檢查 `scripts/git-hooks/pre-commit` 的保護分支清單(預設 main/develop)符合你的分支策略
 - [ ] `scripts/git-hooks/commit-msg` 擋「commit 訊息含去識別化 denylist 詞」——
       你若照 §6 移除了去識別化 gate,本 hook 會自動 no-op(不必特別處理)
-- [ ] 有「PR-only 的策略文件」→ 填進 pre-commit 的 `PROTECTED_DOCS`
-- [ ] (建議)本機裝 gitleaks(`brew install gitleaks`),pre-push 會自動用;沒裝會提示放行
+- [ ] 檢查 `scripts/git-hooks/code-pattern.sh` 的 `PROTECTED_DOCS` SSOT
+      (pre-commit / pre-push 兩支共用)。預設涵蓋模板實際附帶或最常見的
+      `CLAUDE.md` / `.claude/sop/` / `SPEC.md` / `ARCHITECTURE.md` /
+      `GOVERNANCE.md` / `docs/architecture/`;有專案自己的治理文件
+      (常見增補:root 級 `AGENTS.md` / `DESIGN.md`、或
+      `docs/{SECURITY,THREAT_MODEL,BRANCH_PROTECTION}.md` 這類專案安全文件
+      ——路徑依專案實情、非本模板附帶)按實情增補
+- [ ] 兩支 hook 用 **default-deny**(`NON_CODE_PATTERN` = `.md` 與
+      `docs/*.html` — 後者只放行 `docs/` **直層一級**,`docs/guides/setup.html`
+      這種 nested HTML 會被當 code、走 PR)。非文件一律視為 code。若專案有
+      其他純說明檔位置要放行,在 `NON_CODE_PATTERN` 加入,但**只放行可信任
+      的說明目錄**(避免 `public/**/*.html` 這種同源可讀 session 的檔零阻力
+      進主分支)
+- [ ] (**強烈建議**)本機裝 gitleaks(`brew install gitleaks`)。pre-push 預設
+      **fail-closed**:沒裝就擋 push,要繞得明講 `SKIP_GITLEAKS_CHECK=1 git push …`
+      或 `git push --no-verify`;`gitleaks:allow` 行內註解與 `.gitleaksignore`
+      已刻意停用(提交者不能自己放行,誤報一律走版控的 `.gitleaks.toml`)
 
 ## 5. destructive 腳本守衛
 

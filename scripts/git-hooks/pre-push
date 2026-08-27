@@ -1,60 +1,304 @@
 #!/usr/bin/env bash
 #
-# scripts/git-hooks/pre-push — 偵測 push 程式碼到 develop / main 並要求確認
+# scripts/git-hooks/pre-push — push 前秘密掃描 + 保護分支守衛
 #
-# 機器化教訓:Admin push 保護分支會 bypass branch protection,訊息看起來像錯誤
-# 但其實已成功。原則:
-#   - 文件改動可直接 push(零風險時可接受)
-#   - 程式碼改動嚴禁直接 push 保護分支 —— 一定走 feature 分支 + PR + CI pass
+# 做兩件事:
+#   1. **本機 gitleaks**:CI 抓到時密鑰已離開這台機器 → push 前在本機掃才是第一層。
+#      當專案的生產密鑰在 repo 內走 env 變數(Supabase service_role、OAuth secret、
+#      DB URL 等)、CI 抓到時已離機,這第一道就是唯一能擋住的地方。
+#   2. **保護分支守衛**:Admin push 保護分支會 bypass branch protection,訊息看起來
+#      像錯誤但其實已經成功。
+#
+# 🔴 幾個修過的 P1 洞:
+#   ① **逐 ref 掃「這次真的會離機的範圍」**(先收完 stdin,再對每個 ref 掃
+#      `remote_sha..local_sha`)。
+#      ⚠️ 注意:gitleaks 預設掃 repo 內所有 ref,舊寫法**其實不會漏**——但這個
+#      改動的意義是把掃描範圍**對準**這次要離機的 commit:
+#        · 快(只掃 push 範圍,不是每次都全史)
+#        · 不會因為「本機另一個分支有 finding」而擋掉一個乾淨的 push
+#        · 語意誠實:hook 的職責是「別讓密鑰離機」,那就掃離機的那些 commit
+#      代價(刻意接受):已經在遠端的舊 leak 不會每次 push 都再擋一次——CI 的全史
+#      掃描仍會擋 PR,那才是清理 history 的正確場合。
+#   ② **gitleaks 的自助放行**:`gitleaks:allow` 行內註解與 `.gitleaksignore` 都能讓
+#      提交者自己放行(官方 escape hatch)→ 加 `--ignore-gitleaks-allow` 且把 ignore
+#      檔指到 `/dev/null`,放行一律只走版控的 `.gitleaks.toml`(那份現在也算 code、
+#      要走 PR)。
+#   ③ **沒裝 gitleaks 就放行**:與「密鑰不離機」相反 → 改 fail-closed,要繞得明確設
+#      `SKIP_GITLEAKS_CHECK=1`(或 `--no-verify`)。
+#   ④ **刪除保護分支被無條件跳過** + force-push 可能因端點 diff 為空/docs-only 而
+#      放行 → 刪除保護分支直接硬擋;非 fast-forward 一律要求確認。
+#   ⑤ pre-push 完全沒套 PROTECTED_DOCS(策略/安全/SOP/ADR)→ 現在共用 SSOT 並套用。
 #
 # Hook 行為:
-#   - push target 不是 develop / main → 直接放行(feature/* 都正常)
-#   - push target 是 develop / main 但 commits 全是 doc 改動 → 直接放行
-#   - push target 是 develop / main 且 commits 含 code 檔 → 要求打字 yes 確認
+#   - 先掃這次要離機的所有 commit;有 leak → 硬 block
+#   - push target 不是 develop / main → 放行(feature/* 都正常)
+#   - 刪除 develop / main → **硬 block**
+#   - push target 是 develop / main 但這批 commit 只動純說明文字(且不含
+#     PROTECTED_DOCS)→ 放行(對應 progress / TODOS / LESSONS 收尾慣例)
+#   - 其餘(含 code、含 PROTECTED_DOCS、新建保護分支、非 fast-forward、diff 取不到)
+#     → 要求打字 yes 確認
 #
-# 緊急逃生:`git push --no-verify` 跳過本 hook
-#
-# Opt-in:`npm run setup-hooks` 才會啟用(設 git config core.hooksPath)
+# 緊急逃生:`git push --no-verify`
+# Opt-in:`npm run setup-hooks`(設 git config core.hooksPath)
 
-set -e
+# `set -u`:見 pre-commit 同段——SSOT 變數被改名時,只有 `set -e` 會讓兩支 hook
+# 靜默放行。壞掉的守門必須擋。
+set -eu
 
-# Git 透過 stdin 傳 "<local-ref> <local-sha> <remote-ref> <remote-sha>" 給 pre-push
-# 一行對應一個被 push 的 branch。我們關心 remote-ref。
-
-# 「code 檔案」pattern SSOT(抽在 code-pattern.sh,與 pre-commit 共用)
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=scripts/git-hooks/code-pattern.sh
 . "$HOOK_DIR/code-pattern.sh"
 
-# ── 本機秘密掃描(gitleaks)────────────────────────────────────────────
-# CI 的 gitleaks step 抓到時密鑰已離開本機到 remote —— push 前本機掃才是第一層
-# 縱深。任何分支的 push 都掃(feature 分支的密鑰一樣會離機)。全史掃描一般 repo
-# 約 1-2 秒;誤報放行走 repo 根 .gitleaks.toml(gitleaks 自動讀)。
-# 有 leak → 硬 block(不給互動確認,密鑰永遠不該被 push;修完 history 再來)。
-# binary 不存在 → 提示後放行(graceful degradation,CI 仍會掃)。
-if command -v gitleaks >/dev/null 2>&1; then
-  # 輸出捕捉後失敗時完整印出(吞掉輸出會讓人分不清「真 leak」vs
-  # 「config 壞掉」vs 其他 runtime 錯,而這一步會擋下所有 push)
-  if ! gitleaks_out=$(gitleaks git --redact --no-banner 2>&1); then
-    {
-      echo ""
-      echo "✗ gitleaks 失敗,擋下 push(可能偵測到密鑰,或設定/執行錯誤——細節如下)"
-      echo "$gitleaks_out"
-      echo ""
-      echo "   誤報 → 按值加進 .gitleaks.toml allowlist 再 push"
-      echo "   緊急逃生:\`git push --no-verify\`(CI 仍會掃到並擋 PR)"
-    } >&2
-    exit 1
-  fi
-else
-  echo "ℹ️  本機未裝 gitleaks,略過 push 前秘密掃描(CI 仍會掃)。安裝:brew install gitleaks" >&2
-fi
+: "${NON_CODE_PATTERN:?code-pattern.sh 沒有定義 NON_CODE_PATTERN(守門失效,拒絕放行)}"
+: "${PROTECTED_DOCS:?code-pattern.sh 沒有定義 PROTECTED_DOCS(守門失效,拒絕放行)}"
 
 z40='0000000000000000000000000000000000000000'
 
+# 🔴 R3 F2 修:git pre-push argv[1] 在使用具名 remote 時是 remote name;直接
+#    對 URL push 時 argv[1]/argv[2] 都是 URL。只有具名 remote 能對應
+#    `refs/remotes/<name>/*`;沒有可用 tracking refs 時不扣除任何 ref
+#    (`--remotes=$REMOTE_NAME` 匹配不到 → 走整條 ancestry,多掃不漏掃)。
+#    後續用 `--remotes=$REMOTE_NAME` 只扣掉目的地的 tracking refs、避免
+#    其他 remote (fork/upstream) 的 refs 把「本次真的要離機到目的地」
+#    的 commits 誤扣掉。git 未提供 remote 時 default 'origin' (常見情境:
+#    hook 手動觸發、init/setup 腳本)。
+REMOTE_NAME="${1:-origin}"
+
+# ── 先把 stdin 全部收進來 ────────────────────────────────────────────────
+# Git 透過 stdin 傳 "<local-ref> <local-sha> <remote-ref> <remote-sha>",一行一個 ref。
+# gitleaks 要按 ref 掃,所以不能邊讀邊處理(洞 ①)。
+REF_LINES=()
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -z "$local_ref" ] && continue
+  REF_LINES+=("$local_ref $local_sha $remote_ref $remote_sha")
+done
+
+[ ${#REF_LINES[@]} -eq 0 ] && exit 0
+
+# ── 1. 本機秘密掃描(只掃這次會離機的 commit 範圍)──────────────────────
+#
+# 🔴 range 內含空白(新 ref 用 `<sha> --not --remotes`)是刻意設計。呼叫端一律
+#    用 `set -- $range` 位置參數 split(而非 `"$range"` 引號傳入)。內容都是本
+#    hook 自己塞的 sha 或 rev-list expression、沒有外部輸入,shell splitting 安全。
+SCAN_RANGES=()
+# 🔴 Fresh review F2 修:config-touched 段只對 push 到 develop/main 的 range 跑
+#    (feature branch 修 .gitleaks.toml 是合法 workflow、gitleaks 用 trusted
+#    baseline config 掃還是能抓到密鑰;config-touched 是專防「同批放寬 allowlist
+#    ＋加密鑰、直接 push 保護分支」的攻擊 vector,對 feature branch push 過寬)。
+#    PROTECTED_SCAN_RANGES 是 SCAN_RANGES 的子集、只含 develop/main target。
+PROTECTED_SCAN_RANGES=()
+for line in "${REF_LINES[@]}"; do
+  # shellcheck disable=SC2086  # 刻意讓空白切成四個位置參數
+  set -- $line
+  _local_sha="$2"
+  _remote_ref="$3"
+  _remote_sha="$4"
+  [ "$_local_sha" = "$z40" ] && continue # 刪除 ref:沒有新 commit 離機
+  case "$_remote_ref" in
+    refs/heads/develop | refs/heads/main) _is_protected=1 ;;
+    *) _is_protected=0 ;;
+  esac
+  if [ "$_remote_sha" = "$z40" ] || ! git cat-file -e "${_remote_sha}^{commit}" 2>/dev/null; then
+    # 🔴 R2 F3 修:新 ref (或 stale/force remote) 用 `--not --remotes` 只掃「這次
+    #    真的新離機」的 commits。舊寫法 `SCAN_RANGES+=("$_local_sha")` 走整條
+    #    ancestry → 若 repo 祖先某處曾 commit .gitleaks.toml,config-touched 段會
+    #    match 到、任何 `git push -u origin feature/foo` 都被擋。
+    #    `--not --remotes` = reachable from local_sha but not from any remote-
+    #    tracking ref = 這次真的要離機的 commits(且新 clone 因 remotes 已完整、
+    #    語意也對)。
+    # 🔴 R3 F2 修:用 `--remotes=$REMOTE_NAME` 只扣掉本次目的地 remote 的 tracking
+    #    refs,不是所有 remotes。若用 `--remotes` (無 pattern) 扣掉 fork/upstream 的
+    #    refs,可能把「本次真的要離機到 origin」的 commits 也排除。
+    _range="$_local_sha --not --remotes=$REMOTE_NAME"
+  else
+    _range="${_remote_sha}..${_local_sha}"
+  fi
+  SCAN_RANGES+=("$_range")
+  [ "$_is_protected" = "1" ] && PROTECTED_SCAN_RANGES+=("$_range")
+done
+
+# 🔴 R2 F1 + R3 F1 修:取「可信 baseline」的 gitleaks config,而非讓 gitleaks 讀
+#    當前工作樹的 `.gitleaks.toml`(dirty)或環境變數。從 `refs/remotes/$REMOTE_NAME/HEAD`
+#    取 config、寫 tmpfile、`--config` 指定;找不到則寫合成 config 啟用 gitleaks
+#    default rules;mktemp/寫失敗一律 return 1、hook 主流程 exit 1 fail-closed。
+#    ⚠️ R3 F1:早期版本 fallback 用 `/dev/null` → gitleaks 讀空 TOML = 0 rules =
+#       全放行。實測 gitleaks 8.30.1 對 `--config /dev/null` 就是「無規則」不
+#       是「default rules」。本段已用 CI pin 的 gitleaks 8.30.1 驗證:
+#       `[extend]\nuseDefault = true` 可啟用內建 default rules。本機 hook
+#       使用 PATH 中的 gitleaks;其他版本的 CLI／config schema 相容性未驗證。
+#    ⚠️ Command substitution 會清 subshell errexit,不能靠 `set -e` fail-closed,
+#       所以 helper 內每一步都要顯式檢查、失敗顯式 return 1。
+resolve_trusted_gitleaks_config() {
+  # 🔴 R4 F2 修:body 包在明確 subshell 內並安裝 INT/TERM/HUP trap。
+  #    終端 Ctrl-C 會把 SIGINT 送到整個前景 process group,因此此內層
+  #    subshell 可直接清除已指派給 tmp/project_config 的暫存檔。
+  #    Bash 不會把只送給外層 command-substitution shell 的 signal 自動轉送進來。
+  #    原寫法在 command substitution subshell (`$(resolver)`) 內執行,若 signal
+  #    落在 resolver 執行中而 assignment 未完成,parent 的 `trusted_config` 尚未
+  #    set、parent trap 看不到 resolver 的 local vars → tmp orphan (含專案
+  #    sensitive rules)。
+  (
+    trap 'rm -f "${tmp:-}" "${project_config:-}" 2>/dev/null; exit 130' INT TERM HUP
+    local tmp project_config
+    tmp=$(mktemp -t hook-gitleaks-config.XXXXXX) || exit 1
+    # 先寫 synthetic baseline (啟用 gitleaks default rules),之後若能覆蓋成 remote config 更好
+    if ! printf '[extend]\nuseDefault = true\n' > "$tmp"; then
+      rm -f "$tmp"
+      exit 1
+    fi
+
+    # 嘗試從目的地 remote HEAD 取專案 config;取得且非空才覆蓋 synthetic fallback
+    local remote_head_ref="refs/remotes/$REMOTE_NAME/HEAD"
+    if git symbolic-ref --quiet "$remote_head_ref" >/dev/null 2>&1; then
+      project_config=$(mktemp -t hook-gitleaks-project.XXXXXX) || {
+        rm -f "$tmp"
+        exit 1
+      }
+      if git show "$remote_head_ref:.gitleaks.toml" >"$project_config" 2>/dev/null && \
+        [ -s "$project_config" ]; then
+        # 專案自帶 config → 覆蓋 synthetic (gitleaks 讀專案 config)
+        mv -f "$project_config" "$tmp" || {
+          rm -f "$tmp" "$project_config"
+          exit 1
+        }
+      else
+        rm -f "$project_config"
+      fi
+    fi
+
+    printf '%s\n' "$tmp"
+  )
+}
+
+# 🔴 R3 F4 修:EXIT 只涵蓋正常結束與 `exit`,不涵蓋 INT/TERM/HUP → Ctrl-C 時
+#    tmp config (可能含專案 sensitive rules) 殘留。轉發這些 signal 為 exit 讓
+#    EXIT cleanup 執行。SIGKILL 無法攔截 (接受)。
+# shellcheck disable=SC2329  # 由 trap EXIT/INT/TERM/HUP 呼叫,shellcheck 抓不到
+cleanup_trusted_config() {
+  [ -n "${trusted_config:-}" ] && [ "$trusted_config" != "/dev/null" ] && \
+    rm -f "$trusted_config"
+}
+trap 'cleanup_trusted_config' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+
+if [ ${#SCAN_RANGES[@]} -gt 0 ]; then
+  # 🔴 攻擊 vector 擋(R1 F2 + R2 F2 + Fresh F2 修):push 範圍同批修改
+  #    `.gitleaks.toml` / `.gitleaksignore` → 直接硬擋。與 R2 F1 的「可信 config」
+  #    修法互補:那條擋 dirty worktree config,這條擋「先加寬 allowlist 再加密鑰」
+  #    的合批 commit 攻擊(config 若走 PR 合入 protected branch,那條路仍暢通)。
+  #    🔴 R2 F2 修:加 `-m` 讓 merge commit 對每個 parent 產生 diff。原修法漏
+  #       了、attacker 可在 merge resolution 只帶入 config 放寬(兩 parent 都沒有)
+  #       → config-touched 看不到,而 gitleaks 用 R2 F1 的可信 config 也擋得住。
+  #    🔴 Fresh F2 修:只對 push 到 develop/main 的 range 跑 (PROTECTED_SCAN_RANGES)。
+  #       feature branch 修 .gitleaks.toml 是合法 workflow;gitleaks 用 trusted
+  #       baseline config 掃還是能抓到密鑰、攻擊 vector 已中和。對 feature branch
+  #       硬擋是過寬、developers 得為合法 config 修改一律 `--no-verify`。
+  # 🔴 空陣列 + `set -u` = unbound variable error → 先檢查長度再展開(bash 舊版
+  #    對 `${arr[@]}` 空陣列展開會觸發 unbound;`${arr[@]-}` fallback 對 array
+  #    語意不對)。本 hook push feature branch 時 PROTECTED_SCAN_RANGES 為空、
+  #    自我測試抓到 (第一次 push 本刀就撞這條、正是 fail-closed 該有的行為)。
+  if [ ${#PROTECTED_SCAN_RANGES[@]} -gt 0 ]; then
+  for range in "${PROTECTED_SCAN_RANGES[@]}"; do
+    # 🔴 R3 F3 + R4 F1 修:拆 git log 與過濾;git log 失敗時顯示錯誤並 fail-closed。
+    #    使用 awk streaming dedupe、避免 sort spill。
+    #    ⚠️ R4 F1:原寫法 `log_out=$(...); log_ec=$?` 在 `set -e` 下 command
+    #       substitution 失敗會直接 exit、`log_ec=$?` 那行到不了 → 使用者只收到
+    #       近無訊息的 push failure。改用 `if ...; then :; else log_ec=$?; ...`
+    #       結構讓錯誤訊息真的顯示。
+    # shellcheck disable=SC2086  # range 內含 --not --remotes 等 args,刻意 split
+    if log_out=$(git log --format= --name-only --no-renames -m $range 2>/dev/null); then
+      :
+    else
+      log_ec=$?
+      {
+        echo ""
+        echo "✗ git log 對 push 範圍「$range」失敗 (ec=$log_ec),擋下 push"
+        echo "   → 這通常是 stale remote-tracking ref 或 corrupted range,\`git fetch --prune\` 後重試"
+        echo "   → 緊急逃生:\`git push --no-verify\`(CI 仍會掃)"
+      } >&2
+      exit 1
+    fi
+    config_touched=$(printf '%s\n' "$log_out" | \
+      awk '/^\.gitleaks\.toml$|^\.gitleaksignore$/ && !seen[$0]++')
+    if [ -n "$config_touched" ]; then
+      {
+        echo ""
+        echo "✗ push 範圍「$range」同批修改 gitleaks 設定,擋下 push"
+        echo "   影響檔案:"
+        while IFS= read -r f; do
+          [ -n "$f" ] && echo "     - $f"
+        done <<< "$config_touched"
+        echo ""
+        echo "   同批放寬 allowlist ＋加密鑰是已知攻擊 vector。"
+        echo "   → 修法:先把 .gitleaks.toml 改動 push 走 PR、合入 protected branch,"
+        echo "     再 push 這批 commit"
+        echo "   → 緊急逃生:\`git push --no-verify\`(CI 仍會掃)"
+      } >&2
+      exit 1
+    fi
+  done
+  fi # end PROTECTED_SCAN_RANGES gate
+
+  if command -v gitleaks >/dev/null 2>&1; then
+    # 🔴 R2 F1 修:顯式清掉可能覆寫 --config 的 env(gitleaks 官方優先序
+    #    --config → GITLEAKS_CONFIG → GITLEAKS_CONFIG_TOML → 工作樹 .gitleaks.toml)。
+    unset GITLEAKS_CONFIG GITLEAKS_CONFIG_TOML
+    # 🔴 R3 F1 修:resolver 失敗一律 fail-closed。不能繼續用工作樹 dirty config
+    #    或空 config,那正是要擋掉的 vector。
+    if ! trusted_config=$(resolve_trusted_gitleaks_config); then
+      {
+        echo ""
+        echo "✗ 無法建立可信 gitleaks config (mktemp/write 失敗),擋下 push"
+        echo "   → 檢查 \$TMPDIR 可寫、磁碟未滿"
+        echo "   → 緊急逃生:\`git push --no-verify\`(CI 仍會掃)"
+      } >&2
+      exit 1
+    fi
+    # cleanup_trusted_config 已在檔頭 trap 過(涵蓋 EXIT + INT/TERM/HUP);此處
+    # 不再重新裝 trap,避免覆蓋掉 signal 版。
+
+    for range in "${SCAN_RANGES[@]}"; do
+      # --config "$trusted_config":R2 F1,顯式從 origin/HEAD 取,不用工作樹
+      # --ignore-gitleaks-allow:不認行內 `gitleaks:allow` 註解
+      # -i /dev/null:不認 repo 內的 .gitleaksignore
+      # -m:merge commit 對每個 parent 產 diff(R1 F3)
+      # 輸出捕捉後失敗時完整印出(吞掉會讓人分不清「真 leak」vs「config 壞」vs 其他錯)
+      if ! out=$(gitleaks git --config "$trusted_config" --redact --no-banner \
+        --ignore-gitleaks-allow -i /dev/null --log-opts "-m $range" 2>&1); then
+        {
+          echo ""
+          echo "✗ gitleaks 在 push 範圍「$range」失敗,擋下 push"
+          echo "$out"
+          echo ""
+          echo "   config 使用可信 baseline: $trusted_config"
+          echo "         (從 refs/remotes/$REMOTE_NAME/HEAD:.gitleaks.toml,或 fallback 到 gitleaks default rules)"
+          echo "   誤報 → 按值加進 .gitleaks.toml allowlist(該檔算 code、要走 PR、合入"
+          echo "         protected branch 之後才會被 pre-push 認)再 push"
+          echo "   行內 gitleaks:allow / .gitleaksignore / 工作樹 dirty config / env 覆寫皆已停用"
+          echo "   緊急逃生:\`git push --no-verify\`(CI 仍會掃到並擋 PR)"
+        } >&2
+        exit 1
+      fi
+    done
+  elif [ "${SKIP_GITLEAKS_CHECK:-}" = "1" ]; then
+    echo "ℹ️  未裝 gitleaks,已依 SKIP_GITLEAKS_CHECK=1 略過秘密掃描" >&2
+  else
+    {
+      echo ""
+      echo "✗ 本機沒有 gitleaks,擋下 push(密鑰不該在沒掃過的情況下離機)"
+      echo "   安裝:brew install gitleaks"
+      echo "   真的要在無掃描的情況下 push:SKIP_GITLEAKS_CHECK=1 git push …"
+      echo "   或 \`git push --no-verify\`(CI 仍會掃)"
+    } >&2
+    exit 1
+  fi
+fi
+
+# ── 2. 保護分支守衛 ─────────────────────────────────────────────────────
 triggered=0
-# Accumulator:multi-ref push 時把所有 triggered branch 的警告聚合,最後只 prompt
-# 一次,避免每個 branch 印 prompt 但只一個 read 對應的「yes 確認哪個」歧義。
+# multi-ref push 時把所有警告聚合,最後只 prompt 一次(避免「yes 是確認哪個」歧義)
 WARNING_BUFFER=""
 
 append_warning() {
@@ -62,73 +306,105 @@ append_warning() {
 "
 }
 
-while read -r local_ref local_sha remote_ref remote_sha; do
-  # 跳過刪除 branch 的 push
-  if [ "$local_sha" = "$z40" ]; then
-    continue
-  fi
+for line in "${REF_LINES[@]}"; do
+  # shellcheck disable=SC2086
+  set -- $line
+  local_sha="$2"
+  remote_ref="$3"
+  remote_sha="$4"
 
-  # 只關心 push 到 develop / main
   case "$remote_ref" in
-    refs/heads/develop|refs/heads/main) ;;
+    refs/heads/develop | refs/heads/main) ;;
     *) continue ;;
   esac
 
   branch_name="${remote_ref#refs/heads/}"
 
-  # 算 push 範圍內動到的檔案
-  # - 一般 push:remote_sha..local_sha
-  # - 新 branch push(remote_sha = z40):新建 develop / main 是罕見且高風險的事
-  #   一律 fail-closed 要求確認
-  # - force-push 或 stale remote(remote_sha object 不在本機):git diff 會 fail,
-  #   `|| true` silently empty 等於放行 → 改成 fail-closed
-  # Note:GitHub UI squash-merge 後 sync push 也會出現 diff 含整 feature 的檔
-  #   案,hook 會 trigger 但 user 知道是 sync,輸入 yes 即可(設計接受 UX)
+  # 2a. 刪除保護分支 → 硬擋(不給互動確認;branch protection 也會擋,但別讓本機先送出去)
+  if [ "$local_sha" = "$z40" ]; then
+    {
+      echo ""
+      echo "✗ 擋下「刪除受保護分支 origin/${branch_name}」"
+      echo "   這個操作沒有正當的日常情境。真的要做:\`git push --no-verify\`,並先想清楚。"
+    } >&2
+    exit 1
+  fi
+
+  # 2b. 新建保護分支 → fail-closed 要求確認
   if [ "$remote_sha" = "$z40" ]; then
     triggered=1
     append_warning ""
-    append_warning "⚠️  偵測到新建 origin/$branch_name(remote 端不存在),這是罕見操作"
-    append_warning "   為避免 force-push / 重建 protected branch 繞過 hook,要求確認"
+    append_warning "⚠️  偵測到新建 origin/${branch_name}(remote 端不存在),這是罕見操作"
+    append_warning "   為避免重建 protected branch 繞過守門,要求確認"
     continue
   fi
 
-  if ! changed=$(git diff --name-only "$remote_sha..$local_sha" 2>&1); then
+  # 2c. 非 fast-forward(force-push / 改寫歷史)→ 要求確認
+  #     舊版只看端點 diff,force-push 若「端點內容剛好一樣或只差文件」會被靜默放行。
+  if ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
     triggered=1
     append_warning ""
-    append_warning "⚠️  無法 diff $remote_sha..$local_sha(可能是 force-push 或 stale remote)"
+    append_warning "⚠️  偵測到**非 fast-forward** push 到 origin/${branch_name}(force-push／改寫歷史)"
+    append_warning "   遠端已有的 commit 會被丟棄或重寫,要求確認"
+    continue
+  fi
+
+  # 2d. 算這次 push 動到的檔案。
+  # 🔴 端點 diff **不夠**:commit A 新增 `evil.ts`、commit B 刪掉它,端點比較是空的
+  #    → 舊寫法 `[ -z "$changed" ] && continue` 直接放行,兩個 code commit 無聲進了
+  #    develop 的歷史。改成「端點 diff ∪ 逐 commit 檔案清單」。
+  # 🔴 Fresh review F1 修:`git log` 加 `-m` 讓 merge commit 對每個 parent 產 diff。
+  #    原修法漏了(config-touched 段 R2 F2 已加 -m,這裡漏了同一 bug class)。
+  #    攻擊:兩個 merge commit — M1 conflict resolution 引入 evil.ts (neither
+  #    parent 有)、M2 conflict resolution 移除 → 端點 diff 空 + git log 無 -m 對
+  #    merge 不輸出檔名 → changed 空 → protected branch 守衛靜默通過。
+  if ! changed=$( {
+    git diff --name-only --no-renames "$remote_sha..$local_sha" 2>&1
+    git log --format= --name-only --no-renames -m "$remote_sha..$local_sha" 2>&1
+  } | sort -u); then
+    triggered=1
+    append_warning ""
+    append_warning "⚠️  無法 diff ${remote_sha}..${local_sha}(stale remote?)"
     append_warning "   為避免 silently 放行 code 改動,要求確認"
     append_warning "   git diff 訊息:$changed"
     continue
   fi
 
-  if [ -z "$changed" ]; then
-    continue
-  fi
+  [ -z "$changed" ] && continue
 
-  # grep 出 code 檔案
-  code_files=$(echo "$changed" | grep -E "$CODE_PATTERN" || true)
+  # 🔴 `printf '%s\n'` 而非 `echo`(Codex R1 P1):見 pre-commit 同段——`-n`/`-e`
+  #    等檔名會被 Bash builtin echo 當 flag、輸出空 → default-deny 靜默放行。
+  code_files=$(printf '%s\n' "$changed" | grep -Ev "$NON_CODE_PATTERN" || true)
+  protected_docs=$(printf '%s\n' "$changed" | grep -E "$PROTECTED_DOCS" || true)
 
-  if [ -z "$code_files" ]; then
-    # 全是 doc / markdown / html → 放行
-    continue
+  if [ -z "$code_files" ] && [ -z "$protected_docs" ]; then
+    continue # 全是純說明文字且不含 PR-only 文件 → 放行
   fi
 
   triggered=1
   append_warning ""
-  append_warning "⚠️  偵測到 push 程式碼到 origin/$branch_name"
-  append_warning "   程式碼改動應該走 feature/* 分支 + PR + CI,直接 push 會 bypass branch protection。"
-  append_warning ""
-  append_warning "   含 code 檔案:"
-  while IFS= read -r line; do
-    [ -n "$line" ] && append_warning "     - $line"
-  done <<< "$code_files"
+  append_warning "⚠️  偵測到 push 需要走 PR 的改動到 origin/$branch_name"
+  append_warning "   程式碼與 PR-only 文件應走 feature/* 分支 + PR + CI,直接 push 會 bypass branch protection。"
+  if [ -n "$code_files" ]; then
+    append_warning ""
+    append_warning "   code 檔案:"
+    while IFS= read -r f; do
+      [ -n "$f" ] && append_warning "     - $f"
+    done <<< "$code_files"
+  fi
+  if [ -n "$protected_docs" ]; then
+    append_warning ""
+    append_warning "   PR-only 文件(策略／安全／SOP／ADR):"
+    while IFS= read -r f; do
+      [ -n "$f" ] && append_warning "     - $f"
+    done <<< "$protected_docs"
+  fi
 done
 
 if [ "$triggered" = "1" ]; then
-  # 一次顯示所有 triggered branch 的警告
   printf '%s' "$WARNING_BUFFER" >&2
   echo "" >&2
-  echo "若確定要直接 push(eg. 緊急 hotfix),請輸入 yes 確認(其他任何輸入 abort):" >&2
+  echo "若確定要直接 push(例:緊急 hotfix),請輸入 yes 確認(其他任何輸入 abort):" >&2
 
   # 必須從 /dev/tty 讀,因為 stdin 被 git 占用傳 ref 資料
   if [ ! -t 0 ] && [ ! -r /dev/tty ]; then
