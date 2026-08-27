@@ -320,6 +320,12 @@ exit 0(被抓)——才進 Step 5。
       progress.md 的 sprint entry、TODOS / BACKLOG 類追蹤檔的狀態標記與 PR citation。
       **LESSONS.md 與任何規則 / 安全文字的改動不在例外內**(那是治理內容,
       見頂部 docs-only 判準的 🔴 條件)——含這類改動就要再跑一輪。
+      **機器化核對**:寫完 bookkeeping commit 後跑 `npm run check:bookkeeping`
+      (預設查 HEAD;查特定 commit 傳 SHA)——純檔名判準,exit 0 表示只動了
+      `.claude/memory/**.md`(LESSONS.md 除外);exit 1 表示 diff 有治理/碼/規則
+      檔命中、不能當 bookkeeping 例外。⚠️ **邊界誠實揭露**:v1 只看檔名、不看
+      diff 內容——「檔名對但內容塞了 SOP 規則文字」抓不到,那是 human 惡意情境,
+      超出工具範圍;有誤報數據再加 v2 內容檢查。
       **時序**:bookkeeping commit 只能在**最終 worktree 審收乾之後**才 commit
       (否則它成為派工當下的 HEAD,review-tip 落在 bookkeeping 上、收斂條件字面
       無法滿足);bookkeeping 之後又出現非 bookkeeping 修復 → 回到重跑循環。
