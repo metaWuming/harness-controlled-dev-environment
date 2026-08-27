@@ -116,12 +116,15 @@ jobs:
         # `release/**`),同步把它加進下面的條件,否則 mainline push 的 marker 治理
         # 會被靜默跳過(Codex batch 6 round 3 P2)。
         if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/develop'
-        # 🔴 Codex batch 6 round 6 P2:改用 default_branch 動態抓 + `git remote set-head`
-        # 讓 origin/HEAD 指向 default,check-todos-markers 走 origin/HEAD 唯一權威來源、
-        # 不再無條件 resolve master/trunk 造成 legacy branch 假通過。額外 delivery branch
-        # 導入者透過 env `DELIVERY_REFS` 加(見 script 說明)。
+        # 🔴 Codex batch 6 round 6 P2 + Step 5 #6/#8:改用 default_branch 動態抓 +
+        # `git remote set-head` 讓 origin/HEAD 指向 default,check-todos-markers 走
+        # origin/HEAD 唯一權威來源、不再無條件 resolve master/trunk 造成 legacy branch
+        # 假通過。額外 delivery branch 導入者透過 env `DELIVERY_REFS` 加(見 script)。
+        # env 傳 default_branch(不用 shell string interpolation),避免罕見的
+        # branch 名含 shell metacharacter 情境;若 set-head 失敗仍有 env 提供 fallback。
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          DEFAULT_BRANCH='${{ github.event.repository.default_branch }}'
           git fetch --no-tags origin "$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH" || echo "note: $DEFAULT_BRANCH ref fetch 略過"
           git remote set-head origin -a || echo "note: origin/HEAD set-head 略過"
           git fetch --no-tags origin develop:refs/remotes/origin/develop || echo "note: develop ref fetch 略過(未採 develop 主線則屬正常)"
@@ -141,6 +144,10 @@ jobs:
         if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/develop'
         env:
           MARKER_SELF_PR: ${{ github.event.pull_request.number }}
+          # 🔴 Step 5 #6:belt-and-suspenders——若 `git remote set-head` 因網路 hiccup
+          # 失敗、origin/HEAD 讀不到,script 靠這條 env 顯式指定 default_branch remote-tracking,
+          # 避免整支 CI 只因 set-head 失敗而 fail-hard(fetch step 已把 default_branch fetch 好)
+          DELIVERY_REFS: origin/${{ github.event.repository.default_branch }}
         run: npx tsx scripts/check-todos-markers.ts
 
       - name: Source-term scan (de-identification gate)
