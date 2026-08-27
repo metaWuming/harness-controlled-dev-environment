@@ -214,7 +214,7 @@ if [ ${#SCAN_RANGES[@]} -gt 0 ]; then
       log_ec=$?
       {
         echo ""
-        echo "✗ git log 對 push 範圍「$range」失敗 (ec=$log_ec),擋下 push"
+        echo "✗ git log 對 push 範圍「${range}」失敗 (ec=$log_ec),擋下 push"
         echo "   → 這通常是 stale remote-tracking ref 或 corrupted range,\`git fetch --prune\` 後重試"
         echo "   → 緊急逃生:\`git push --no-verify\`(CI 仍會掃)"
       } >&2
@@ -225,7 +225,7 @@ if [ ${#SCAN_RANGES[@]} -gt 0 ]; then
     if [ -n "$config_touched" ]; then
       {
         echo ""
-        echo "✗ push 範圍「$range」同批修改 gitleaks 設定,擋下 push"
+        echo "✗ push 範圍「${range}」同批修改 gitleaks 設定,擋下 push"
         echo "   影響檔案:"
         while IFS= read -r f; do
           [ -n "$f" ] && echo "     - $f"
@@ -269,7 +269,7 @@ if [ ${#SCAN_RANGES[@]} -gt 0 ]; then
         --ignore-gitleaks-allow -i /dev/null --log-opts "-m $range" 2>&1); then
         {
           echo ""
-          echo "✗ gitleaks 在 push 範圍「$range」失敗,擋下 push"
+          echo "✗ gitleaks 在 push 範圍「${range}」失敗,擋下 push"
           echo "$out"
           echo ""
           echo "   config 使用可信 baseline: $trusted_config"
