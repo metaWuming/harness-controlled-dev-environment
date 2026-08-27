@@ -280,16 +280,24 @@ describe("mutate — 驗證指令的收場分類(紅 vs 壞掉)", () => {
 
   // 🔴 Codex review round 1 P1:我們監看的是 `bash -c`,真正的 test 程序在它裡面跑。
   //    子程序被 SIGKILL / OOM 殺掉時,bash 通常**正常退出**並回傳 128+signum
-  //    (shell 慣例:SIGKILL→137、SIGTERM→143、SIGINT→130)。這條路徑上
-  //    `signal` 永遠是 null(bash 自己沒被砍),舊版把 137/143 當成「測試轉紅」→
-  //    mutant 被錯報成 killed → 工具 exit 0 宣稱「全部被抓到」。
-  it("🔴 shell 訊號區間 exit code(128-255)→ infra(bash 子程序被 SIGKILL/OOM 砍掉)", () => {
-    expect(classifyRun(128, null).outcome).toBe("infra"); // SIGHUP
-    expect(classifyRun(130, null).outcome).toBe("infra"); // SIGINT
-    expect(classifyRun(137, null).outcome).toBe("infra"); // SIGKILL / OOM
-    expect(classifyRun(143, null).outcome).toBe("infra"); // SIGTERM
-    expect(classifyRun(255, null).outcome).toBe("infra");
-    expect(classifyRun(137, null).detail).toContain("shell 訊號區間");
+  //    (shell 慣例:SIGKILL→137、SIGTERM→143)。這條路徑上 `signal` 永遠是 null
+  //    (bash 自己沒被砍),舊版把 137/143 當成「測試轉紅」→ mutant 被錯報成 killed
+  //    → 工具 exit 0 宣稱「全部被抓到」。
+  //
+  // 🔴 Codex review round 2 P2:縮到只認 137/143,其他 128-255 恢復當 red——
+  //    `exit 200`/`exit 255` 都是使用者可能用的自訂 fail code,不該被誤判 infra。
+  it("🔴 137 (SIGKILL / OOM) 與 143 (SIGTERM) → infra(bash 子程序被砍的常見退出碼)", () => {
+    expect(classifyRun(137, null).outcome).toBe("infra");
+    expect(classifyRun(143, null).outcome).toBe("infra");
+    expect(classifyRun(137, null).detail).toContain("SIGKILL");
+    expect(classifyRun(143, null).detail).toContain("SIGTERM");
+  });
+
+  it("🔴 其他 128-255 exit code 仍歸 red(使用者可用 200/255 當自訂 test 失敗碼)", () => {
+    expect(classifyRun(128, null).outcome).toBe("red"); // SIGHUP - 罕見
+    expect(classifyRun(130, null).outcome).toBe("red"); // SIGINT - CI 罕用
+    expect(classifyRun(200, null).outcome).toBe("red"); // 使用者自訂
+    expect(classifyRun(255, null).outcome).toBe("red"); // 使用者自訂
   });
 
   it("🔴 spawn 失敗 → infra,不是 red(舊版把它當成「測試抓到了」)", () => {
@@ -679,11 +687,25 @@ describe("mutate — 端到端:安全契約在非快樂路徑上也要成立", (
   it("🔴 bash 回 exit 137(子程序被 SIGKILL/OOM)→ infra 不是 red、mutant 不得被錯報 killed", () => {
     const { code, out } = runScript(makeRepo(), [...BASE, "--cmd", "exit 137"]);
     expect(code).toBe(2);
-    // 斷言要對到新加的分類自己的訊息——只寫 toContain("infra") 拿掉 128-255 分支
+    // 斷言要對到新加的分類自己的訊息——只寫 toContain("infra") 拿掉 137/143 分支
     // 也照樣過(對照那輪的 `run.outcome === "infra"` 也會走同一條 detail 分支)
-    expect(out).toContain("shell 訊號區間");
+    expect(out).toContain("SIGKILL");
     expect(out).not.toContain("✅ 抓到");
     expect(out).not.toContain("🔴 存活");
+  });
+
+  // 🔴 Codex R2 P2 正對照:縮小 137/143 保留區間後,其他 128-255 必須恢復 red 語意。
+  //    直接送 `exit 200` 代表 mutant 造成合法自訂失敗——工具應判為 killed(轉紅),
+  //    不是 inconclusive。
+  it("🔴 mutant exit 200(使用者自訂 test fail code)→ red、判 killed 不是 inconclusive", () => {
+    // 只有 mutation 版本會 exit 200;對照跑的是還原後的 `exit 0`(用 CATCHES 邏輯)。
+    // 這裡用 `grep -q GUARD_ON src/a.txt || exit 200`——守衛在時 exit 0、被拿掉時 exit 200
+    const { code, out } = runScript(makeRepo(), [
+      ...BASE,
+      "--cmd", "grep -q GUARD_ON src/a.txt || exit 200",
+    ]);
+    expect(code).toBe(0);
+    expect(out).toContain("✅ 抓到"); // 該被判 killed、不是 inconclusive
   });
 
   // 🔴 Codex 用「mutant 輸出 2 MB、對照正常」的指令重現過:舊版 execFileSync 撞到預設

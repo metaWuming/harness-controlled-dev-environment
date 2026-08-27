@@ -417,19 +417,24 @@ export function classifyRun(
   if (typeof status !== "number") {
     return { outcome: "infra", detail: "驗證指令沒有回傳 exit code——不是「測試轉紅」" };
   }
-  // 🔴 Codex review round 1 P1(這一輪抓到的):我們監看的是 `bash -c`,
-  //    真正的 test 程序在它裡面跑。若 test 程序被 SIGKILL / OOM 殺掉,bash
-  //    通常**正常退出**並回傳 `128 + signum`(shell 慣例):SIGKILL → 137、
-  //    SIGTERM → 143、SIGINT → 130、SIGSEGV → 139…。這條路徑上 `signal`
-  //    永遠是 null(bash 自己沒被砍),於是舊版把 137/143 這種**基礎設施
-  //    死掉的訊號**當成「測試轉紅」,mutant 被錯報成 killed。
-  //    現在:對 128–255 一律歸 infra(shell 訊號區間),誠實回報是被砍不是被抓到。
-  //    ⚠️ 極少數 test runner 用 exit 128+ 當自訂錯誤碼——那本來就是設計失誤,
-  //    真的碰到請把 test 命令包一層讓它 map 回 1-127 常規失敗碼。
-  if (status >= 128 && status <= 255) {
+  // 🔴 Codex review round 1 P1:我們監看的是 `bash -c`,真正的 test 程序在它裡面跑。
+  //    若 test 程序被 SIGKILL / OOM 殺掉,bash 通常**正常退出**並回傳 `128 + signum`
+  //    (shell 慣例):SIGKILL → 137、SIGTERM → 143。這條路徑上 `signal` 永遠是 null
+  //    (bash 自己沒被砍),於是舊版把 137/143 當成「測試轉紅」,mutant 被錯報 killed。
+  //
+  // 🔴 Codex review round 2 P2(縮 R1 fix 範圍):`128–255` 不是全域可視為 signal 的
+  //    區間——`bash -c 'exit 200'`、`exit 128`、`exit 255` 都是合法且可直接產生的
+  //    exit code,使用者可能用它們當自訂 test 失敗訊號。原本「一律歸 infra」把
+  //    `grep -q FOO src/x || exit 200` 這種合法用法誤判 inconclusive。
+  //    折衷:**只認 137(SIGKILL / OOM)與 143(SIGTERM)** 為 infra——這兩個是
+  //    CI / 容器 / kubectl 最常見的砍法,其他 128-255 恢復當 red。
+  //    ⚠️ 誠實界線:單靠 exit code 分不出「使用者明確 exit 137」與「子程序被 SIGKILL
+  //    後 bash 回 137」——這是接受的損失,實務上 test runner 罕用 137/143 當自訂碼。
+  //    真的踩到請把 test 命令包一層 map 回 1-127 常規失敗碼。
+  if (status === 137 || status === 143) {
     return {
       outcome: "infra",
-      detail: `驗證指令 exit ${status}(shell 訊號區間,通常代表子程序被 SIGKILL/OOM 砍掉)——不是「測試轉紅」`,
+      detail: `驗證指令 exit ${status}(${status === 137 ? "SIGKILL / OOM" : "SIGTERM"}——bash 子程序被砍時的常見退出碼)——不是「測試轉紅」`,
     };
   }
   return status === 0 ? { outcome: "green" } : { outcome: "red" };

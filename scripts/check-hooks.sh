@@ -76,25 +76,50 @@ done
 #    父 shell parse。子 shell 提前退出時看不到 sentinel、fail-closed。
 #
 # shellcheck source=/dev/null
+#
+# 🔴 Codex R2 P1（R1 fix 引入的新表面）:R1 版用 `\n` 分隔輸出、父端用 sed 拿第 2/3 行
+#    ——**若 pattern 本身含換行**(bash 允許 `$'\.md$\n...'`)輸出會變 4 行,父端仍拿
+#    第 2/3 → NON_CODE_PATTERN 只讀到 pattern 的第一半、PROTECTED_DOCS 讀到第二半、
+#    真正的 PROTECTED_DOCS 漂到第 4 行被丟掉。三個 smoke test 全過、命令 exit 0,
+#    但 SSOT 已經死了。修法:每個變數 **base64 encode 成單行 ASCII**,再用固定 `\n`
+#    分隔——輸出**永遠 3 行**(sentinel + 2 個 base64 blob),欄位對齊不會被
+#    pattern 內容干擾;base64 blob 不含換行也不含 shell meta。
+#
+#    (⚠️ 曾試過用 NUL 分隔 `awk RS="\0"`——macOS 內建 BSD awk 只讀第一段就停,
+#    行為不可攜,棄用。base64 是可攜的 lingua franca。)
 pattern_output=$(
   bash -c "
     set +u
     . '$RESOLVED/code-pattern.sh' 2>/dev/null || exit 91
-    printf '__SSOT_SENTINEL_OK__\n%s\n%s\n' \"\$NON_CODE_PATTERN\" \"\$PROTECTED_DOCS\"
+    printf '__SSOT_SENTINEL_OK__\n%s\n%s\n' \"\$(printf '%s' \"\$NON_CODE_PATTERN\" | base64)\" \"\$(printf '%s' \"\$PROTECTED_DOCS\" | base64)\"
   " 2>/dev/null
 )
 subshell_ec=$?
 if [ $subshell_ec -eq 91 ]; then
   fail "code-pattern.sh 無法 source（語法錯誤？）"
 fi
-# 沒看到 sentinel = 子 shell 沒跑到 printf（可能因為 `exit`/`return` 提早退出）
-if ! printf '%s' "$pattern_output" | head -n 1 | grep -q '^__SSOT_SENTINEL_OK__$'; then
+
+# 逐行讀:第 1 行 sentinel、第 2/3 行 base64 encoded 變數
+pattern_sentinel=$(printf '%s\n' "$pattern_output" | sed -n '1p')
+pattern_var1_b64=$(printf '%s\n' "$pattern_output" | sed -n '2p')
+pattern_var2_b64=$(printf '%s\n' "$pattern_output" | sed -n '3p')
+
+if [ "$pattern_sentinel" != "__SSOT_SENTINEL_OK__" ]; then
   fail "code-pattern.sh 提早退出（sentinel 沒印出——可能被人誤貼了 exit / return 語句）"
 fi
-NON_CODE_PATTERN=$(printf '%s' "$pattern_output" | sed -n '2p')
-PROTECTED_DOCS=$(printf '%s' "$pattern_output" | sed -n '3p')
+# base64 -D 還原;空 blob 或無效 base64 → 變數空 → 下一個 [ -n ] fail-closed
+NON_CODE_PATTERN=$(printf '%s' "$pattern_var1_b64" | base64 -D 2>/dev/null)
+PROTECTED_DOCS=$(printf '%s' "$pattern_var2_b64" | base64 -D 2>/dev/null)
 [ -n "$NON_CODE_PATTERN" ] || fail "code-pattern.sh 沒有定義 NON_CODE_PATTERN（兩支 hook 會靜默放行 code）"
 [ -n "$PROTECTED_DOCS" ] || fail "code-pattern.sh 沒有定義 PROTECTED_DOCS（PR-only 文件會被放行）"
+
+# 🔴 額外 defense:計算「所有非空行」的數量,若超過 3 行 → 有人在 code-pattern.sh
+#    偷加了 echo/printf 副作用（會弄亂父端 sed 位置解讀）→ fail-closed。
+#    (變數為空的情境已在上面 [ -n ] 擋掉,不會走到這裡。)
+pattern_nonempty_lines=$(printf '%s\n' "$pattern_output" | grep -c '.' || true)
+if [ "$pattern_nonempty_lines" -gt 3 ]; then
+  fail "code-pattern.sh 輸出行數異常（$pattern_nonempty_lines 行非空——source 時是否偷做了 echo/printf？）"
+fi
 # 冒煙測試：拿樣本驗 pattern 的方向沒有反過來
 echo "src/x.ts" | grep -qEv "$NON_CODE_PATTERN" || fail "NON_CODE_PATTERN 把 .ts 判成文件（方向反了）"
 echo "docs/x.md" | grep -qE "$NON_CODE_PATTERN" || fail "NON_CODE_PATTERN 把 .md 判成 code（方向反了）"
