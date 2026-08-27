@@ -101,13 +101,19 @@ jobs:
         # check-todos-markers 用主線分支的 git 史判 PR merge 證據;pull_request event 下
         # checkout 是 detached merge ref,顯式 fetch 建 remote-tracking ref(best-effort:
         # 分支不存在時略過,腳本會退回 HEAD)
+        if: github.event_name == 'pull_request'
         run: |
           git fetch --no-tags origin main:refs/remotes/origin/main || echo "note: main ref fetch 略過"
           git fetch --no-tags origin develop:refs/remotes/origin/develop || echo "note: develop ref fetch 略過(未採 develop 主線則屬正常)"
 
       - name: TODOS Markers Check
         # marker 治理:TODOS.md 完成宣稱(✅/完工)必須引用有 merge 證據的 PR 號,
-        # 防打錯號 / 投機性標 ✅。MARKER_SELF_PR 解「同 PR 翻 marker 引用本 PR#」死鎖。
+        # 防打錯號 / 投機性標 ✅。MARKER_SELF_PR 解「同 PR 翻 marker 引用本 PR」死鎖。
+        # 🔴 只在 pull_request event 跑——push event 時 `github.event.pull_request.number`
+        # 是空,同一 branch 若含 self-PR 引用(補號 commit)會被誤判「PR 找不到 merge
+        # 證據」而 fail;pull_request event 已對整份 diff 驗過,push event 重跑一次沒有
+        # 增量價值反而擋 branch push。詳見 LESSONS「self-PR citation 三處撞去識別化 denylist」。
+        if: github.event_name == 'pull_request'
         env:
           MARKER_SELF_PR: ${{ github.event.pull_request.number }}
         run: npx tsx scripts/check-todos-markers.ts
