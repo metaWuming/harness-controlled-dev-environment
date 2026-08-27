@@ -86,9 +86,9 @@ round N+1 就得審它。這在不同專案的權重不一樣，**所以才要�
 | Step 2 Confirm | `low` | 只是等批准 / 問取捨，不需要深想 |
 | Step 3 Go（實作） | `xhigh` | 官方明列的 demanding coding 場景：多檔案功能、大型重構、端到端實作 |
 | Step 4 跨模型 review 迭代 | `medium`（最後一輪 `high`） | 準確度在低 effort 撐得住；前面幾輪快掃，收尾那輪拉高 |
-| Step 4.5 安全關 | `xhigh` | 觸發時代表碰到金流 / 個資 / 權限面，這裡不省 |
+| Step 4.5 安全關 | `xhigh` | 觸發時代表碰到金流 / 個資 / 權限面，這裡不省。高風險車道的 mutation 探針是機械步驟（跑 `mutate.ts`），不吃 effort |
 | Step 4.6 視覺關 | `medium` | 視覺比對靠工具（截圖、裁切、逐項對照）而非靠想；官方明講 **tool use 比純思考更划算** |
-| Step 5 第二道 review | `medium` | 同 Step 4 |
+| Step 5 第二道 review | `medium` | 同 Step 4。高風險車道多加的 worktree 獨立審由 subagent 執行、繼承呼叫方 effort，不必為它調 session 值 |
 | Step 6 Push + CI | `low` | 機械步驟 |
 | Step 7 Final 收尾 | `low` | 通知 Owner、寫 LESSONS 若有新踩坑（**progress entry 在 Step 5 已寫、TODOS ✅ + PR 號 citation 在 Step 5/6 已寫**，均不在此步重複） |
 

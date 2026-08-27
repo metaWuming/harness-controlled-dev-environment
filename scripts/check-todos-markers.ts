@@ -14,7 +14,7 @@
 //      **至少一個**被引用 PR 在 git 史有 squash/merge commit。全都查無 → exit 1(防打錯號 / 投機性
 //      標 ✅)。用「至少一個」是因 body 聚合可能順帶引用未合併 follow-up,只要交付 PR 已 merge 即可。
 //   2. 軟 advisory「疑似 stale-done」:結構化 `**A-N ...** [🟡 partial|❌ pending]`
-//      若其條目 body 引用了已 merged 的交付 PR 且缺明示阻塞詞(⏳ / 卡 / 待外部 / 律師 …)
+//      若其條目 body 引用了已 merged 的交付 PR 且缺明示阻塞詞(⏳ / 卡 / 待外部 / 待拍板 / 律師 …)
 //      → 印警告要求人工 re-verify。不擋 CI(避免合理 partial 假陽性)。
 //
 // merged 判定:對「交付分支」(origin/develop、origin/main;見 buildMergedPrSet)`git log` 抓 commit subject,regex 出
@@ -69,9 +69,13 @@ const MARKER_DOCS = ['TODOS.md'];
 // 完成宣稱 token(出現任一 = 該行宣稱「已完成」)。刻意不含裸 "done"/"做完"(英中散文太雜)。
 const COMPLETION_TOKENS = ['✅', '完工', '已晉升', '已 merge', '已 merged'];
 // 軟 advisory 的阻塞詞 escape:pending/partial 條目 body 含任一 = 合理待辦(非 stale-done)。
+// ⚠️ 子字串比對(「卡」「待拍板」都是):否定句(「不再待拍板」)照樣命中——這是接受的
+//    邊界,不加 lookbehind 去解析語意(每補一次就換一個洞;理由詳見
+//    .claude/sop/plan-mode-checklist.md〈壓輪數的三條紀律〉⑶ 的守門段)。操作面
+//    的解法寫在 TODOS.md 檔頭:阻塞解除時直接刪詞,不寫否定句。
 // 導入時可按你的 repo 慣用語擴充。
 const BLOCKER_RE =
-  /⏳|卡|待\s*Production|待上線|上線後|上線當天|Production|外部|律師|親自|申請|審核/;
+  /⏳|卡|待\s*Production|待上線|上線後|上線當天|Production|外部|律師|親自|申請|審核|待拍板/;
 // 結構化條目 marker:`**<ID> 標題** [✅ done|🟡 partial|❌ pending]`,ID 形如 A-3 / B-12 / HC-1。
 const ITEM_MARKER_RE = /\*\*([A-Z]{1,8}-\d+)\b[^*\n]+?\*\*\s+\[(✅ done|🟡 partial|❌ pending)\]/;
 

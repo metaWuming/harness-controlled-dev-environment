@@ -124,7 +124,9 @@
 ### 原則 5.5:Subagent 委派與自我修正(2026-07-25 為 Opus 5 新增)
 
 - **委派**:大型且真正能平行的工作才開 subagent(例:橫跨多檔案的調查)。幾個 tool call 就能自己做完的不要開;
-  **不要用 subagent 檢查自己的工作**;一個 agent 夠就別開好幾個。
+  **不要用 subagent 檢查自己的工作**;一個 agent 夠就別開好幾個
+  (例外:**SOP 明文排定的 review 輪**不受此限——Step 5 的 adversarial-reviewer、
+  高風險車道多加的 worktree 獨立審都屬此類,見 `.claude/sop/plan-mode-checklist.md`)。
   定義好的 agent 在 `.claude/agents/`
 - **自我修正**:只有在「錯誤會改變使用者的程式碼、結論或決定」時才回頭更正先前說法,講一句就好然後繼續做事
 
@@ -195,7 +197,7 @@ codebase 裡兩種寫法打架時,選一個(通常選較新 / 測試較多的),�
 2. **Confirm** — 真實取捨才提問;否則直接送批准
 3. **Go(本地優先)** — feature branch + atomic commits + 每 phase 全綠 gate;**先不 push、不開 PR**
 4. **跨模型 Review** — 對本地 diff 跑對手模型 review,迭代到 0 findings(無對手模型時降級:見 checklist)
-   - **4.5 條件式安全關** — 碰安全敏感面(金流/個資/權限/資產轉移/audit trail)時觸發專責安全審;觸發判定先跑 `npx tsx scripts/check-cso-trigger.ts`(機器判定是下限不是上限)
+   - **4.5 條件式安全關** — 碰安全敏感面(金流/個資/權限/資產轉移/audit trail)時觸發專責安全審;觸發判定先跑 `npx tsx scripts/check-cso-trigger.ts`(機器判定是下限不是上限);有命中域的觸發即進**高風險車道**(加破壞性探針與 Step 5 worktree 獨立審,詳見 checklist)
    - **4.6 條件式視覺關** — diff 碰 UI 檔時觸發;預設呼叫 gstack `/design-review` 對照 design token 稽核並直接修;無 gstack 降級:**實際截圖比對**,不靠讀碼推論外觀
 5. **同模型 sanity check** — 第二道 review 收尾(cross-model 補強設計層風險);**收乾後寫 progress entry 進 feature branch commit**(跟 code 進同一 PR、不另開)
 6. **Push + PR + CI(最終 gate)** — 審乾淨才對外;CI 綠 → squash merge(commit 含 progress)
