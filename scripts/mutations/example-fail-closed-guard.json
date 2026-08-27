@@ -1,0 +1,8 @@
+[
+  {
+    "file": "scripts/check-doc-size.ts",
+    "find": "return { doc: b.doc, bytes: 0, maxBytes: b.maxBytes, over: true, missing: true, remedy: b.remedy };",
+    "replace": "return { doc: b.doc, bytes: 0, maxBytes: b.maxBytes, over: false, missing: false, remedy: b.remedy };",
+    "label": "拿掉 check-doc-size 缺檔 fail-closed → tests/check-doc-size.test.ts「檔案不存在 → fail-closed」測試應該轉紅"
+  }
+]

@@ -89,6 +89,14 @@ jobs:
         # 新失效引用 → CI 紅,逐條 triage(檔案搬移 → 改路徑;已刪 → 補 superseded 註記)。
         run: npx tsx scripts/check-doc-refs.ts
 
+      - name: Doc Size Check
+        # 記錄檔肥大守門:模板附帶的每次開工必讀檔(progress.md、LESSONS.md)超過
+        # 額度 → CI 紅。額度是「該檔目前大小 × 1.2-1.6」的示範值,導入者依自己讀清單
+        # 增補 `scripts/check-doc-size.ts` 的 BUDGETS。**調整必須寫下理由**——
+        # 無聲調高就是把閘門關掉(該檔頭 + `tests/check-doc-size.test.ts` 已把
+        # 「額度數字釘住」機器化)。
+        run: npx tsx scripts/check-doc-size.ts
+
       - name: Fetch delivery refs (for TODOS Markers Check)
         # check-todos-markers 用主線分支的 git 史判 PR merge 證據;pull_request event 下
         # checkout 是 detached merge ref,顯式 fetch 建 remote-tracking ref(best-effort:

@@ -18,7 +18,10 @@
     "check:doc-refs": "tsx scripts/check-doc-refs.ts",
     "check:cso": "tsx scripts/check-cso-trigger.ts",
     "check:claims": "tsx scripts/check-claims.ts",
-    "check:no-source-terms": "bash scripts/check-no-source-terms.sh"
+    "check:doc-size": "tsx scripts/check-doc-size.ts",
+    "check:hooks": "bash scripts/check-hooks.sh",
+    "check:no-source-terms": "bash scripts/check-no-source-terms.sh",
+    "mutate": "tsx scripts/mutate.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
