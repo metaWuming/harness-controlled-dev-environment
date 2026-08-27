@@ -1,5 +1,58 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect } from "vitest";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
 import { classifyBookkeepingFiles, isBookkeepingPath } from "../scripts/check-bookkeeping-commit";
+
+// 用 git 拿 REPO_ROOT(對齊 mutate.test.ts;避免 URL pathname 對含中文 repo 路徑的 URI-encoded 問題)
+const REPO_ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf-8" }).trim();
+const TSX_BIN = join(REPO_ROOT, "node_modules/.bin/tsx");
+const SCRIPT = join(REPO_ROOT, "scripts/check-bookkeeping-commit.ts");
+
+const created: string[] = [];
+afterEach(() => {
+  while (created.length) {
+    try {
+      rmSync(created.pop()!, { recursive: true, force: true });
+    } catch {
+      /* 清理失敗不擋測試 */
+    }
+  }
+});
+
+/** 建拋棄式 git repo,回傳 repo dir。initFiles 預設含一份 governance LESSONS.md。 */
+function makeRepo(initFiles: Record<string, string> = { ".claude/memory/LESSONS.md": "governance\n" }): string {
+  const dir = mkdtempSync(join(tmpdir(), "bookkeeping-e2e-"));
+  created.push(dir);
+  const git = (...a: string[]) => execFileSync("git", a, { cwd: dir, stdio: "ignore" });
+  for (const [rel, body] of Object.entries(initFiles)) {
+    const abs = join(dir, rel);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, body);
+  }
+  git("init", "-q");
+  git("config", "user.email", "t@example.com");
+  git("config", "user.name", "t");
+  git("add", "-A");
+  git("commit", "-qm", "init");
+  return dir;
+}
+
+/** 跑 script,回傳 {code, out}。 */
+function runScript(cwd: string, args: string[]): { code: number; out: string } {
+  try {
+    const out = execFileSync(TSX_BIN, [SCRIPT, ...args], {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return { code: 0, out };
+  } catch (e) {
+    const err = e as { status?: number; stdout?: string; stderr?: string };
+    return { code: err.status ?? -1, out: `${err.stdout ?? ""}${err.stderr ?? ""}` };
+  }
+}
 
 describe("isBookkeepingPath — 純函式(精確 allowlist)", () => {
   // ── EXACT_ALLOW:精確清單
@@ -100,6 +153,64 @@ describe("isBookkeepingPath — 純函式(精確 allowlist)", () => {
 
   it(".claude/memory/(目錄本身,無 basename)→ false", () => {
     expect(isBookkeepingPath(".claude/memory/")).toBe(false);
+  });
+});
+
+// ───────────────────────────────────────── 端到端(拋棄式 git repo)
+
+describe("check-bookkeeping-commit — 端到端 CLI", () => {
+  it("🔴 Codex round 4 P2:rename LESSONS.md → progress-archive/xxx.md → 拒收(--no-renames 展開)", () => {
+    // 沒 --no-renames 的話,`diff-tree --name-only` 對這種 rename 只印目的地
+    // (`.claude/memory/progress-archive/xxx.md`,屬 allowlist)→ exit 0、繞過。
+    // 加 --no-renames 之後,展開成「刪 LESSONS.md + 加 archive/xxx.md」——
+    // LESSONS.md 屬 governance → exit 1。本測試守 getChangedFiles 的 flag 接線,
+    // 純函式 classifyBookkeepingFiles 抓不到。
+    const dir = makeRepo({ ".claude/memory/LESSONS.md": "governance content\n" });
+    const git = (...a: string[]) => execFileSync("git", a, { cwd: dir, stdio: "ignore" });
+    // rename 進 allowlist 路徑
+    mkdirSync(join(dir, ".claude/memory/progress-archive"), { recursive: true });
+    git("mv", ".claude/memory/LESSONS.md", ".claude/memory/progress-archive/lessons-snapshot.md");
+    git("commit", "-qm", "rename to archive");
+    const { code, out } = runScript(dir, ["HEAD"]);
+    expect(code).toBe(1);
+    expect(out).toContain(".claude/memory/LESSONS.md"); // 展開的舊路徑要被列出當 violation
+  });
+
+  it("🔴 空白路徑不會被 trim 誤判(Codex round 1 P2 的 CLI 端護)", () => {
+    // 檔名以空白開頭:git 對這種路徑會 quote,`-z` + 不 trim 保留原樣。
+    // (實際 git 不允許 leading space commit,但這裡驗 CLI 分隔邏輯——
+    //  用 rename 到 allowlist 路徑仍應拒收,證明分隔不吃空白)
+    const dir = makeRepo({ ".claude/memory/LESSONS.md": "governance\n" });
+    const git = (...a: string[]) => execFileSync("git", a, { cwd: dir, stdio: "ignore" });
+    // 建一個 scripts/ code 檔 + commit(scripts/ 屬 denylist,應被列出)
+    mkdirSync(join(dir, "scripts"), { recursive: true });
+    writeFileSync(join(dir, "scripts/hello.ts"), "console.log('x');\n");
+    git("add", "-A");
+    git("commit", "-qm", "add code file");
+    const { code, out } = runScript(dir, ["HEAD"]);
+    expect(code).toBe(1);
+    expect(out).toContain("scripts/hello.ts"); // 精確路徑要留完整
+  });
+
+  it("多餘參數 → exit 2(Codex round 1 P2 的 CLI 端護)", () => {
+    const dir = makeRepo();
+    const { code, out } = runScript(dir, ["HEAD", "HEAD~1"]);
+    expect(code).toBe(2);
+    expect(out).toContain("多餘參數");
+  });
+
+  it("純 bookkeeping commit(改 TODOS.md at root)→ exit 0", () => {
+    // fixture 刻意避開「PR #<num>」pattern(check:no-source-terms denylist 擋
+    // 來源專案 PR 引用洩漏,連 fixture 字面都會被抓)。allowlist 只看路徑、
+    // 內容不影響判定,fixture 語意用「已交付」佔位即可。
+    const dir = makeRepo({ "TODOS.md": "old\n" });
+    const git = (...a: string[]) => execFileSync("git", a, { cwd: dir, stdio: "ignore" });
+    writeFileSync(join(dir, "TODOS.md"), "old\n- ✅ 新項目(已交付)\n");
+    git("add", "-A");
+    git("commit", "-qm", "bookkeeping: TODOS 已交付標記");
+    const { code, out } = runScript(dir, ["HEAD"]);
+    expect(code).toBe(0);
+    expect(out).toContain("全部檔案都在 bookkeeping allowlist 內");
   });
 });
 

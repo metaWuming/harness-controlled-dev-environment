@@ -627,6 +627,27 @@ describe("mutate — 端到端(真的跑腳本)", () => {
     expect(out).toContain("作廢");
   });
 
+  it("🔴 Codex round 4 P2:HEAD 期間變動(外部 clean commit)→ exit 2、不印綁定 SHA", () => {
+    // --cmd 用 `git commit --allow-empty` 模擬:另一個 shell / agent / IDE 在
+    // mutation 期間建了一支 empty commit → HEAD 前進 → 但工作樹仍乾淨(閘①、
+    // treeDirt 都看不見),舊版會直接印新 HEAD 假造綁定。本測試守 main() 內
+    // startHead ↔ endHead 的接線,單獨 unit test 純函式抓不到。
+    const dir = makeRepo();
+    const beforeHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf-8" }).trim();
+    // 執行:mutation 內 `--cmd` 建 empty commit(必然 exit 0、GUARD_ON 已被改掉,
+    // 但為求「HEAD 變動」的判定不被別的 exit 淹沒,`--cmd` 直接不去讀 mutation)
+    const { code, out } = runScript(dir, [
+      ...BASE,
+      "--cmd",
+      "git commit --allow-empty -qm advance-head",
+    ]);
+    expect(code).toBe(2);
+    expect(out).toContain("HEAD 在 mutation 期間變動");
+    expect(out).not.toContain("HEAD(綁定 SHA):");
+    const afterHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf-8" }).trim();
+    expect(afterHead).not.toBe(beforeHead); // 確認 --cmd 真的動了 HEAD
+  });
+
   it("檔案不存在 → exit 2", () => {
     const { code } = runScript(makeRepo(), [
       "--file", "src/missing.txt", "--find", "a", "--replace", "b",
