@@ -112,7 +112,12 @@ Sprint <name> = <一句話目的>
 ## 本 PR scope 內請找
 - <純函式邊界行為錯 / 生產接線行為變化 / mutation 探針假綠>
 SCOPE_EOF
-)
+) || {
+  # heredoc 的暫存檔建立失敗(暫存目錄不可寫 / 磁碟滿)也要擋——不擋的話
+  # assignment 失敗、$_SCOPE_NOTE 為空、group 內 `printf '%s' ""` 仍 exit 0、
+  # Codex 收到沒 scope 的 review。同步選項 B 的 `||` 檢查、對稱處理。
+  echo "❌ 產生 scope note 失敗、abort"; rm -f "$_PROMPT_FILE" "$TMPERR"; exit 1;
+}
 
 # 用 && 串接輸入生成:任一步失敗立即 abort、不送 incomplete review 給 Codex
 {
