@@ -237,7 +237,8 @@ Step 6/7 收尾照走。
     `npm run mutate -- --file <檔> --find '<原樣>' --replace '<改壞>' --label '<命中域:哪條不變量>'`
     (多條用 `--spec` 批次;`scripts/mutate.ts` 三道 fail-closed 閘,**乾淨工作樹
     才可跑——先把本輪改動 commit 再跑**;無法 commit 的本機殘留〔未追蹤的工具
-    狀態檔〕→ 加進 `.gitignore`,mutate 的乾淨檢查不含 ignored 檔;不宜 ignore 的
+    狀態檔〕→ 加進 `.gitignore`(**改 `.gitignore` 本身也要先 commit**,否則它就是
+    髒工作樹),mutate 的乾淨檢查不含 ignored 檔;不宜 ignore 的
     → 退手動探針並在 progress entry 明講「非 mutate.ts、非完整掃描」)。
     **exit 0(全部 mutant 被抓)才算過**:
     exit 1 = 覆蓋缺口 → 補測試再跑;exit 2 = 無法判定 → 排除障礙再跑。
@@ -252,7 +253,8 @@ Step 6/7 收尾照走。
     定義以 Step 5 worktree 條目為唯一正本)→ 在新 HEAD **重跑對應探針**。判準刻意統一:逐 commit 判定「有沒有碰到命中域」判錯的
     成本比重跑高,而探針是 targeted、重跑便宜。最後一次 exit 0 因此永遠綁
     **最後一個非 bookkeeping commit** 的 SHA、且在派最終 worktree 審之前完成——
-    探針與 worktree 審循環,直到兩者對同一個 SHA 成立
+    探針與 worktree 審循環,直到兩者對**同一個最後非 bookkeeping SHA** 成立
+    (bookkeeping commit 依 Step 5 時序永遠在最終審收乾之後,不影響收斂判定)
   - **標記高風險車道**:Step 5 要**多加一道** worktree 獨立審(做法與 SHA 規則
     見 Step 5〔僅高風險車道〕條目,不在此重抄)
 - [ ] `CSO_NOT_REQUIRED` → 自問一次「diff 是否含腳本路徑表沒涵蓋的安全敏感邏輯?」
@@ -314,6 +316,9 @@ exit 0(被抓)——才進 Step 5。
       progress.md 的 sprint entry、TODOS / BACKLOG 類追蹤檔的狀態標記與 PR citation。
       **LESSONS.md 與任何規則 / 安全文字的改動不在例外內**(那是治理內容,
       見頂部 docs-only 判準的 🔴 條件)——含這類改動就要再跑一輪。
+      **時序**:bookkeeping commit 只能在**最終 worktree 審收乾之後**才 commit
+      (否則它成為派工當下的 HEAD,review-tip 落在 bookkeeping 上、收斂條件字面
+      無法滿足);bookkeeping 之後又出現非 bookkeeping 修復 → 回到重跑循環。
       目的:抓「依賴本地未提交狀態 / 工作樹污染」的錯——`scripts/mutate.ts` 檔頭
       指出的同一類極限。輕/標準車道不掛,避免 ceremony
 - [ ] Findings 分類(severity 與 confidence 是兩條獨立軸):

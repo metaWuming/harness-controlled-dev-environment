@@ -125,8 +125,8 @@
 
 - **委派**:大型且真正能平行的工作才開 subagent(例:橫跨多檔案的調查)。幾個 tool call 就能自己做完的不要開;
   **不要用 subagent 檢查自己的工作**;一個 agent 夠就別開好幾個
-  (例外:高風險車道 Step 5 的 worktree 獨立審是 SOP 明文多加的一輪,
-  見 `.claude/sop/plan-mode-checklist.md`)。
+  (例外:**SOP 明文排定的 review 輪**不受此限——Step 5 的 adversarial-reviewer、
+  高風險車道多加的 worktree 獨立審都屬此類,見 `.claude/sop/plan-mode-checklist.md`)。
   定義好的 agent 在 `.claude/agents/`
 - **自我修正**:只有在「錯誤會改變使用者的程式碼、結論或決定」時才回頭更正先前說法,講一句就好然後繼續做事
 
