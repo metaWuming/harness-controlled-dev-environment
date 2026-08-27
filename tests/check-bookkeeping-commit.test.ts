@@ -38,8 +38,12 @@ describe("isBookkeepingPath — 純函式(精確 allowlist)", () => {
     expect(isBookkeepingPath(".claude/memory/progress-archive/2026-Q2.md")).toBe(true);
   });
 
-  it("LESSONS-archive/2026-Q1.md → true(季度 snapshot)", () => {
-    expect(isBookkeepingPath(".claude/memory/LESSONS-archive/2026-Q1.md")).toBe(true);
+  it("🔴 round 3 P2:LESSONS-archive/2026-Q1.md → false(archived lessons 屬 governance,同 LESSONS.md)", () => {
+    expect(isBookkeepingPath(".claude/memory/LESSONS-archive/2026-Q1.md")).toBe(false);
+  });
+
+  it("🔴 round 3 P2:LESSONS-archive/ 底下所有 .md 一律 false", () => {
+    expect(isBookkeepingPath(".claude/memory/LESSONS-archive/any-snapshot.md")).toBe(false);
   });
 
   // ── 🔴 Codex round 2 P1:archive README.md 是歸檔慣例、屬 governance

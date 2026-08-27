@@ -42,15 +42,21 @@ import path from "node:path";
  * 🔴 Codex review round 2 P1+P2:第一版用「.claude/memory/ 前綴 + .md 尾綴」
  *   太寬(把歸檔慣例 README.md 放行、又錯過 root TODOS.md)。改成精確 exact
  *   allowlist + archive snapshot glob。
+ * 🔴 Codex review round 3 P2:LESSONS-archive 底下的 season snapshot(例:
+ *   `2026-Q3.md`)本身**含 archived lessons 與 automation guidance**——與
+ *   canonical LESSONS.md 同性質、同屬 governance,SOP L319-322 明說 LESSONS.md
+ *   與規則/安全文字改動不在 bookkeeping 例外內。因此 `LESSONS-archive/` 全目錄
+ *   從 bookkeeping 移除;只保留 `progress-archive/` 的 sprint entry snapshot。
  *
  * 判準:
  *   A. 精確 allowlist(EXACT_ALLOW)——列出所有正典 bookkeeping 檔;
  *      TODOS / BACKLOG / TODOS-done 兩處(root 與 `.claude/memory/`)都收,
  *      因為 SOP 文字與實際慣例都有出現、寬版才不會誤擋 Step 6 補 PR # 的 commit
- *   B. Archive snapshot(季度封存)—— `.claude/memory/progress-archive/*.md`、
- *      `.claude/memory/LESSONS-archive/*.md`,**但 basename 不能是 `README.md`**
- *      (那是歸檔慣例文件、含 SOP 指示,屬 governance,見 SOP L319-322)。
- *      不進子目錄。
+ *   B. progress-archive snapshot(季度封存 sprint entry)——
+ *      `.claude/memory/progress-archive/*.md`,**但 basename 不能是 `README.md`**
+ *      (那是歸檔慣例文件、含 SOP 指示,屬 governance)。不進子目錄。
+ *   ⚠️ LESSONS-archive 整體 **不在** allowlist——archived lessons 與 canonical
+ *      LESSONS.md 同屬 governance。
  */
 
 const EXACT_ALLOW: ReadonlySet<string> = new Set([
@@ -63,10 +69,7 @@ const EXACT_ALLOW: ReadonlySet<string> = new Set([
   ".claude/memory/TODOS-done.md",
 ]);
 
-const ARCHIVE_DIRS: readonly string[] = [
-  ".claude/memory/progress-archive/",
-  ".claude/memory/LESSONS-archive/",
-];
+const ARCHIVE_DIRS: readonly string[] = [".claude/memory/progress-archive/"];
 
 export function isBookkeepingPath(file: string): boolean {
   if (EXACT_ALLOW.has(file)) return true;
