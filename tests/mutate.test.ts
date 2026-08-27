@@ -32,6 +32,7 @@ import {
   classify,
   classifyRun,
   formatSummary,
+  decideHeadBinding,
   isGitInternal,
   isInsideRepo,
   isUtf8Text,
@@ -510,6 +511,35 @@ describe("mutate — 摘要與 exit code", () => {
 
   it("headSha 未給 → 摘要不含 HEAD 行(保留舊行為;失敗時 main 也走這條路)", () => {
     expect(formatSummary([r("killed")], true).text).not.toContain("HEAD(綁定 SHA):");
+  });
+});
+
+// ───────────────────────────────────────── HEAD 綁定判定(P1 fail-closed)
+
+describe("decideHeadBinding — HEAD SHA 綁定純函式(Codex round 1 P1)", () => {
+  const A = "aaaa000000000000000000000000000000000000";
+  const B = "bbbb111111111111111111111111111111111111";
+
+  it("case ① 收尾讀不到 HEAD(endHead 空)→ drifted、無 headSha", () => {
+    const r = decideHeadBinding(A, "");
+    expect(r.drifted).toBe(true);
+    expect(r.headSha).toBeUndefined();
+    expect(r.message).toContain("收尾讀不到 HEAD");
+  });
+
+  it("case ② HEAD 期間變動(不等)→ drifted、無 headSha、message 含前後 SHA", () => {
+    const r = decideHeadBinding(A, B);
+    expect(r.drifted).toBe(true);
+    expect(r.headSha).toBeUndefined();
+    expect(r.message).toContain(A);
+    expect(r.message).toContain(B);
+  });
+
+  it("case ③ 兩者相等 → 不 drifted、回傳 startHead 供摘要印", () => {
+    const r = decideHeadBinding(A, A);
+    expect(r.drifted).toBe(false);
+    expect(r.headSha).toBe(A);
+    expect(r.message).toBeUndefined();
   });
 });
 
