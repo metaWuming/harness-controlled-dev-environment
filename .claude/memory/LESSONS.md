@@ -167,6 +167,72 @@ Codex(或任何 review 工具)以「該假設已在 X 明列/該政策已存在�
 - `scripts/check-no-source-terms.ts` L124-142(parseAllowedPrs 對兩種 format 都 robust)
 - 批 8 Step 5 F3 finding(進本教訓的來源)
 
+## [2026-08-28] Codex 兩輪對同一 pre-existing 問題發抓相反面 = 該做更多型信號、defer 不修
+
+**情境**
+批 9 sprint 修批 8 Step 5 defer 進 TODOS P3 的 F1(TODOS Markers Check
+env 缺 `,origin/develop` → GitFlow PR 誤擋)。Round 1 我加了 `,origin/develop`。
+Codex round 2 說「加了會讓 main-only 專案 abandoned develop 誤放行(round-6
+假通過)」→ 我 revert。Codex round 3 說「不加讓 GitFlow-only PR 假紅」→
+拉扯相反方向。
+
+**錯誤/誤判**
+Round 1 修 F1 沒識別到這是 pre-existing 兩難(main-only 安全 vs GitFlow
+涵蓋)。兩輪 codex 從相反方向各抓一次同一 root cause,我需要多輪才意識到。
+
+**為什麼會發生**
+Pre-existing 決策(batch 7 R3-4 在 Source-term scan 選了「加 develop」)
+本身就在 trade-off 一端;修 TODOS Markers Check 對齊 Source-term 是「複製
+既有選擇」,codex 反而抓到那個既有選擇的另一半 downside。
+
+**之後該怎麼避免**
+Codex 兩輪(或多輪)對同一 pre-existing 問題發抓**相反面**時,那不是「修得
+不夠好」而是「該做更多」型 finding 的變體——policy 兩難、單方向 fix 都會
+再被抓另一面。訊號一出現:
+1. 停止 fix、把兩面 finding 都寫進 workflow yml 或 code 註解(讓下個讀者
+   看到 trade-off、不會再重複這輪 review)
+2. defer TODOS P3、由 Owner 決策政策方向(而非跨 review 輪次靠 codex 拉扯)
+3. 若同 pre-existing 兩難散落多個 call site(本例:TODOS Markers Check +
+   Source-term scan 兩 workflow steps),對齊方向要**跨全部 call site 統一**、
+   不要單點動
+
+**相關檔案/連結**
+- `.github/workflows/ci.yml`(TODOS Markers Check env + Source-term scan env
+  對 `origin/develop` 的相反選擇)
+- 批 9 Step 5 codex round 2 P2-1 vs round 3 P2-1(同 root cause 相反面)
+
+## [2026-08-28] GitHub template 的 CLAUDE.md 會被 `Use this template` 複製、放 harness-internal 政策要小心
+
+**情境**
+批 9 Step 5 F4 修法把 archival 政策從 scope-note-template.md 挪到
+CLAUDE.md Part 4.6 Git 規範段。Step 5 二輪 F-round23-2 抓到:CLAUDE.md
+是 GitHub template 檔、`Use this template` 會複製,archival 政策裡的
+「batch-N.md」「3-5 sprint」「月檔 append」是本 harness 專用慣例,importer
+會直接繼承這些不明所以的 policy。
+
+**錯誤/誤判**
+把 harness-internal 治理(batch-N sprint 慣例)放進會分發給 importer 的
+CLAUDE.md,原意是「集中在一個檔」,實際是「污染 downstream」。
+
+**為什麼會發生**
+harness template 的 CLAUDE.md 有雙重身份:(a) 本 repo 自己的協作守則、
+(b) importer 複製過去的起點。修檔時只想到 (a)、忘了 (b)。
+
+**之後該怎麼避免**
+往 CLAUDE.md 加內容前先問「這條 importer 用得到嗎?若不用,是否會困擾?」:
+- 使用得到(通用工作守則、Git 規範)→ 直接加
+- 用不到但無害(可留空 placeholder)→ 加、標「導入者可刪」
+- 用不到且會誤導(硬碼 batch-N.md 之類本 harness 專用命名)→ 不寫進 CLAUDE.md,
+  改寫在只本 harness 用的檔(例:`.claude/memory/`、或新建一個明確 harness-only
+  的檔、不隨 template 複製——命名 `MAINTAINER.md` 或類似 pattern 都可)
+
+若真要放 CLAUDE.md,寫成 placeholder-style + 明「導入者注意:若不採 X 可
+整段刪除」尾註(批 9 round 3 的實際修法)。
+
+**相關檔案/連結**
+- `CLAUDE.md` Part 4.6 Git 規範段(archival 條目)
+- 批 9 Step 5 F4 → round 3 P2-2 → Step 5 二輪 F-round23-2 迭代
+
 ## 流程/工具
 
 - 🔴 **[2026-08-24] BACKLOG / TODOS 標「刀 X ✅」的 bookkeeping 必須併進該刀 feature
