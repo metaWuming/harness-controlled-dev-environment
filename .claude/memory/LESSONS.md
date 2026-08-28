@@ -137,6 +137,36 @@ sprint 都會在 4.5 永久卡死(障礙無法排除,因為空表是設計)。9 
 **相關檔案/連結**
 - `.claude/sop/plan-mode-checklist.md` Step 4.5(模板 repo 例外條款)
 
+## [2026-08-28] 引用 SOP 條款當前提前,先 grep 驗那條款真存在且說的是那個意思
+
+**情境**
+批 8 codex round 1 抓到 P1「MARKER_SELF_PR 對 commit-message scan 無效但敘述宣稱過寬」。
+round 3 codex pushback「squash-only 前提已明列於 CLAUDE.md Step 6 及 SOP Step 6、
+無需再補」,我當場採信這句話、進 round 3 fix commit。批 8 Step 5 adversarial reviewer
+獨立 grep 驗證這句 pushback:CLAUDE.md L203「CI 綠 → squash merge」是 SOP Step 6 的
+建議動作、不是 repo-wide 硬性政策;CLAUDE.md L265 是給導入者填的 placeholder、例子
+甚至寫「feature→develop squash、develop→main merge commit」——與「squash-only」不符。
+
+**錯誤/誤判**
+Codex 的「已明列於 X」pushback 沒有實際 grep 驗證就採信。實情是那句「明列」是誤述,
+但因為 `parseAllowedPrs` code 對 squash 尾綴 + merge commit 兩種 subject format 都
+robust(L124-142),行為沒被誤導。屬「決策 audit trail 小瑕疵」而非行為缺陷。
+
+**為什麼會發生**
+Codex 說「已在 X 明列」時、我把它當事實接受。跨模型 review 的價值之一正是「彼此無
+證據時的判斷會漂」——這條 pushback 若引到別的 sprint、code 沒 robust 處理兩種 format
+就會踩坑。
+
+**之後該怎麼避免**
+Codex(或任何 review 工具)以「該假設已在 X 明列/該政策已存在於 Y」為前提時,採信
+前先 `grep -n "<那條款>" <那個檔>` 驗一句話。⚠️ 特別警戒的字眼:「已明列」「無需
+再補」「既定政策」——這些是「該做更多」型 finding 的常見拒絕理由,但拒絕理由本身
+可能是誤述。
+
+**相關檔案/連結**
+- `scripts/check-no-source-terms.ts` L124-142(parseAllowedPrs 對兩種 format 都 robust)
+- 批 8 Step 5 F3 finding(進本教訓的來源)
+
 ## 流程/工具
 
 - 🔴 **[2026-08-24] BACKLOG / TODOS 標「刀 X ✅」的 bookkeeping 必須併進該刀 feature

@@ -40,15 +40,18 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 
 ## P3
 
-### ❌ pending: buildDeliveryRefs 前三條 fallback 路徑 e2e 覆蓋
-- **來源**:2026-08-28 批 7 Step 5 F2(adversarial-reviewer,confidence 7)
-- **內容**:e2e 全部走 last-resort 本地 main fallback、①origin/HEAD ②DELIVERY_REFS env ③origin/develop 三條路徑無對照。若未來 refactor 拿掉 DELIVERY_REFS env 處理,主 branch e2e 綠、CI 也綠(main push 走 ①)、只在 feature branch push 靜默倒退。補「顯式設 DELIVERY_REFS」或「不設任何 delivery ref → allowedPrs 空 → CA hit 全擋」的 e2e case
+### ✅ buildDeliveryRefs 前三條 fallback 路徑 e2e 覆蓋 (#33)
+- **來源**:2026-08-28 批 7 Step 5 F2(adversarial-reviewer,confidence 7);TODOS 措辭原寫「check-todos-markers」但正確目標是 `scripts/check-no-source-terms.ts`(D0 修正)
+- **內容**:e2e 全部走 last-resort 本地 main fallback、①origin/HEAD ②DELIVERY_REFS env ③origin/develop 三條路徑無對照
 - **工時**:0.5-1h
+- **交付**:批 8 Phase A(commit `1536fa7`)——擴 `makeRepo` opts 加 `originRefs` 支援 + `runChecker` envOverride + 4 e2e case(A-e1..A-e4)。round 1-3 fix:sentinel branch name(A-e1)、逗號多 ref(A-e2)、B-e4 history-blob 獨立 case
 
-### ❌ pending: workflow yml Source-term step 加 MARKER_SELF_PR env(sprint 內 self-reference 可過)
+### ✅ workflow yml Source-term step 加 MARKER_SELF_PR env(sprint 內 self-reference 可過)(#33)
 - **來源**:2026-08-28 批 7 Codex round 6 P2-2(defer:「該做更多」型 finding、Owner 拍板不進本 sprint)
-- **內容**:`.github/workflows/ci.yml` Source-term scan step 加 `MARKER_SELF_PR: ${{ github.event.pull_request.number }}` env,checker 讀該 env 把當前 PR 號加入 allowedPrs(僅限 pull_request event 的可信 PR 號、其他未 merge PR 仍嚴格擋)。目前 sprint 內若 commit 訊息或 diff 引用自己的 PR 號會被 CI 誤擋——workaround 是用 `(#N)` 尾綴格式繞(仍有效)
-- **工時**:1-2h(含 checker env 讀取邏輯 + workflow yml + 1-2 條 e2e case)
+- **內容**:`.github/workflows/ci.yml` Source-term scan step 加 `MARKER_SELF_PR: ${{ github.event.pull_request.number }}` env,checker 讀該 env 把當前 PR 號加入 allowedPrs
+- **工時**:1-2h
+- **交付**:批 8 Phase B(commit `4855117`)——`loadAllowedPrs` 加 env 讀取(對齊 `scripts/check-todos-markers.ts:423-424`)+ workflow yml env + 3 e2e case(B-e1..B-e3)。round 2-3 fix:診斷輸出改「delivery 已 merge M + self-PR K」+ B-e4 補 history-blob 覆蓋 + B-e3 加 "1.5" 浮點守
+- **⚠️ 已知範圍限制(批 8 Step 5 F4)**:此修法只解 `pull_request` event(PR 開之後);`push:feature/**` event 下 `github.event.pull_request.number` 為 null → env 空 → self-PR 引用仍會被擋(feature branch push 走 CI 紅、開 PR 後 CI 綠)。真正解法是把 Source-term scan step 加 `if:` gate 對齊 TODOS Markers Check step、跳過 non-delivery-branch push;defer 進下方新條目
 
 ### ✅ README 13 關卡敘述同步風險車道 (#30)
 - **來源**:2026-08-27 風險車道升級 sprint(Owner 拍板 defer)
@@ -67,5 +70,20 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 - **內容**:mutate.ts 收尾摘要加 `git rev-parse HEAD` 輸出;SOP Step 4/4.5/5/6 各補一行 decision-request 指引或把 template 適用範圍改為 Step 3
 - **工時**:1h
 - **交付**:Phase B + review round 1 fail-closed 加固(startHead ↔ endHead 綁定 + `decideHeadBinding` 純函式);SOP 選「補一行接線」路線、四步都補;template 段落改「Step 3-6」補通用 SSOT 例
+
+### ❌ pending: workflow yml Source-term scan step 加 `if:` gate 對齊 delivery-branch 白名單
+- **來源**:2026-08-28 批 8 Step 5 F4(adversarial-reviewer, confidence 4)
+- **內容**:批 8 Phase B 只解 `pull_request` event 的 self-PR ref 死鎖;`push:feature/**` event 下無 `pull_request.number` → self-PR 引用仍撞 CI 紅。真正解法是把 Source-term scan step 加 `if:` gate 對齊上方 TODOS Markers Check step L144(`github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/develop'`)、跳過 non-delivery-branch push。同時對齊 batch 6 LESSONS L89「event filter / workflow if / marker check env 三處要同步」紀律
+- **工時**:0.5h(單一 yml 改動 + 1 條 e2e test)
+- **風險**:低——TODOS Markers Check step 已有此 gate 一段時間、pattern 驗證過
+
+### ❌ pending: batch 8 Step 5 F1/F2/F5 三條 informational 累積
+- **來源**:2026-08-28 批 8 Step 5(adversarial-reviewer)
+- **內容**:
+  - **F1** (conf 4):`MARKER_SELF_PR` 缺 `< 1e9` 上限,與 `parseAllowedPrs` 契約不對稱(現實不可利用因 `extractPrRefsFromLine` 也有同守)
+  - **F2** (conf 3):`selfPrCount` 在 self-PR 已 ∈ delivery-merged 時報 0(純診斷字面誤導)
+  - **F5** (conf 2):`.claude/sop/codex-review-scope-note-drafts/` 無明確 archival trigger 條件
+- **工時**:1h 三條合修(全純契約潔癖 / 診斷字面 / 文檔紀律,無行為級 bug)
+- **defer 理由**:全 confidence ≤ 4、無實質風險、若累積再處理
 
 ## IDEA

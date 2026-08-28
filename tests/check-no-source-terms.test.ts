@@ -332,6 +332,19 @@ function makeRepo(opts: {
   workingTreeUnstaged?: Record<string, string>;
   /** Step 5 F1:刻意不注入 CA entries,測 startup fail-hard 漂移守門 */
   omitCaAutoInject?: boolean;
+  /**
+   * 批 8 Phase A:注入 origin remote,讓 buildDeliveryRefs 三條非 last-resort
+   * fallback 路徑(①origin/HEAD、②DELIVERY_REFS env、③origin/develop)有可測
+   * 目標。每條 push 分支帶「獨立 commit」——local main 不含該 commit,這樣通過與
+   * 否能證明「該路徑真的被走過」;路徑失效時 fallback 到 ④local main 查不到 PR#
+   * → exit 1(路徑破損直接被抓)
+   */
+  originRefs?: {
+    /** 建 bare origin、每條 push 上去(獨立 commit)*/
+    branches: Array<{ name: string; commitSubject: string }>;
+    /** 若給,pushes 後 `git remote set-head origin <name>` 讓 ①路徑抓得到 */
+    setHeadTo?: string;
+  };
 }): string {
   const wrap = mkdtempSync(join(tmpdir(), "cnst-e2e-"));
   created.push(wrap);
@@ -407,15 +420,48 @@ function makeRepo(opts: {
       writeFileSync(abs, body, "utf-8");
     }
   }
+  // 批 8 Phase A:注入 origin remote 與分支(見 opts.originRefs docstring)。
+  // 順序:main 上的所有 commits 都建完才建 origin——這樣「temp branch → push
+  // → 刪 temp」不會污染 main 的既定 test fixture
+  if (opts.originRefs) {
+    const originDir = join(wrap, "origin.git");
+    execFileSync("git", ["init", "--bare", "-q", originDir], { stdio: "ignore" });
+    git("remote", "add", "origin", originDir);
+    for (const b of opts.originRefs.branches) {
+      // 一次性 temp branch 從 main tip 分岔 → 加獨立 commit(commitSubject 含
+      // 該 case 想測的 PR #)→ push 上 origin 作 `refs/heads/${b.name}` →
+      // 回 main → 刪 temp。刪 temp 後,那個獨立 commit 只留在 origin/${b.name}
+      // 上、local main 不含 → 若對應 fallback 路徑失效,ε local main 查不到 PR#
+      git("checkout", "-q", "-b", `_push_${b.name}`);
+      git("commit", "--allow-empty", "-qm", b.commitSubject);
+      git("push", "-q", "origin", `_push_${b.name}:refs/heads/${b.name}`);
+      git("checkout", "-q", "main");
+      git("branch", "-D", `_push_${b.name}`);
+    }
+    // fetch 把 push 過去的分支拉回 local 作 remote-tracking ref(origin/xxx)
+    git("fetch", "-q", "origin");
+    if (opts.originRefs.setHeadTo) {
+      // 顯式設 origin/HEAD → 讓 buildDeliveryRefs 的 ①路徑
+      // (symbolic-ref refs/remotes/origin/HEAD)抓得到
+      git("remote", "set-head", "origin", opts.originRefs.setHeadTo);
+    }
+  }
   return dir;
 }
 
-function runChecker(cwd: string): { code: number; out: string } {
+function runChecker(cwd: string, envOverride?: Record<string, string>): { code: number; out: string } {
+  // 從 parent env 移除可能影響 buildDeliveryRefs / MARKER_SELF_PR 判定的變數,
+  // 讓每個 e2e case 從乾淨基線起跑;需要時透過 envOverride 顯式加回。避免
+  // 宿主 shell / 外層 CI 洩漏這兩個 env 進 checker、跨 case 污染測試結果
+  const baseEnv: NodeJS.ProcessEnv = { ...process.env };
+  delete baseEnv.DELIVERY_REFS;
+  delete baseEnv.MARKER_SELF_PR;
   try {
     const out = execFileSync(TSX_BIN, [SCRIPT], {
       cwd,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "pipe"],
+      env: { ...baseEnv, ...(envOverride ?? {}) },
     });
     return { code: 0, out };
   } catch (e) {
@@ -607,5 +653,226 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     const { code, out } = runChecker(dir);
     expect(out).toContain("含來源專案識別詞");
     expect(code).toBe(1);
+  });
+
+  // ─────────────────── 批 8 Phase A:buildDeliveryRefs 前三條 fallback 路徑 e2e ───────────────────
+  //
+  // 動機:批 7 (#32) Step 5 F2(defer 進 TODOS.md P3)——buildDeliveryRefs 四條
+  // fallback ①origin/HEAD ②DELIVERY_REFS env ③origin/develop ④last-resort 本地 main
+  // 只有 ④ 有 e2e 覆蓋(其他既有 case 全走 ④,因 makeRepo 沒建 origin remote)。
+  // 前三條路徑破損只在特定 CI 場景才顯現——本 sprint 補齊 e2e 覆蓋。
+  //
+  // 每條 case 的設計:目標 PR # 只放在對應 fallback 路徑的分支上、local main 不含。
+  // 若對應路徑失效,fallback 掉到 ④local main → 查不到 PR# → allowedPrs 空 → CA
+  // hit 未知 PR 引用 → exit 1(路徑破損直接被抓)
+
+  it("🔴 批 8 Phase A A-e1:①origin/HEAD 路徑抓 self-PR → 放行", () => {
+    // origin/HEAD 指向 origin/cg-default-sentinel(該分支含 `feat (井號+7)`);
+    // local main 無 #7。用 sentinel branch name(非 master / main / trunk 等
+    // GitHub 慣例)確保若把 symbolic-ref 動態解析改成硬碼「origin/master」,
+    // 此 case 會轉紅——真正守到「跟隨 origin/HEAD」契約(round 1 P2 修法)。
+    // 若 buildDeliveryRefs 路徑 ① 破損(例:symbolic-ref 讀失敗、resolves 誤判),
+    // fallback 到 ④local main 查不到 #7 → 轉紅
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [
+        { message: "init: no PR # on local main", files: { "src/foo.md": "hello\n" } },
+      ],
+      originRefs: {
+        branches: [{ name: "cg-default-sentinel", commitSubject: "feat (#7)" }],
+        setHeadTo: "cg-default-sentinel",
+      },
+      workingTree: {
+        "docs/note.md": "see " + PREF_PR + "7 via origin/HEAD path\n",
+      },
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("self-PR 引用放行");
+    expect(out).toContain("✅ 去識別化掃描全數通過");
+    expect(code).toBe(0);
+  });
+
+  it("🔴 批 8 Phase A A-e2:②DELIVERY_REFS env 逗號分隔多 ref 各自抓 self-PR → 放行", () => {
+    // 不設 origin/HEAD(①路徑失敗);envOverride DELIVERY_REFS 傳逗號分隔兩 ref:
+    // origin/release-line-a(含 `feat (井號+8)`)+ origin/release-line-b(含
+    // `feat (井號+18)`);工作樹同時引用 #8 + #18。若 `.split(",")` 弱化成
+    // 「整串當單一 ref」,整串 `origin/release-line-a,origin/release-line-b`
+    // 不 resolve → fallback 到 ③④、都查不到 #8/#18 → 轉紅(round 1 P2 修法:
+    // 原本只傳單一 ref 守不到 split + trim + multi-ref union 語意)。
+    // 若 buildDeliveryRefs 路徑 ② 破損(例:漏 process.env 讀取、split 邏輯錯),
+    // fallback 掉到 ③origin/develop 不存在 → ④local main 查不到 #8/#18 → 轉紅
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [
+        { message: "init: no PR # on local main", files: { "src/foo.md": "hello\n" } },
+      ],
+      originRefs: {
+        branches: [
+          { name: "release-line-a", commitSubject: "feat (#8)" },
+          { name: "release-line-b", commitSubject: "feat (#18)" },
+        ],
+        // setHeadTo 不設 → ①路徑失敗
+      },
+      workingTree: {
+        "docs/note.md":
+          "see " + PREF_PR + "8 in ref a and " + PREF_PR + "18 in ref b\n",
+      },
+    });
+    // 逗號分隔:一項含尾隨空白、另一項含前導空白 → 驗 .trim() 語意兩側都守
+    // (round 2 P2 修法:原本只中間有空白 → 只守到 trimStart / trimEnd 之一)
+    const { code, out } = runChecker(dir, {
+      DELIVERY_REFS: "origin/release-line-a ,  origin/release-line-b",
+    });
+    expect(out).toContain("self-PR 引用放行");
+    expect(out).toContain("✅ 去識別化掃描全數通過");
+    expect(code).toBe(0);
+  });
+
+  it("🔴 批 8 Phase A A-e3:③origin/develop fallback 路徑抓 self-PR → 放行", () => {
+    // 不設 origin/HEAD、無 envOverride;origin/develop 含 `feat (井號+9)`;
+    // local main 無 #9。若 buildDeliveryRefs 路徑 ③ 破損(例:硬碼字串打錯、
+    // fallback 順序變),掉到 ④local main 查不到 #9 → 轉紅
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [
+        { message: "init: no PR # on local main", files: { "src/foo.md": "hello\n" } },
+      ],
+      originRefs: {
+        branches: [{ name: "develop", commitSubject: "feat (#9)" }],
+        // setHeadTo 不設 → ①路徑失敗
+      },
+      workingTree: {
+        "docs/note.md": "see " + PREF_PR + "9 via origin/develop path\n",
+      },
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("self-PR 引用放行");
+    expect(out).toContain("✅ 去識別化掃描全數通過");
+    expect(code).toBe(0);
+  });
+
+  it("🔴 批 8 Phase A A-e4:所有 delivery ref log 內無 PR # → allowedPrs 空 → CA hit 全擋", () => {
+    // 無 origin、無 envOverride、local main log 內無 PR#(僅 init commit)。
+    // 四條 fallback ①②③失敗、④拿到 local main 但 log 內無 PR # → allowedPrs
+    // 空 set → 工作樹的 CA hit 一律未知 → exit 1。若未來把 allowedPrs 空的處理
+    // 錯改成放行(例:「空 set 視為信任所有」),此 case 會轉綠 → 該 bug 被抓
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [
+        { message: "init: no PR # anywhere", files: { "src/foo.md": "hello\n" } },
+      ],
+      // 無 originRefs
+      workingTree: {
+        "docs/note.md": "see " + PREF_PR + "7 which no delivery ref knows\n",
+      },
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("含未知 PR/pull 引用");
+    expect(code).toBe(1);
+  });
+
+  // ─────────────────── 批 8 Phase B:MARKER_SELF_PR env 通道 e2e ───────────────────
+  //
+  // 完整契約與範圍(哪段 scan 適用、安全性 assertion)見
+  // scripts/check-no-source-terms.ts 的 loadAllowedPrs docstring(SSOT)。
+  // 本組 e2e 只覆蓋 CA scan 走的兩段(第 1 段工作樹 + 第 2 段 git 歷史 blob);
+  // 第 3 段 commit 訊息 scan 走 strict、不受本 env 影響(既有 R6 P2-4 case
+  // tests/check-no-source-terms.test.ts:560-575 已守)。
+
+  it("🔴 批 8 Phase B B-e1:MARKER_SELF_PR 傳入自己的未 merge PR# → 放行", () => {
+    // 工作樹引用 (井號+42),delivery ref log 內完全沒有 #42(sprint 內 self-ref
+    // 情境);envOverride MARKER_SELF_PR=42 讓 checker 把 42 加入 allowedPrs。
+    // 若 checker 忽略 MARKER_SELF_PR env(mutation 破壞),#42 未知 → exit 1
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [
+        { message: "init: only merged #7", files: { "src/foo.md": "hello\n" } },
+        { message: "feat: past work (#7)" },
+      ],
+      workingTree: {
+        "docs/note.md": "see " + PREF_PR + "42 (this sprint's own PR)\n",
+      },
+    });
+    const { code, out } = runChecker(dir, { MARKER_SELF_PR: "42" });
+    expect(out).toContain("self-PR 引用放行");
+    expect(out).toContain("✅ 去識別化掃描全數通過");
+    expect(code).toBe(0);
+  });
+
+  it("🔴 批 8 Phase B B-e2:MARKER_SELF_PR 空字串(non-PR event 場景)→ 仍嚴格擋 + allowedPrs 保持 0", () => {
+    // GitHub Actions non-PR event(push / schedule)`github.event.pull_request.number`
+    // 展開為空字串 → env 值 "" → Number("") = 0 → `> 0` 檢查擋住。
+    // round 1 P2 修法:加斷言「allowedPrs: 0 個」——若把 `Number.isInteger && > 0`
+    // 檢查刪掉、無條件 `prs.add(selfPr)`,`""` → 0 會加入 set → allowedPrs
+    // size = 1 → 斷言失敗。原本只斷 exit 1 / 「含未知 PR/pull 引用」守不到
+    // 非法值進 allowlist(#999 無論如何都是未知)。
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [
+        { message: "init: no PR # merged", files: { "src/foo.md": "hello\n" } },
+      ],
+      workingTree: {
+        "docs/note.md": "see " + PREF_PR + "999 unknown\n",
+      },
+    });
+    const { code, out } = runChecker(dir, { MARKER_SELF_PR: "" });
+    expect(out).toContain("含未知 PR/pull 引用");
+    // round 1 P2:非法值不進 allowlist(round 2 P2 更新診斷輸出格式)
+    expect(out).toContain("allowedPrs: 0 個 PR 號");
+    expect(out).toContain("self-PR 0");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 批 8 Phase B B-e4:MARKER_SELF_PR 對 history-blob CA scan(第 2 段)有效 → 放行", () => {
+    // round 3 P2 修法:B-e1 只覆蓋第 1 段(工作樹),loadAllowedPrs docstring
+    // 宣稱「覆蓋第 1、2 段」但 e2e 沒實測第 2 段。若把 scanGitHistoryBlobs
+    // 的 CA mode 從 "self-pr" 改成 "strict",B-e1 全綠但 history-blob 段不
+    // 放行 self-PR、實際行為漂移。
+    //
+    // fixture:先 commit 含 `PR #42` 的檔、再 commit 刪除它 → HEAD tree 乾淨、
+    // working tree 乾淨,只有 git 歷史 blob 仍能看到 #42 引用。若第 2 段 CA
+    // scan 走 self-pr 判定 → #42 因 MARKER_SELF_PR=42 in allowedPrs → 放行。
+    // 若 mode 改 strict → 擋 → exit 1、case 轉紅。
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [
+        { message: "init: clean", files: { "src/foo.md": "hello\n" } },
+        {
+          message: "add self-ref doc",
+          files: { "docs/note.md": "see " + PREF_PR + "42 via history-blob path\n" },
+        },
+        { message: "remove self-ref doc", deletions: ["docs/note.md"] },
+      ],
+    });
+    const { code, out } = runChecker(dir, { MARKER_SELF_PR: "42" });
+    expect(out).toContain("self-PR 引用放行");
+    expect(out).toContain("✅ 去識別化掃描全數通過");
+    expect(code).toBe(0);
+  });
+
+  it("🔴 批 8 Phase B B-e3:MARKER_SELF_PR 非數字 / 負值 / 浮點 → 仍嚴格擋 + allowedPrs 保持 0", () => {
+    // 惡意或錯設場景:env 值為 "abc"(→ NaN)、"-1"(< 0)、"0"(= 0)、"1.5"(浮點)。
+    // 四種都應被 `Number.isInteger(selfPr) && selfPr > 0` 檢查擋住,不進
+    // allowedPrs → 工作樹引用 #999 仍未知 → exit 1。
+    // round 2 P2 修法:加 "1.5" case——若把 `Number.isInteger` 單獨拿掉、
+    // 留 `> 0`,原本 abc/-1/0 三個 case 仍綠(全被 `> 0` 擋),但 "1.5" 會
+    // 進 allowlist、違反「正整數」契約
+    for (const badVal of ["abc", "-1", "0", "1.5"]) {
+      const dir = makeRepo({
+        deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+        commits: [
+          { message: "init: no PR # merged", files: { "src/foo.md": "hello\n" } },
+        ],
+        workingTree: {
+          "docs/note.md": "see " + PREF_PR + "999 unknown\n",
+        },
+      });
+      const { code, out } = runChecker(dir, { MARKER_SELF_PR: badVal });
+      expect(out, `MARKER_SELF_PR=${badVal} 應被擋`).toContain("含未知 PR/pull 引用");
+      // round 2 P2:改用新格式「allowedPrs: N 個 PR 號」+ 分開報 self-PR 數
+      expect(out, `MARKER_SELF_PR=${badVal} 不進 allowlist`).toContain("allowedPrs: 0 個 PR 號");
+      expect(out, `MARKER_SELF_PR=${badVal} self-PR 分項應 0`).toContain("self-PR 0");
+      expect(code, `MARKER_SELF_PR=${badVal} 應 exit 1`).toBe(1);
+    }
   });
 });
