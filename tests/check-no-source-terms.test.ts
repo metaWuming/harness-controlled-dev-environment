@@ -332,6 +332,19 @@ function makeRepo(opts: {
   workingTreeUnstaged?: Record<string, string>;
   /** Step 5 F1:刻意不注入 CA entries,測 startup fail-hard 漂移守門 */
   omitCaAutoInject?: boolean;
+  /**
+   * 批 8 Phase A:注入 origin remote,讓 buildDeliveryRefs 三條非 last-resort
+   * fallback 路徑(①origin/HEAD、②DELIVERY_REFS env、③origin/develop)有可測
+   * 目標。每條 push 分支帶「獨立 commit」——local main 不含該 commit,這樣通過與
+   * 否能證明「該路徑真的被走過」;路徑失效時 fallback 到 ④local main 查不到 PR#
+   * → exit 1(路徑破損直接被抓)
+   */
+  originRefs?: {
+    /** 建 bare origin、每條 push 上去(獨立 commit)*/
+    branches: Array<{ name: string; commitSubject: string }>;
+    /** 若給,pushes 後 `git remote set-head origin <name>` 讓 ①路徑抓得到 */
+    setHeadTo?: string;
+  };
 }): string {
   const wrap = mkdtempSync(join(tmpdir(), "cnst-e2e-"));
   created.push(wrap);
@@ -407,15 +420,48 @@ function makeRepo(opts: {
       writeFileSync(abs, body, "utf-8");
     }
   }
+  // 批 8 Phase A:注入 origin remote 與分支(見 opts.originRefs docstring)。
+  // 順序:main 上的所有 commits 都建完才建 origin——這樣「temp branch → push
+  // → 刪 temp」不會污染 main 的既定 test fixture
+  if (opts.originRefs) {
+    const originDir = join(wrap, "origin.git");
+    execFileSync("git", ["init", "--bare", "-q", originDir], { stdio: "ignore" });
+    git("remote", "add", "origin", originDir);
+    for (const b of opts.originRefs.branches) {
+      // 一次性 temp branch 從 main tip 分岔 → 加獨立 commit(commitSubject 含
+      // 該 case 想測的 PR #)→ push 上 origin 作 `refs/heads/${b.name}` →
+      // 回 main → 刪 temp。刪 temp 後,那個獨立 commit 只留在 origin/${b.name}
+      // 上、local main 不含 → 若對應 fallback 路徑失效,ε local main 查不到 PR#
+      git("checkout", "-q", "-b", `_push_${b.name}`);
+      git("commit", "--allow-empty", "-qm", b.commitSubject);
+      git("push", "-q", "origin", `_push_${b.name}:refs/heads/${b.name}`);
+      git("checkout", "-q", "main");
+      git("branch", "-D", `_push_${b.name}`);
+    }
+    // fetch 把 push 過去的分支拉回 local 作 remote-tracking ref(origin/xxx)
+    git("fetch", "-q", "origin");
+    if (opts.originRefs.setHeadTo) {
+      // 顯式設 origin/HEAD → 讓 buildDeliveryRefs 的 ①路徑
+      // (symbolic-ref refs/remotes/origin/HEAD)抓得到
+      git("remote", "set-head", "origin", opts.originRefs.setHeadTo);
+    }
+  }
   return dir;
 }
 
-function runChecker(cwd: string): { code: number; out: string } {
+function runChecker(cwd: string, envOverride?: Record<string, string>): { code: number; out: string } {
+  // 從 parent env 移除可能影響 buildDeliveryRefs / MARKER_SELF_PR 判定的變數,
+  // 讓每個 e2e case 從乾淨基線起跑;需要時透過 envOverride 顯式加回。避免
+  // 宿主 shell / 外層 CI 洩漏這兩個 env 進 checker、跨 case 污染測試結果
+  const baseEnv: NodeJS.ProcessEnv = { ...process.env };
+  delete baseEnv.DELIVERY_REFS;
+  delete baseEnv.MARKER_SELF_PR;
   try {
     const out = execFileSync(TSX_BIN, [SCRIPT], {
       cwd,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "pipe"],
+      env: { ...baseEnv, ...(envOverride ?? {}) },
     });
     return { code: 0, out };
   } catch (e) {
@@ -606,6 +652,107 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     });
     const { code, out } = runChecker(dir);
     expect(out).toContain("含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
+  // ─────────────────── 批 8 Phase A:buildDeliveryRefs 前三條 fallback 路徑 e2e ───────────────────
+  //
+  // 動機:批 7 (#32) Step 5 F2(defer 進 TODOS.md P3)——buildDeliveryRefs 四條
+  // fallback ①origin/HEAD ②DELIVERY_REFS env ③origin/develop ④last-resort 本地 main
+  // 只有 ④ 有 e2e 覆蓋(其他既有 case 全走 ④,因 makeRepo 沒建 origin remote)。
+  // 前三條路徑破損只在特定 CI 場景才顯現——本 sprint 補齊 e2e 覆蓋。
+  //
+  // 每條 case 的設計:目標 PR # 只放在對應 fallback 路徑的分支上、local main 不含。
+  // 若對應路徑失效,fallback 掉到 ④local main → 查不到 PR# → allowedPrs 空 → CA
+  // hit 未知 PR 引用 → exit 1(路徑破損直接被抓)
+
+  it("🔴 批 8 Phase A A-e1:①origin/HEAD 路徑抓 self-PR → 放行", () => {
+    // origin/HEAD 指向 origin/master(該分支含 `feat (井號+7)`);local main 無 #7。
+    // 若 buildDeliveryRefs 路徑 ① 破損(例:symbolic-ref 讀失敗、resolves 誤判),
+    // fallback 到 ④local main 查不到 #7 → 轉紅
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [
+        { message: "init: no PR # on local main", files: { "src/foo.md": "hello\n" } },
+      ],
+      originRefs: {
+        branches: [{ name: "master", commitSubject: "feat (#7)" }],
+        setHeadTo: "master",
+      },
+      workingTree: {
+        "docs/note.md": "see " + PREF_PR + "7 via origin/HEAD path\n",
+      },
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("self-PR 引用放行");
+    expect(out).toContain("✅ 去識別化掃描全數通過");
+    expect(code).toBe(0);
+  });
+
+  it("🔴 批 8 Phase A A-e2:②DELIVERY_REFS env 顯式路徑抓 self-PR → 放行", () => {
+    // 不設 origin/HEAD(①路徑失敗);envOverride DELIVERY_REFS=origin/release-line
+    // 讓 ②路徑抓到 origin/release-line(含 `feat (井號+8)`);local main 無 #8。
+    // 若 buildDeliveryRefs 路徑 ② 破損(例:漏 process.env 讀取、split 邏輯錯),
+    // fallback 掉到 ③origin/develop 不存在 → ④local main 查不到 #8 → 轉紅
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [
+        { message: "init: no PR # on local main", files: { "src/foo.md": "hello\n" } },
+      ],
+      originRefs: {
+        branches: [{ name: "release-line", commitSubject: "feat (#8)" }],
+        // setHeadTo 不設 → ①路徑失敗
+      },
+      workingTree: {
+        "docs/note.md": "see " + PREF_PR + "8 via DELIVERY_REFS env path\n",
+      },
+    });
+    const { code, out } = runChecker(dir, { DELIVERY_REFS: "origin/release-line" });
+    expect(out).toContain("self-PR 引用放行");
+    expect(out).toContain("✅ 去識別化掃描全數通過");
+    expect(code).toBe(0);
+  });
+
+  it("🔴 批 8 Phase A A-e3:③origin/develop fallback 路徑抓 self-PR → 放行", () => {
+    // 不設 origin/HEAD、無 envOverride;origin/develop 含 `feat (井號+9)`;
+    // local main 無 #9。若 buildDeliveryRefs 路徑 ③ 破損(例:硬碼字串打錯、
+    // fallback 順序變),掉到 ④local main 查不到 #9 → 轉紅
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [
+        { message: "init: no PR # on local main", files: { "src/foo.md": "hello\n" } },
+      ],
+      originRefs: {
+        branches: [{ name: "develop", commitSubject: "feat (#9)" }],
+        // setHeadTo 不設 → ①路徑失敗
+      },
+      workingTree: {
+        "docs/note.md": "see " + PREF_PR + "9 via origin/develop path\n",
+      },
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("self-PR 引用放行");
+    expect(out).toContain("✅ 去識別化掃描全數通過");
+    expect(code).toBe(0);
+  });
+
+  it("🔴 批 8 Phase A A-e4:所有 delivery ref log 內無 PR # → allowedPrs 空 → CA hit 全擋", () => {
+    // 無 origin、無 envOverride、local main log 內無 PR#(僅 init commit)。
+    // 四條 fallback ①②③失敗、④拿到 local main 但 log 內無 PR # → allowedPrs
+    // 空 set → 工作樹的 CA hit 一律未知 → exit 1。若未來把 allowedPrs 空的處理
+    // 錯改成放行(例:「空 set 視為信任所有」),此 case 會轉綠 → 該 bug 被抓
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [
+        { message: "init: no PR # anywhere", files: { "src/foo.md": "hello\n" } },
+      ],
+      // 無 originRefs
+      workingTree: {
+        "docs/note.md": "see " + PREF_PR + "7 which no delivery ref knows\n",
+      },
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("含未知 PR/pull 引用");
     expect(code).toBe(1);
   });
 });
