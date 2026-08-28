@@ -60,6 +60,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+// 批 10 P2-1:MARKER_SELF_PR 驗證抽到 shared lib、兩 script 共用單一入口(擋跨檔漂移)
+import { acknowledgeSelfPr } from "./lib/marker-self-pr";
 
 // ───────────────────────────────────────── constants
 
@@ -398,17 +400,15 @@ function loadAllowedPrs(root: string): {
           })
         );
   const mergedCount = prs.size;
-  const selfPr = Number(process.env.MARKER_SELF_PR);
   let selfPrCount = 0;
-  // 批 9 F1:上限 `< 1e9` 對齊 parseAllowedPrs L132/L138 + extractPrRefsFromLine L172 的既有守。
-  // 現實 GitHub PR # 由 GitHub 指派非攻擊者控制;但契約潔癖(不對稱 = 三處守四處守)。
-  // 批 9 F2:selfPrCount 語意改「本次 env 通道有效」計數,不再受 delivery collision 影響——
-  // 原本「self 已 ∈ delivery 時報 0」讓診斷輸出誤導(env 明明傳了 42 卻報 self-PR 0)。
-  // 現在:env 值合法即 selfPrCount = 1(env 通道 acknowledge)、set 只在未包含時加(dedup)。
-  // 恆等式改成 allowedPrs.size ≤ mergedCount + selfPrCount(collision 時 <、其餘 =);
-  // 診斷輸出用詞改「(delivery 已 merge M + self-PR K;collision 時 self ∈ delivery)」
-  // (分隔符與實碼 L674 對齊、SSOT 是實碼;批 9 Step 5 F3)
-  if (Number.isInteger(selfPr) && selfPr > 0 && selfPr < 1e9) {
+  // 批 10 P2-1:MARKER_SELF_PR 驗證邏輯抽到 shared lib、兩 script 共用(擋跨檔漂移)。
+  // 見 scripts/lib/marker-self-pr.ts 契約(isInteger + > 0 + < 1e9)。
+  // 批 9 F2:selfPrCount 語意「本次 env 通道有效」——env 值合法即 = 1(env 通道 acknowledge)、
+  // set 只在未包含時加(dedup)。恆等式 allowedPrs.size ≤ mergedCount + selfPrCount
+  // (collision 時 <、其餘 =);診斷輸出「(delivery 已 merge M + self-PR K;collision 時 self ∈ delivery)」
+  // (分隔符與實碼對齊、SSOT 是實碼;批 9 Step 5 F3)
+  const selfPr = acknowledgeSelfPr(process.env.MARKER_SELF_PR);
+  if (selfPr !== null) {
     selfPrCount = 1;
     if (!prs.has(selfPr)) prs.add(selfPr);
   }

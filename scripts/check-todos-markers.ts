@@ -53,6 +53,11 @@
 import { execFileSync, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+// 批 10 P2-1:MARKER_SELF_PR 驗證抽到 shared lib、兩 script 共用單一入口(擋跨檔漂移)。
+// 批 10 Step 5 F2 修法:top-level import 統一風格(對齊 check-no-source-terms.ts:64)、
+// export 供既有 test import 呼叫。
+import { acknowledgeSelfPr } from './lib/marker-self-pr';
+export { acknowledgeSelfPr };
 
 // CWD-independent root resolution(對齊 check-doc-refs.ts)
 const REPO_ROOT = (() => {
@@ -420,8 +425,9 @@ function main() {
   // 解死鎖:SOP 鼓勵「同 PR 順手翻 marker 引用本 PR#」,但本 PR squash commit 在 merge 前不存在於
   // develop/main(且刻意排除 HEAD)→ 會擋下「產生證據的那次 merge」。CI 於 pull_request event 把
   // 當前 PR# 經 env `MARKER_SELF_PR` 傳入,視為合法 merge 證據(它正是即將 merge 出證據的 PR)。
-  const selfPr = Number(process.env.MARKER_SELF_PR);
-  if (Number.isInteger(selfPr) && selfPr > 0) merged.add(selfPr);
+  // 驗證邏輯抽在 shared lib(scripts/lib/marker-self-pr.ts)、兩 script 共用
+  const selfPr = acknowledgeSelfPr(process.env.MARKER_SELF_PR);
+  if (selfPr !== null) merged.add(selfPr);
   const prExists = (pr: number) => merged.has(pr);
 
   // 先解析所有 doc,再決定 merged set 是否為硬性前提:

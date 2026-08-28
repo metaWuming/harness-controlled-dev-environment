@@ -10,6 +10,16 @@ type: archive
 
 ---
 
+📅 2026-08-28 ② — **批 8:收乾批 7 兩條 TODOS P3 defer(check-no-source-terms buildDeliveryRefs e2e + MARKER_SELF_PR env 通道)**
+
+> **緣起**:批 7 (#32) 收尾 defer 兩條 P3 進 TODOS.md:①`buildDeliveryRefs` 前三條 fallback 路徑無 e2e 覆蓋(Step 5 F2,confidence 7);②`.github/workflows/ci.yml` Source-term scan 缺 `MARKER_SELF_PR` env(codex R6 P2-2)。兩支同源(check-no-source-terms.ts 的 self-PR 治理面)、合計 ~1.5-3h、一批做審一次比兩次省(批 5 同 pattern 已驗)。起手 git 核實:main 乾淨、TODOS P3 兩條對得上批 7 entry 下一棒候選。**⚠️ D0 修正**:TODOS 措辭寫「buildDeliveryRefs」但該 fn 只在 `check-no-source-terms.ts`(L299-347)、`check-todos-markers.ts` 對應物叫 `buildMergedPrSet`——確認 Task A 目標檔 = `check-no-source-terms.ts`(批 7 就是動這支的 CA 升級 follow-up)。
+> **改動**:4 檔 +355/-11 —— `scripts/check-no-source-terms.ts` `loadAllowedPrs` 加 `MARKER_SELF_PR` env 讀取、改回 `{ prs, mergedCount, selfPrCount }` object、docstring 收攏(SSOT);`.github/workflows/ci.yml` Source-term scan step 加 `MARKER_SELF_PR` env、註解指向 checker docstring;`tests/check-no-source-terms.test.ts` `makeRepo` 加 `originRefs`(bare origin + temp-branch push + `setHeadTo`)+ `runChecker` envOverride + baseEnv strip、8 新 e2e case(A-e1..A-e4 + B-e1..B-e4);`.claude/sop/codex-review-scope-note-drafts/batch-8.md`(新目錄 + 首檔,附 non-self-referential 慣例的自省註解)。TODOS 兩條翻 ✅(#33)+ 補 D0 措辭修正 + F4 新 P3 條目;LESSONS 加「引用 SOP 前提前 grep 驗」教訓;本 entry。
+> **審查**:Codex CLI 5 rounds 收乾(trend 4→4→1→1→1、明確收斂;round 5 finding 為 self-referential scope note 死循環、屬「該做更多」型、批 7 教訓 ① 觸發收乾)。**安全關** `check:cso` fail-closed(表空)→ 模板 repo 例外人工判定**不進高風險車道**;**視覺關**未觸發(無 UI 檔)。**Step 5** adversarial-reviewer fresh 審:0 CRITICAL / 5 INFORMATIONAL,依規則全 skip;cross-model agreement ≈ 0 再度驗證 SOP L215。
+> **驗證**:typecheck / lint / test 53 / mutation 探針 5 條全部命中 / dogfood 綠 / doc-refs 153 / check:todos 綠。
+> **⭐ 教訓**:①mutation 探針前先 `git add -A` 保護、mutation 動生產碼、跑 test、`git checkout <file>` 從 index 還原。②Codex pushback「已明列」型理由先 grep 驗(見 LESSONS 新教訓 [2026-08-28])。③scope note 內列 commit SHA 清單會踩 self-referential 死循環;修法:用描述性語言、SHA 清單交給 `git log` 動態拿。④cross-model agreement ≈ 0 是常態。
+> 📊 成本:CC ~4h / Codex review 5 rounds + Step5 1 / P1 1 / P2 10 / Step5 5(全 skip/defer)/ 累計 16 findings。
+> 📐 量測:baseline SHA `c2a0ec6fb1a2c6a2068b29f24e67a8684bc97542`。
+
 📅 2026-08-28 — **批 7:check-no-source-terms 升上下文感知 checker(前置攔截第 4 次同類踩坑)**
 
 > **緣起**:批 6(#31)一輪 sprint 內三度撞同類「self-PR 引用被去識別化 denylist 誤觸」(fixture / TODOS / marker env),每次都用不同 workaround 繞開;LESSONS L90 記載「再踩第 4 次就該機器化」。本 sprint 前置攔截。

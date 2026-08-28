@@ -5,12 +5,31 @@
 //   - parseTodosMarkers:完成宣稱行 / 結構化 marker pending 條目 / fenced code 跳過
 //   - checkTodosMarkers:硬 violation(完成宣稱引用未 merged PR)+ 軟 advisory(pending 引 merged PR 無阻塞詞)
 
-import { describe, expect, it } from 'vitest';
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   extractPrCitations,
   parseTodosMarkers,
   checkTodosMarkers,
-} from '../scripts/check-todos-markers';
+  acknowledgeSelfPr,
+} from "../scripts/check-todos-markers";
+
+// 批 10 Step 5 F3:新加 imports 統一雙引號、對齊 check-no-source-terms.test.ts
+// (兩支同族 e2e test 保持視覺一致)。既有 describe/it 內既有引號留原樣、
+// 避免大量無關 diff。
+const REPO_ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+  encoding: "utf-8",
+}).trim();
+const SCRIPT = join(REPO_ROOT, "scripts/check-todos-markers.ts");
+const TSX_BIN = join(REPO_ROOT, "node_modules/.bin/tsx");
+
+const created: string[] = [];
+afterEach(() => {
+  while (created.length) rmSync(created.pop()!, { recursive: true, force: true });
+});
 
 describe('extractPrCitations', () => {
   it('PR #N / (#N) / #N→ 三種形式', () => {
@@ -263,5 +282,142 @@ describe('checkTodosMarkers', () => {
     const parsed = parseTodosMarkers('**A-2 平台升級** [❌ pending]\n- 規劃中 PR #9999');
     const res = checkTodosMarkers(parsed, prExists);
     expect(res.advisories).toHaveLength(0);
+  });
+});
+
+// ───────────────────────────────────────── 批 10:acknowledgeSelfPr(MARKER_SELF_PR env 讀取)
+//
+// 契約對稱 check-no-source-terms.ts:loadAllowedPrs L411 的守——同一 MARKER_SELF_PR
+// env、兩 script 讀,兩處驗證要一致。批 9 Step 5 F-round23-5(conf 4)發現原本
+// check-todos-markers L424 只有 `Number.isInteger && > 0` 沒 `< 1e9` 上限、
+// 兩處不對稱。批 10 修法把驗證抽 pure fn 出來、單一入口 SSOT。
+
+describe('acknowledgeSelfPr — MARKER_SELF_PR env 讀取(批 10)', () => {
+  it('合法正整數 → 回傳該值', () => {
+    expect(acknowledgeSelfPr('42')).toBe(42);
+    expect(acknowledgeSelfPr('1')).toBe(1);
+    expect(acknowledgeSelfPr('999999999')).toBe(999999999); // 1e9 - 1、剛好過
+  });
+
+  it('undefined(env 未設)→ null', () => {
+    expect(acknowledgeSelfPr(undefined)).toBe(null);
+  });
+
+  it('空字串(non-PR event 展開)→ null', () => {
+    // Number("") === 0、`> 0` 擋。GitHub Actions non-PR event
+    // `github.event.pull_request.number` 展開為空字串的預期行為
+    expect(acknowledgeSelfPr('')).toBe(null);
+  });
+
+  it('非數字(NaN)→ null', () => {
+    expect(acknowledgeSelfPr('abc')).toBe(null);
+    expect(acknowledgeSelfPr('foo123')).toBe(null);
+  });
+
+  it('負值 / 零 → null', () => {
+    expect(acknowledgeSelfPr('-1')).toBe(null);
+    expect(acknowledgeSelfPr('0')).toBe(null);
+  });
+
+  it('浮點 → null(Number.isInteger 擋)', () => {
+    expect(acknowledgeSelfPr('1.5')).toBe(null);
+    expect(acknowledgeSelfPr('42.0')).toBe(42); // 42.0 是 integer(Number.isInteger 認)
+  });
+
+  it('🔴 批 10 F-round23-5 修法:≥ 1e9 上限守 → null', () => {
+    // 若 mutation 拿掉 `< 1e9`(恢復 pre-batch-10 行為),此 case 會轉紅
+    expect(acknowledgeSelfPr('1000000000')).toBe(null); // = 1e9 精確邊界
+    expect(acknowledgeSelfPr('9999999999')).toBe(null); // 遠超上限
+  });
+});
+
+// ───────────────────────────────────────── 批 10 P2-2:CLI 接線 e2e
+//
+// 批 5 教訓「call site 必須另守」——純函式 acknowledgeSelfPr 測 7 case 全綠,
+// 但若刪掉 main() 內 `merged.add(selfPr)` 那行、pure fn 測試照樣通過。
+// 加 disposable-repo e2e 直接跑 check-todos-markers CLI、驗 self-PR 引用完工
+// 宣稱過 gate,守 call site 接線。
+
+function makeRepo(opts: {
+  todosContent: string;
+  /** 額外要 commit 的檔案(如生 delivery merged commit fixture) */
+  extraCommits?: Array<{ message: string; files?: Record<string, string> }>;
+}): string {
+  const wrap = mkdtempSync(join(tmpdir(), 'ctm-e2e-'));
+  created.push(wrap);
+  const dir = join(wrap, 'repo');
+  mkdirSync(dir, { recursive: true });
+  const git = (...a: string[]) =>
+    execFileSync('git', a, { cwd: dir, stdio: 'ignore' });
+  git('init', '-q', '-b', 'main');
+  git('config', 'user.email', 't@example.com');
+  git('config', 'user.name', 't');
+  writeFileSync(join(dir, 'TODOS.md'), opts.todosContent, 'utf-8');
+  git('add', '-A');
+  git('commit', '-qm', 'init: TODOS.md');
+  for (const c of opts.extraCommits ?? []) {
+    if (c.files) {
+      for (const [rel, body] of Object.entries(c.files)) {
+        writeFileSync(join(dir, rel), body, 'utf-8');
+      }
+      git('add', '-A');
+      git('commit', '-qm', c.message);
+    } else {
+      git('commit', '--allow-empty', '-qm', c.message);
+    }
+  }
+  return dir;
+}
+
+function runChecker(cwd: string, envOverride?: Record<string, string>): { code: number; out: string } {
+  // 從 parent env 移除 MARKER_SELF_PR / DELIVERY_REFS 避免宿主 CI 洩漏污染
+  const baseEnv: NodeJS.ProcessEnv = { ...process.env };
+  delete baseEnv.DELIVERY_REFS;
+  delete baseEnv.MARKER_SELF_PR;
+  try {
+    const out = execFileSync(TSX_BIN, [SCRIPT], {
+      cwd,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...baseEnv, ...(envOverride ?? {}) },
+    });
+    return { code: 0, out };
+  } catch (e) {
+    const err = e as { status?: number; stdout?: string; stderr?: string };
+    return { code: err.status ?? -1, out: `${err.stdout ?? ''}${err.stderr ?? ''}` };
+  }
+}
+
+describe('check-todos-markers — 端到端(CLI 接線)', () => {
+  it('🔴 批 10 P2-2:MARKER_SELF_PR call site 接線 → self-PR 引用完工宣稱過 gate', () => {
+    // fixture:TODOS.md 完工宣稱引用 #42(self-PR 尚未 merge、delivery 史無 #42)
+    // envOverride MARKER_SELF_PR=42 → acknowledgeSelfPr 回 42 → main() call site
+    // 呼叫 merged.add(42) → prExists(42) = true → 完工宣稱過 gate。
+    // 若 mutation 刪 call site (`if (selfPr !== null) merged.add(selfPr)` 該行),
+    // 純函式測試照樣綠、但此 e2e 轉紅——守 call site 接線
+    const dir = makeRepo({
+      todosContent: '# TODOS\n\n## P3\n\n### ✅ some completion (#42)\n- done\n',
+    });
+    const { code, out } = runChecker(dir, { MARKER_SELF_PR: '42' });
+    expect(out).toContain('1 個 PR');
+    expect(out).toContain('1 個有 merge 證據');
+    expect(code).toBe(0);
+  });
+
+  it('🔴 批 10 P2-2 反例:MARKER_SELF_PR 未設 → self-PR 引用被擋(未 merge 證據)', () => {
+    // 同 fixture、無 envOverride(MARKER_SELF_PR baseEnv strip 掉)、
+    // delivery 史無 #42 → prExists(42) = false → 完工宣稱擋 → exit 1。
+    // 這條驗證「acknowledgeSelfPr 通道確實影響 gate」(反向 assertion)
+    const dir = makeRepo({
+      todosContent: '# TODOS\n\n## P3\n\n### ✅ some completion (#42)\n- done\n',
+    });
+    const { code, out } = runChecker(dir);
+    // disposable repo 無 origin remote → buildMergedPrSet 四條 fallback 全空
+    // → merged set 空 → 有 completionClaim 但 merged.size = 0 → 走 fail-hard
+    // 路徑(script L437-439)、exit 1。若 MARKER_SELF_PR call site 破損、
+    // 就算 env 傳 42 也不會進 merged set,同樣走 fail-hard。此 case 驗
+    // 「無 self-PR 通道時 completion claim 被擋」的 baseline
+    expect(out).toContain('無法從 git 史建立 merged PR 集合');
+    expect(code).toBe(1);
   });
 });

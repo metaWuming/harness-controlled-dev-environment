@@ -86,23 +86,31 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
   - F2:selfPrCount 語意改「env 通道 acknowledge」(collision 不受影響)+ 診斷用詞 + docstring「僅診斷用」contract
   - F5:archival 政策先加 template.md → round 3 挪到 CLAUDE.md Part 4.6(placeholder-style + 導入者可刪尾註,避免 GitHub template 散布 harness-internal 命名)
 
-### ❌ pending: develop-branch policy 拍板(跨 workflow yml TODOS Markers Check vs Source-term scan 兩處統一方向)
-- **來源**:2026-08-28 批 9 Codex round 2 P2-1(add develop → legacy 誤放行)vs round 3 P2-1(不 add → GitFlow 假紅)—— pre-existing 兩難的兩面
-- **內容**:workflow yml 兩處 `DELIVERY_REFS` env 對 `origin/develop` 選擇相反(TODOS Markers Check 只 default_branch、Source-term scan 加 `,origin/develop`)。真正解法是**Owner 拍板方向**(main-only default vs GitFlow default vs 兩 profile flag),再跨兩處 workflow step 統一。
-- **選項**:(A) 兩處都不加 develop、GitFlow importer 自訂 (B) 兩處都加、legacy 誤放行接受 (C) 加 project-level flag env
-- **工時**:0.5h(方向拍板後動 2 處 workflow yml 環境變數 + 1-2 條 e2e case)
-- **defer 理由**:policy 拍板不該靠 codex review 拉扯,批 7 教訓 ①「findings 挑理論邊界時 defer 而非本 sprint 修」
+### ✅ develop-branch policy 拍板(跨 workflow yml 兩處統一方向)(#35)
+- **來源**:2026-08-28 批 9 Codex round 2 vs round 3 pre-existing 兩難兩面
+- **內容**:workflow yml 兩處 `DELIVERY_REFS` env 對 `origin/develop` 選擇相反,Owner 拍板方向
+- **工時**:0.5h
+- **交付**:批 10 Phase A(commit `b18ac7a`)—— Owner 拍板 **policy A(兩處都不加 develop、main-only default)**。理由:harness template 本身 main-only、legacy develop 誤放行是隱性 false negative(比 GitFlow 假紅嚴重)、GitFlow importer 客製 workflow yml 覆蓋 workflow-level env 常數即可
 
-### ❌ pending: workflow-level `DELIVERY_REFS` 常數機械化(SSOT、擋兩處 env 值漂)
+### ✅ workflow-level `DELIVERY_REFS` 常數機械化(SSOT、擋兩處 env 值漂)(#35)
 - **來源**:2026-08-28 批 9 Step 5 二輪 F-round23-4(conf 5)
-- **內容**:workflow yml 頂端 `env:` 區塊定義 workflow-level `DELIVERY_REFS` 常數、兩 step 都 reference。**不解決** develop policy 兩難、但**機械化擋掉「兩處值漂」的漏洞**——以後翻該值只翻一處。
-- **工時**:0.5h(頂端加 env 常數 + 兩 step 從 step-level env 改 workflow-level ref)
-- **注意**:與上條 develop-branch policy 拍板順序有依賴——policy 定了值再統一。可拆兩 sprint 或合一 sprint
+- **內容**:workflow yml 頂端 `env:` 區塊定義 workflow-level `DELIVERY_REFS` 常數、兩 step 都 reference
+- **工時**:0.5h
+- **交付**:批 10 Phase A(commit `b18ac7a`)+ Step 5 F1 完整化(commit `7633688`,MARKER_SELF_PR 也提到 workflow-level、同 SSOT 論證延伸)。兩 step 的 step-level DELIVERY_REFS + MARKER_SELF_PR 全部移除、繼承 workflow-level env,「未來翻值時只翻一處」漏洞關掉
 
-### ❌ pending: `check-todos-markers.ts:424` `MARKER_SELF_PR` 補 `< 1e9` 對稱
+### ✅ `check-todos-markers.ts:424` `MARKER_SELF_PR` 補 `< 1e9` 對稱 + shared lib(#35)
 - **來源**:2026-08-28 批 9 Step 5 二輪 F-round23-5(conf 4)
-- **內容**:批 9 F1 修法把 `check-no-source-terms.ts:411` 補 `< 1e9`(對齊同檔 parseAllowedPrs / extractPrRefsFromLine 契約),但 `check-todos-markers.ts:424` 也讀同一 `MARKER_SELF_PR` env、只有 `Number.isInteger && > 0` 沒上限——兩 script 對同 env 驗證不對稱、9999999999 之類值在一處擋一處放行
-- **工時**:0.5h(1 行守 + 1 條 case)
-- **defer 理由**:現實 GitHub PR # 非攻擊者控制、check-todos-markers 已受 subject 邊界守;純契約潔癖
+- **內容**:批 9 F1 修法把 check-no-source-terms.ts 補 `< 1e9` 但 check-todos-markers 沒對齊
+- **工時**:0.5h(擴至 1.5h,加 shared lib)
+- **交付**:批 10 Phase B(commit `49e7a59`)先抽 pure fn 內部 SSOT → round 1 fix(commit `de3d081`)codex 抓「不是真正單一入口」→ 抽到 shared lib `scripts/lib/marker-self-pr.ts`、兩 script 共用;7 unit test(涵蓋合法/undefined/空字串/NaN/負值零/浮點/≥1e9 boundary)+ 2 e2e case(接線守、批 5 教訓「call site 另守」)
 
 ## IDEA
+
+_(無、批 10 收乾)_
+
+---
+
+> **批 10(#35)收乾:P1 = 0 條 / P2 = 0 條 / P3 pending = 0 條**。
+> 批 5-10 累積 P3 交付 8 條(批 5 三 / 批 8 兩 / 批 9 兩 / 批 10 三)、
+> 現無 backlog。下一棒若需新工作:從 Owner 指示、健康檢查、或新 sprint
+> defer 產出的 finding 開新 P3 條目。
