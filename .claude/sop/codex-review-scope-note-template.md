@@ -89,7 +89,6 @@ Sprint <name> = <一句話目的>
 **Archival**:歸檔慣例是 template 使用專案的 harness 內部治理事項,不屬本 template
 給 importer 用的部分。若你的專案採用選項 B 且累積多份 scope note、需要制訂歸檔
 政策,寫進你的 project 的 `CLAUDE.md`(harness 治理段)或 memory,不寫進本 template。
-harness template 本身的政策見本 repo `CLAUDE.md` Part 4.6 Git 規範段附近。
 
 **範例命令(選項 A、heredoc)**:
 

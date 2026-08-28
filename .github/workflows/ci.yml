@@ -154,8 +154,9 @@ jobs:
           #   - 只 default_branch:main-only 專案安全、但 GitFlow-only PR 假紅
           #     (round 3 finding)
           # 現況選 safer default(只 default_branch);GitFlow importer 自行客製。
-          # 同問題在 Source-term scan L181 pre-existing 相反方向(batch 7 R3-4
-          # 選了「加 develop」)、跨兩處對齊的方向要由 Owner 決策後統一。
+          # 同問題在下方 `Source-term scan` step 的 `DELIVERY_REFS` env 中 pre-existing
+          # 相反方向(batch 7 R3-4 選了「加 develop」)、跨兩處對齊的方向要由 Owner
+          # 決策後統一。(錨到 step name 而非行號、避免未來 workflow 加減行漂移。)
           DELIVERY_REFS: origin/${{ github.event.repository.default_branch }}
         run: npx tsx scripts/check-todos-markers.ts
 
