@@ -261,6 +261,7 @@ codebase 裡兩種寫法打架時,選一個(通常選較新 / 測試較多的),�
 - 絕對不 commit `.env` / 任何密鑰
 - **本機 git hooks**(opt-in `npm run setup-hooks`):pre-commit 擋「保護分支上 commit 程式碼」(doc 放行);**commit-msg 擋「訊息含去識別化 denylist 詞」**(deny-terms.txt 不在時自動 no-op);pre-push 先跑本機 gitleaks(有 leak 硬擋)再做保護分支 code push 確認
 - 上下文管理判準見 `.claude/sop/context-management.md`
+- **Codex review scope note archival**(僅本模板 backsync sprint 使用;導入者若採用選項 B、依需求自訂):`.claude/sop/codex-review-scope-note-drafts/` 底下的檔名 pattern(本模板用 `batch-N.md`、你的專案自訂)每 N 個 sprint 搬進 `archive/` 目錄底下(檔名依當月 `<yyyy-mm>.md` 命名、單檔滾動、append 進去、非個檔歸檔)。drafts/ 保留最近 N 個 sprint 供對照。archive 檔為只讀歷史 snapshot、不回頭編輯——同 `.claude/memory/progress-archive/` 慣例。sprint 開始前的例行 housekeeping,不算獨立 sprint。**導入者注意**:此段落 pattern 是本 harness 自身治理慣例,若你的專案不採選項 B(見 `.claude/sop/codex-review-scope-note-template.md`)、可整段刪除。
 
 <!-- 填:你的分支策略(例:main = 正式 / develop = 開發主線;feature/xxx、fix/xxx)與合併策略(feature→develop squash;develop→main merge commit) -->
 

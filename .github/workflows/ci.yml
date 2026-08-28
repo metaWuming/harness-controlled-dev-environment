@@ -147,6 +147,16 @@ jobs:
           # 🔴 Step 5 #6:belt-and-suspenders——若 `git remote set-head` 因網路 hiccup
           # 失敗、origin/HEAD 讀不到,script 靠這條 env 顯式指定 default_branch remote-tracking,
           # 避免整支 CI 只因 set-head 失敗而 fail-hard(fetch step 已把 default_branch fetch 好)
+          # 🔴 批 9 Step 5 F1 → round 2/3 defer:pre-existing 兩難、保持只傳 default_branch。
+          # trade-off(兩 codex rounds 抓到相反面向,defer TODOS P3 由 Owner 拍板):
+          #   - 加 `,origin/develop`:GitFlow-only PR 涵蓋、但 main-only 專案的
+          #     abandoned develop 分支 PR # 會誤放行(round 2 finding)
+          #   - 只 default_branch:main-only 專案安全、但 GitFlow-only PR 假紅
+          #     (round 3 finding)
+          # 現況選 safer default(只 default_branch);GitFlow importer 自行客製。
+          # 同問題在下方 `Source-term scan` step 的 `DELIVERY_REFS` env 中 pre-existing
+          # 相反方向(batch 7 R3-4 選了「加 develop」)、跨兩處對齊的方向要由 Owner
+          # 決策後統一。(錨到 step name 而非行號、避免未來 workflow 加減行漂移。)
           DELIVERY_REFS: origin/${{ github.event.repository.default_branch }}
         run: npx tsx scripts/check-todos-markers.ts
 
@@ -164,6 +174,19 @@ jobs:
         # 完整契約與範圍見 scripts/check-no-source-terms.ts 的 loadAllowedPrs
         # docstring(SSOT)——本註解僅點名該 env 用途,不重述細節。
         # 命名對齊上方 TODOS Markers Check step 的既有 env(批 6 加的)。
+        #
+        # 🔴 批 9 Phase A(批 8 F4 收):Delivery-branch 白名單——PR event 一律跑;
+        # push event 只在進 delivery branch 之後跑(此時 PR 已 squash merge、
+        # self-PR 引用有 merge 證據)。非 delivery branch 的 push(feature/* / fix/* /
+        # chore/* / release/* …)一律 skip——那時 PR 通常還沒 merge、
+        # `github.event.pull_request.number` 為 null(env 空字串)、MARKER_SELF_PR
+        # 通道失效 → self-PR 引用找不到證據被誤擋。gate pattern 對齊上方 TODOS
+        # Markers Check step 既有寫法(批 6 加的)、涵蓋 main/master/trunk 等 repo
+        # 主線命名 + GitFlow 的 develop。
+        # 🔴 導入者注意:若你的 delivery branch 不是 default_branch 或 develop
+        # (例:release/**),同步把它加進下面的條件——與 TODOS Markers Check 三處
+        # 同步紀律(批 6 LESSONS L89)。
+        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/develop'
         env:
           DELIVERY_REFS: origin/${{ github.event.repository.default_branch }},origin/develop
           MARKER_SELF_PR: ${{ github.event.pull_request.number }}

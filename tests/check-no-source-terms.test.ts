@@ -850,6 +850,74 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     expect(code).toBe(0);
   });
 
+  it("🔴 批 9 F1:MARKER_SELF_PR ≥ 1e9(超上限)→ 仍嚴格擋 + allowedPrs 保持 0", () => {
+    // 批 8 Step 5 F1(confidence 4)修法:與 parseAllowedPrs L132/L138 + extractPrRefsFromLine
+    // L172 的 `< 1e9` 契約對齊。若 mutation 拿掉 `< 1e9`,`Number.isInteger(9999999999)
+    // === true && > 0 === true` → 進 set → allowedPrs: 1 個 → 斷言失敗
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [
+        { message: "init: no PR # merged", files: { "src/foo.md": "hello\n" } },
+      ],
+      workingTree: {
+        "docs/note.md": "see " + PREF_PR + "999 unknown\n",
+      },
+    });
+    const { code, out } = runChecker(dir, { MARKER_SELF_PR: "9999999999" });
+    expect(out).toContain("含未知 PR/pull 引用");
+    expect(out).toContain("allowedPrs: 0 個 PR 號");
+    expect(out).toContain("self-PR 0");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 批 9 F1 boundary(round 2 P2):MARKER_SELF_PR = 1e9 精確邊界 → 仍嚴格擋", () => {
+    // round 2 P2 修法:原 F1 case 用 "9999999999"、mutation `< 1e9` → `<= 1e9`
+    // 仍會通過(9999999999 兩者都 false)。加 "1000000000"(= 1e9)守精確邊界:
+    // `< 1e9` = false(擋)、`<= 1e9` = true(誤放行 → case 轉紅)
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [
+        { message: "init: no PR # merged", files: { "src/foo.md": "hello\n" } },
+      ],
+      workingTree: {
+        "docs/note.md": "see " + PREF_PR + "999 unknown\n",
+      },
+    });
+    const { code, out } = runChecker(dir, { MARKER_SELF_PR: "1000000000" });
+    expect(out).toContain("含未知 PR/pull 引用");
+    expect(out).toContain("allowedPrs: 0 個 PR 號");
+    expect(out).toContain("self-PR 0");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 批 9 F2:MARKER_SELF_PR 已 ∈ delivery(collision)→ self-PR 計數仍為 1", () => {
+    // 批 8 Step 5 F2(confidence 3)修法:selfPrCount 語意改「本次 env 通道有效」計數,
+    // 不再受 delivery collision 影響。舊行為(!prs.has 條件包 selfPrCount = 1):
+    // env 明明傳 42 且 42 也在 delivery → 印「self-PR 0」誤導。新行為:env 值合法 selfPrCount = 1、
+    // set 只在未包含時加(dedup)。若 mutation 恢復舊條件,此 case 應轉紅。
+    //
+    // fixture:local main 上 squash `feat (井號+42)` → parseAllowedPrs 抽出 42;
+    // envOverride MARKER_SELF_PR=42 → collision;工作樹引用 42 應放行(不驗行為、
+    // 驗診斷字面)
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [
+        { message: "feat: past work (#42)", files: { "src/foo.md": "hello\n" } },
+      ],
+      workingTree: {
+        "docs/note.md": "see " + PREF_PR + "42 both delivered and self-PR\n",
+      },
+    });
+    const { code, out } = runChecker(dir, { MARKER_SELF_PR: "42" });
+    expect(out).toContain("self-PR 引用放行");
+    expect(out).toContain("✅ 去識別化掃描全數通過");
+    // 關鍵斷言:allowedPrs 集合仍只 1 個(collision 時 self ∈ delivery,dedup);
+    // 但 selfPrCount 語意是「env 通道 acknowledge」、應為 1
+    expect(out).toContain("allowedPrs: 1 個 PR 號");
+    expect(out).toContain("self-PR 1");
+    expect(code).toBe(0);
+  });
+
   it("🔴 批 8 Phase B B-e3:MARKER_SELF_PR 非數字 / 負值 / 浮點 → 仍嚴格擋 + allowedPrs 保持 0", () => {
     // 惡意或錯設場景:env 值為 "abc"(→ NaN)、"-1"(< 0)、"0"(= 0)、"1.5"(浮點)。
     // 四種都應被 `Number.isInteger(selfPr) && selfPr > 0` 檢查擋住,不進

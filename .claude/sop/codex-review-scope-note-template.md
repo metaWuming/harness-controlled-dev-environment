@@ -86,6 +86,10 @@ Sprint <name> = <一句話目的>
   (每個 sprint 一份、之後可 archive)。適合連續拆刀、需要 diff 對照。用 B 前先
   `mkdir -p .claude/sop/codex-review-scope-note-drafts` 建目錄——本模板不預建它。
 
+**Archival**:歸檔慣例是 template 使用專案的 harness 內部治理事項,不屬本 template
+給 importer 用的部分。若你的專案採用選項 B 且累積多份 scope note、需要制訂歸檔
+政策,寫進你的 project 的 `CLAUDE.md`(harness 治理段)或 memory,不寫進本 template。
+
 **範例命令(選項 A、heredoc)**:
 
 ⚠️ 範例內的 `<主線>` 依 target repo 慣例替換:多數專案是 `main`、GitFlow 專案是
