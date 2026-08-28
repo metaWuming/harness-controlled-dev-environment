@@ -86,6 +86,13 @@ Sprint <name> = <一句話目的>
   (每個 sprint 一份、之後可 archive)。適合連續拆刀、需要 diff 對照。用 B 前先
   `mkdir -p .claude/sop/codex-review-scope-note-drafts` 建目錄——本模板不預建它。
 
+**Archival(批 9 F5)**:每 3-5 個 sprint 後把舊 batch-N.md 搬進
+`.claude/sop/codex-review-scope-note-drafts/archive/` 目錄底下(檔名依當月
+`<yyyy-mm>.md` 命名、單檔滾動、append 進去、非個檔歸檔)。drafts/ 保留最近
+3-5 sprint 的檔供對照。archive 檔為只讀歷史 snapshot、不回頭編輯——同
+`.claude/memory/progress-archive/` 慣例。**這是 sprint 開始前的例行 housekeeping,
+不算獨立 sprint。**
+
 **範例命令(選項 A、heredoc)**:
 
 ⚠️ 範例內的 `<主線>` 依 target repo 慣例替換:多數專案是 `main`、GitFlow 專案是

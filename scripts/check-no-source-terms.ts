@@ -392,9 +392,16 @@ function loadAllowedPrs(root: string): {
   const mergedCount = prs.size;
   const selfPr = Number(process.env.MARKER_SELF_PR);
   let selfPrCount = 0;
-  if (Number.isInteger(selfPr) && selfPr > 0 && !prs.has(selfPr)) {
-    prs.add(selfPr);
+  // 批 9 F1:上限 `< 1e9` 對齊 parseAllowedPrs L132/L138 + extractPrRefsFromLine L172 的既有守。
+  // 現實 GitHub PR # 由 GitHub 指派非攻擊者控制;但契約潔癖(不對稱 = 三處守四處守)。
+  // 批 9 F2:selfPrCount 語意改「本次 env 通道有效」計數,不再受 delivery collision 影響——
+  // 原本「self 已 ∈ delivery 時報 0」讓診斷輸出誤導(env 明明傳了 42 卻報 self-PR 0)。
+  // 現在:env 值合法即 selfPrCount = 1(env 通道 acknowledge)、set 只在未包含時加(dedup)。
+  // 恆等式改成 allowedPrs.size ≤ mergedCount + selfPrCount(collision 時 <、其餘 =);
+  // 診斷輸出用詞改「(delivery 已 merge M + self-PR K,collision 時 self ∈ delivery)」
+  if (Number.isInteger(selfPr) && selfPr > 0 && selfPr < 1e9) {
     selfPrCount = 1;
+    if (!prs.has(selfPr)) prs.add(selfPr);
   }
   return { prs, mergedCount, selfPrCount };
 }
@@ -662,8 +669,9 @@ function main(): number {
   const syntaxNonCaFile = nonCaFile;
 
   const { prs: allowedPrs, mergedCount, selfPrCount } = loadAllowedPrs(root);
+  // 批 9 F2:size ≤ mergedCount + selfPrCount(collision 時 <);印 `size` + 兩來源計數
   console.log(
-    `── allowedPrs: ${allowedPrs.size} 個 PR 號被納入放行清單(delivery 已 merge ${mergedCount} + self-PR ${selfPrCount})──`
+    `── allowedPrs: ${allowedPrs.size} 個 PR 號被納入放行清單(delivery 已 merge ${mergedCount} + self-PR ${selfPrCount};collision 時 self ∈ delivery)──`
   );
 
   let fail = false;
