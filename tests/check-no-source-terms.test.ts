@@ -823,6 +823,33 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     expect(code).toBe(1);
   });
 
+  it("🔴 批 8 Phase B B-e4:MARKER_SELF_PR 對 history-blob CA scan(第 2 段)有效 → 放行", () => {
+    // round 3 P2 修法:B-e1 只覆蓋第 1 段(工作樹),loadAllowedPrs docstring
+    // 宣稱「覆蓋第 1、2 段」但 e2e 沒實測第 2 段。若把 scanGitHistoryBlobs
+    // 的 CA mode 從 "self-pr" 改成 "strict",B-e1 全綠但 history-blob 段不
+    // 放行 self-PR、實際行為漂移。
+    //
+    // fixture:先 commit 含 `PR #42` 的檔、再 commit 刪除它 → HEAD tree 乾淨、
+    // working tree 乾淨,只有 git 歷史 blob 仍能看到 #42 引用。若第 2 段 CA
+    // scan 走 self-pr 判定 → #42 因 MARKER_SELF_PR=42 in allowedPrs → 放行。
+    // 若 mode 改 strict → 擋 → exit 1、case 轉紅。
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [
+        { message: "init: clean", files: { "src/foo.md": "hello\n" } },
+        {
+          message: "add self-ref doc",
+          files: { "docs/note.md": "see " + PREF_PR + "42 via history-blob path\n" },
+        },
+        { message: "remove self-ref doc", deletions: ["docs/note.md"] },
+      ],
+    });
+    const { code, out } = runChecker(dir, { MARKER_SELF_PR: "42" });
+    expect(out).toContain("self-PR 引用放行");
+    expect(out).toContain("✅ 去識別化掃描全數通過");
+    expect(code).toBe(0);
+  });
+
   it("🔴 批 8 Phase B B-e3:MARKER_SELF_PR 非數字 / 負值 / 浮點 → 仍嚴格擋 + allowedPrs 保持 0", () => {
     // 惡意或錯設場景:env 值為 "abc"(→ NaN)、"-1"(< 0)、"0"(= 0)、"1.5"(浮點)。
     // 四種都應被 `Number.isInteger(selfPr) && selfPr > 0` 檢查擋住,不進
