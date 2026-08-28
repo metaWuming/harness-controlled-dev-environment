@@ -29,6 +29,11 @@ isolation — built by a single non-engineer owner working with AI. Every gate i
 template exists because a real mistake happened on that production line and was
 distilled into machinery.
 
+> **Want the full picture?** [`docs/OVERVIEW.md`](docs/OVERVIEW.md) is a single deep read
+> covering the concept, the full sprint flow, every one of the 13 gates in detail, the
+> lesson-to-machine ladder with real examples, and 5 flow diagrams. Recommended if you
+> are evaluating whether this template fits your project.
+
 ### Two directions, four groups of gates
 
 Harness components run in two directions (Fowler / Böckeler):
@@ -163,6 +168,10 @@ MIT
 自動化測試——涵蓋金流、會員個資、多租戶隔離等高風險面——由一位無技術團隊的
 產品擁有者與 AI 協作完成。模板裡的每一道關卡,都是那條產線上真實犯過的錯
 蒸餾成的機器。
+
+> **想看全貌？** [`docs/OVERVIEW.md`](docs/OVERVIEW.md) 是一份完整深度總覽:
+> 涵蓋概念、完整 sprint 流程、13 道 gates 每道細節、教訓→機器化階梯實例、
+> 以及 5 張流程圖。**評估要不要導入本模板的讀者建議先讀這份。**
 
 ### 兩個方向、四組關卡
 
