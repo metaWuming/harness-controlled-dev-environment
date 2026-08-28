@@ -1,0 +1,34 @@
+{
+  "weekId": "2026-W35",
+  "weekStart": "2026-08-24",
+  "weekEnd": "2026-08-28",
+  "generatedAt": "2026-08-28T04:50:12.558Z",
+  "metrics": {
+    "todosP1": {
+      "open": 0,
+      "completed": 0
+    },
+    "lessonsNew": {
+      "count": 6,
+      "entries": [
+        "2026-08-27: self-PR # citation 三處撞去識別化 denylist:test fixture / TODOS 補號 / CI push event",
+        "2026-08-27: 外部 review 工具的「額度重置時間」訊息不可信,降級路徑要當常態預案",
+        "2026-08-27: 新 SOP 規則寫完,先拿自己的 repo dogfood 一遍再送審",
+        "2026-08-28: 引用 SOP 條款當前提前,先 grep 驗那條款真存在且說的是那個意思",
+        "2026-08-28: Codex 兩輪對同一 pre-existing 問題發抓相反面 = 該做更多型信號、defer 不修",
+        "2026-08-28: GitHub template 的 CLAUDE.md 會被 `Use this template` 複製、放 harness-internal 政策要小心"
+      ]
+    },
+    "reviewCost": {
+      "sprints": 2,
+      "totalRounds": 5,
+      "totalP1": 0,
+      "totalP2": 11,
+      "step5Independent": 3
+    }
+  },
+  "trend": {
+    "prevWeekId": null,
+    "diff": {}
+  }
+}
