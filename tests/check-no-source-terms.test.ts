@@ -667,7 +667,10 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
   // hit 未知 PR 引用 → exit 1(路徑破損直接被抓)
 
   it("🔴 批 8 Phase A A-e1:①origin/HEAD 路徑抓 self-PR → 放行", () => {
-    // origin/HEAD 指向 origin/master(該分支含 `feat (井號+7)`);local main 無 #7。
+    // origin/HEAD 指向 origin/cg-default-sentinel(該分支含 `feat (井號+7)`);
+    // local main 無 #7。用 sentinel branch name(非 master / main / trunk 等
+    // GitHub 慣例)確保若把 symbolic-ref 動態解析改成硬碼「origin/master」,
+    // 此 case 會轉紅——真正守到「跟隨 origin/HEAD」契約(round 1 P2 修法)。
     // 若 buildDeliveryRefs 路徑 ① 破損(例:symbolic-ref 讀失敗、resolves 誤判),
     // fallback 到 ④local main 查不到 #7 → 轉紅
     const dir = makeRepo({
@@ -676,8 +679,8 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
         { message: "init: no PR # on local main", files: { "src/foo.md": "hello\n" } },
       ],
       originRefs: {
-        branches: [{ name: "master", commitSubject: "feat (#7)" }],
-        setHeadTo: "master",
+        branches: [{ name: "cg-default-sentinel", commitSubject: "feat (#7)" }],
+        setHeadTo: "cg-default-sentinel",
       },
       workingTree: {
         "docs/note.md": "see " + PREF_PR + "7 via origin/HEAD path\n",
@@ -689,25 +692,36 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     expect(code).toBe(0);
   });
 
-  it("🔴 批 8 Phase A A-e2:②DELIVERY_REFS env 顯式路徑抓 self-PR → 放行", () => {
-    // 不設 origin/HEAD(①路徑失敗);envOverride DELIVERY_REFS=origin/release-line
-    // 讓 ②路徑抓到 origin/release-line(含 `feat (井號+8)`);local main 無 #8。
+  it("🔴 批 8 Phase A A-e2:②DELIVERY_REFS env 逗號分隔多 ref 各自抓 self-PR → 放行", () => {
+    // 不設 origin/HEAD(①路徑失敗);envOverride DELIVERY_REFS 傳逗號分隔兩 ref:
+    // origin/release-line-a(含 `feat (井號+8)`)+ origin/release-line-b(含
+    // `feat (井號+18)`);工作樹同時引用 #8 + #18。若 `.split(",")` 弱化成
+    // 「整串當單一 ref」,整串 `origin/release-line-a,origin/release-line-b`
+    // 不 resolve → fallback 到 ③④、都查不到 #8/#18 → 轉紅(round 1 P2 修法:
+    // 原本只傳單一 ref 守不到 split + trim + multi-ref union 語意)。
     // 若 buildDeliveryRefs 路徑 ② 破損(例:漏 process.env 讀取、split 邏輯錯),
-    // fallback 掉到 ③origin/develop 不存在 → ④local main 查不到 #8 → 轉紅
+    // fallback 掉到 ③origin/develop 不存在 → ④local main 查不到 #8/#18 → 轉紅
     const dir = makeRepo({
       deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
       commits: [
         { message: "init: no PR # on local main", files: { "src/foo.md": "hello\n" } },
       ],
       originRefs: {
-        branches: [{ name: "release-line", commitSubject: "feat (#8)" }],
+        branches: [
+          { name: "release-line-a", commitSubject: "feat (#8)" },
+          { name: "release-line-b", commitSubject: "feat (#18)" },
+        ],
         // setHeadTo 不設 → ①路徑失敗
       },
       workingTree: {
-        "docs/note.md": "see " + PREF_PR + "8 via DELIVERY_REFS env path\n",
+        "docs/note.md":
+          "see " + PREF_PR + "8 in ref a and " + PREF_PR + "18 in ref b\n",
       },
     });
-    const { code, out } = runChecker(dir, { DELIVERY_REFS: "origin/release-line" });
+    // 逗號分隔 + 一項含前導空白 → 也驗 .trim() 語意
+    const { code, out } = runChecker(dir, {
+      DELIVERY_REFS: "origin/release-line-a, origin/release-line-b",
+    });
     expect(out).toContain("self-PR 引用放行");
     expect(out).toContain("✅ 去識別化掃描全數通過");
     expect(code).toBe(0);
@@ -788,12 +802,13 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     expect(code).toBe(0);
   });
 
-  it("🔴 批 8 Phase B B-e2:MARKER_SELF_PR 空字串(non-PR event 場景)→ 仍嚴格擋", () => {
+  it("🔴 批 8 Phase B B-e2:MARKER_SELF_PR 空字串(non-PR event 場景)→ 仍嚴格擋 + allowedPrs 保持 0", () => {
     // GitHub Actions non-PR event(push / schedule)`github.event.pull_request.number`
     // 展開為空字串 → env 值 "" → Number("") = 0 → `> 0` 檢查擋住。
-    // 若把檢查錯改成 `Number.isInteger(selfPr)` 少了 `> 0`,0 會被加入 → #999
-    // 用某種方式湊到 0 就能繞。實務上不太可能但守門仍要在。這條驗證 env=""
-    // 不改變行為(等價於未設)
+    // round 1 P2 修法:加斷言「allowedPrs: 0 個」——若把 `Number.isInteger && > 0`
+    // 檢查刪掉、無條件 `prs.add(selfPr)`,`""` → 0 會加入 set → allowedPrs
+    // size = 1 → 斷言失敗。原本只斷 exit 1 / 「含未知 PR/pull 引用」守不到
+    // 非法值進 allowlist(#999 無論如何都是未知)。
     const dir = makeRepo({
       deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
       commits: [
@@ -805,13 +820,15 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     });
     const { code, out } = runChecker(dir, { MARKER_SELF_PR: "" });
     expect(out).toContain("含未知 PR/pull 引用");
+    expect(out).toContain("allowedPrs: 0 個"); // round 1 P2:非法值不進 allowlist
     expect(code).toBe(1);
   });
 
-  it("🔴 批 8 Phase B B-e3:MARKER_SELF_PR 非數字 / 負值 → 仍嚴格擋", () => {
+  it("🔴 批 8 Phase B B-e3:MARKER_SELF_PR 非數字 / 負值 → 仍嚴格擋 + allowedPrs 保持 0", () => {
     // 惡意或錯設場景:env 值為 "abc"(→ NaN)、"-1"(< 0)、"0"(= 0)。
     // 三種都應被 `Number.isInteger(selfPr) && selfPr > 0` 檢查擋住,不進
-    // allowedPrs → 工作樹引用 #999 仍未知 → exit 1
+    // allowedPrs → 工作樹引用 #999 仍未知 → exit 1。round 1 P2 修法:加
+    // 「allowedPrs: 0 個」斷言(理由同 B-e2)
     for (const badVal of ["abc", "-1", "0"]) {
       const dir = makeRepo({
         deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
@@ -824,6 +841,7 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
       });
       const { code, out } = runChecker(dir, { MARKER_SELF_PR: badVal });
       expect(out, `MARKER_SELF_PR=${badVal} 應被擋`).toContain("含未知 PR/pull 引用");
+      expect(out, `MARKER_SELF_PR=${badVal} 不進 allowlist`).toContain("allowedPrs: 0 個");
       expect(code, `MARKER_SELF_PR=${badVal} 應 exit 1`).toBe(1);
     }
   });

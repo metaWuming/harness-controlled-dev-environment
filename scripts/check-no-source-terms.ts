@@ -358,10 +358,17 @@ function loadAllowedPrs(root: string): Set<number> {
           })
         );
   // 批 8 Phase B:解 sprint 內 self-reference 死鎖——本 PR 尚未 squash merge
-  // 前,commit 訊息 / diff / 文件內引用「本 PR 號」的行找不到 delivery ref
-  // 內的證據 → 會被 CA scan 當「未知 PR 引用」擋。CI 於 pull_request event
-  // 把當前 PR# 經 env `MARKER_SELF_PR` 傳入,視為合法引用來源(它正是即將
-  // 產生證據的 PR)。
+  // 前,**diff 內(工作樹追蹤檔)/ 文件 blob(git 全史)** 引用「本 PR 號」
+  // 的行找不到 delivery ref 內的證據 → 會被 CA scan 當「未知 PR 引用」擋。
+  // CI 於 pull_request event 把當前 PR# 經 env `MARKER_SELF_PR` 傳入,
+  // 視為合法引用來源(它正是即將產生證據的 PR)。
+  //
+  // ⚠️ 範圍精確:本 env 只影響 CA 判定(mode="self-pr")的兩段掃描——第 1 段
+  // 工作樹 + 第 2 段 git 歷史 blob。**第 3 段 commit 訊息掃描固定 mode="strict"、
+  // 不看 allowedPrs**——這是批 7 round 6 P2-4 明確測試(commit 訊息 CA hit
+  // 一律嚴格擋、對齊 commit-msg hook)、既定政策。實務上 sprint 內 self-PR
+  // commit 訊息用 canonical squash 格式「(井號+N)」,CA pattern `PR #[0-9]`
+  // 不 match 括號形式,不會被抓;裸寫「PR #N」屬 anti-pattern、本來就該擋。
   //
   // 安全性:
   //   - 僅 CI pull_request event 有 `github.event.pull_request.number`;
