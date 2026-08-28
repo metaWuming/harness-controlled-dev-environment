@@ -34,6 +34,22 @@ concurrency:
 permissions:
   contents: read
 
+# 🔴 批 10:workflow-level DELIVERY_REFS 常數(SSOT、擋兩處 env 值漂)。
+# TODOS Markers Check + Source-term scan 兩 step 都用此常數當「delivery-refs
+# 白名單」(即哪些 remote branch 上的 merged commits 可算作「本 repo 已 merge
+# PR 證據」)。過去兩處 step-level env 各自定義,批 9 Step 5 F-round23-4 抓到
+# 「未來翻該值時只翻一處會漂」漏洞。集中在 workflow-level 一份 SSOT 解決。
+#
+# 🔴 批 10 D0 拍板 policy A:只傳 `origin/${default_branch}`,不含 `origin/develop`。
+# 理由(見批 10 plan file 詳述):
+#   - 本 harness template 本身 main-only、應遵守 main-only 預設
+#   - Legacy develop 誤放行是隱性 false negative(比 GitFlow 假紅嚴重)
+#   - GitFlow importer 客製此 workflow yml 覆蓋常數即可(合理成本)
+# 批 9 Codex round 2 vs round 3 對此 pre-existing 兩難各抓一半、
+# Owner 拍板 A(統一方向)、跨兩 step 對齊。
+env:
+  DELIVERY_REFS: origin/${{ github.event.repository.default_branch }}
+
 jobs:
   ci:
     runs-on: ubuntu-latest
@@ -144,31 +160,26 @@ jobs:
         if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/develop'
         env:
           MARKER_SELF_PR: ${{ github.event.pull_request.number }}
-          # 🔴 Step 5 #6:belt-and-suspenders——若 `git remote set-head` 因網路 hiccup
-          # 失敗、origin/HEAD 讀不到,script 靠這條 env 顯式指定 default_branch remote-tracking,
-          # 避免整支 CI 只因 set-head 失敗而 fail-hard(fetch step 已把 default_branch fetch 好)
-          # 🔴 批 9 Step 5 F1 → round 2/3 defer:pre-existing 兩難、保持只傳 default_branch。
-          # trade-off(兩 codex rounds 抓到相反面向,defer TODOS P3 由 Owner 拍板):
-          #   - 加 `,origin/develop`:GitFlow-only PR 涵蓋、但 main-only 專案的
-          #     abandoned develop 分支 PR # 會誤放行(round 2 finding)
-          #   - 只 default_branch:main-only 專案安全、但 GitFlow-only PR 假紅
-          #     (round 3 finding)
-          # 現況選 safer default(只 default_branch);GitFlow importer 自行客製。
-          # 同問題在下方 `Source-term scan` step 的 `DELIVERY_REFS` env 中 pre-existing
-          # 相反方向(batch 7 R3-4 選了「加 develop」)、跨兩處對齊的方向要由 Owner
-          # 決策後統一。(錨到 step name 而非行號、避免未來 workflow 加減行漂移。)
-          DELIVERY_REFS: origin/${{ github.event.repository.default_branch }}
+          # 🔴 批 10:DELIVERY_REFS 繼承 workflow-level env(見檔頭 `env:` 區塊)。
+          # policy A 拍板統一「只 default_branch」+ SSOT 擋兩處值漂(F-round23-4)。
+          # Step 5 #6 belt-and-suspenders 原意(fetch step 已把 default_branch
+          # fetch 好、set-head 失敗也不 fail-hard)由 workflow-level env 承接。
         run: npx tsx scripts/check-todos-markers.ts
 
       - name: Source-term scan (de-identification gate)
         # 去識別化常駐 gate:本模板抽取自私有專案,掃「來源專案識別詞」殘留
         # (working tree + git 全史)。導入者不需要時可連同 scripts/deny-terms.txt 移除。
         #
-        # 🔴 批 7 round 3 P2-2 / round 4 P2-1:step-level env 不會跨 step 傳遞,
-        # DELIVERY_REFS 也要在本 step 顯式設,且要**顯式列出**所有 delivery refs
-        # (不能只依賴 fallback:origin/HEAD 命中後 fallback 不會執行,只 merge
-        # 到 develop 的 PR 就會被誤擋)。不存在的 ref 由 buildDeliveryRefs 的
-        # `git rev-parse --verify` 檢查自動跳過,列多個是安全的。
+        # 🔴 批 7 R3-4 → 批 10 收:step-level env 不會跨 step 傳遞(pre-existing 事實),
+        # 但 workflow-level env 會自動繼承——批 10 把 DELIVERY_REFS 提到 workflow-level
+        # (見檔頭 `env:` 區塊)後,本 step 無需顯式再設。批 7 註記的「顯式列出所有
+        # delivery refs」考量已改由 workflow-level SSOT 承接(擋兩處值漂,
+        # 批 9 Step 5 F-round23-4)。
+        #
+        # 🔴 批 10 D0 policy A:workflow-level env 只 default_branch、不含 develop。
+        # 批 7 R3-4 曾在此 step 加 `,origin/develop` 解 GitFlow-only PR 誤擋,但
+        # 批 9 Codex round 2 抓到「main-only 專案 legacy develop 誤放行」反面問題——
+        # 跨兩 step 相反選擇是 pre-existing 兩難,Owner 批 10 拍板 A(見檔頭註解)。
         #
         # 🔴 批 8 Phase B:MARKER_SELF_PR 解 sprint 內 self-reference 死鎖。
         # 完整契約與範圍見 scripts/check-no-source-terms.ts 的 loadAllowedPrs
@@ -188,7 +199,6 @@ jobs:
         # 同步紀律(批 6 LESSONS L89)。
         if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/develop'
         env:
-          DELIVERY_REFS: origin/${{ github.event.repository.default_branch }},origin/develop
           MARKER_SELF_PR: ${{ github.event.pull_request.number }}
         run: npm run check:no-source-terms
 
