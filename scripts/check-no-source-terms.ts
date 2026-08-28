@@ -348,13 +348,30 @@ function buildDeliveryRefs(root: string): string[] {
 
 function loadAllowedPrs(root: string): Set<number> {
   const refs = buildDeliveryRefs(root);
-  if (refs.length === 0) return new Set();
-  const out = execFileSync(
-    "git",
-    ["-C", root, "log", ...refs, "--format=%s"],
-    { encoding: "utf-8", maxBuffer: 512 * 1024 * 1024 }
-  );
-  return parseAllowedPrs(out);
+  const prs =
+    refs.length === 0
+      ? new Set<number>()
+      : parseAllowedPrs(
+          execFileSync("git", ["-C", root, "log", ...refs, "--format=%s"], {
+            encoding: "utf-8",
+            maxBuffer: 512 * 1024 * 1024,
+          })
+        );
+  // 批 8 Phase B:解 sprint 內 self-reference 死鎖——本 PR 尚未 squash merge
+  // 前,commit 訊息 / diff / 文件內引用「本 PR 號」的行找不到 delivery ref
+  // 內的證據 → 會被 CA scan 當「未知 PR 引用」擋。CI 於 pull_request event
+  // 把當前 PR# 經 env `MARKER_SELF_PR` 傳入,視為合法引用來源(它正是即將
+  // 產生證據的 PR)。
+  //
+  // 安全性:
+  //   - 僅 CI pull_request event 有 `github.event.pull_request.number`;
+  //     其他 event(push / schedule)展開為空字串 → Number("") = 0 →
+  //     被 `> 0` 檢查擋住,不會誤放行
+  //   - 命名對齊 scripts/check-todos-markers.ts:423-424(批 6 加的既有機制)
+  //   - 只放行「這一個」PR#,其他未 merge PR 仍嚴格擋
+  const selfPr = Number(process.env.MARKER_SELF_PR);
+  if (Number.isInteger(selfPr) && selfPr > 0) prs.add(selfPr);
+  return prs;
 }
 
 /** 把 pattern 陣列寫進臨時檔,回傳檔路徑與 cleanup callback。 */

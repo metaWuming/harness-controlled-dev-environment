@@ -755,4 +755,76 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     expect(out).toContain("含未知 PR/pull 引用");
     expect(code).toBe(1);
   });
+
+  // ─────────────────── 批 8 Phase B:MARKER_SELF_PR env 通道 e2e ───────────────────
+  //
+  // 動機:批 7 (#32) Codex round 6 P2-2(defer 進 TODOS.md P3)——checker 已建
+  // 上下文感知 CA 判定,但 sprint 內 self-reference(commit 訊息 / diff 引用「本
+  // PR 號」)在 squash merge 前 delivery ref 找不到證據 → 被誤擋。以往 workaround
+  // 是改用「(井號+N)」括號格式繞。修法對齊 scripts/check-todos-markers.ts:423-424
+  // 已有機制:CI pull_request event 把 `github.event.pull_request.number` 經
+  // env MARKER_SELF_PR 傳入 checker,加入 allowedPrs。
+  //
+  // 安全性 assertion:僅放行「這一個」PR#,其他未 merge PR 仍嚴格擋;
+  // env 為空字串 / 非數字 / 負值 → 一律擋(Number.isInteger + `> 0` 檢查)
+
+  it("🔴 批 8 Phase B B-e1:MARKER_SELF_PR 傳入自己的未 merge PR# → 放行", () => {
+    // 工作樹引用 (井號+42),delivery ref log 內完全沒有 #42(sprint 內 self-ref
+    // 情境);envOverride MARKER_SELF_PR=42 讓 checker 把 42 加入 allowedPrs。
+    // 若 checker 忽略 MARKER_SELF_PR env(mutation 破壞),#42 未知 → exit 1
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [
+        { message: "init: only merged #7", files: { "src/foo.md": "hello\n" } },
+        { message: "feat: past work (#7)" },
+      ],
+      workingTree: {
+        "docs/note.md": "see " + PREF_PR + "42 (this sprint's own PR)\n",
+      },
+    });
+    const { code, out } = runChecker(dir, { MARKER_SELF_PR: "42" });
+    expect(out).toContain("self-PR 引用放行");
+    expect(out).toContain("✅ 去識別化掃描全數通過");
+    expect(code).toBe(0);
+  });
+
+  it("🔴 批 8 Phase B B-e2:MARKER_SELF_PR 空字串(non-PR event 場景)→ 仍嚴格擋", () => {
+    // GitHub Actions non-PR event(push / schedule)`github.event.pull_request.number`
+    // 展開為空字串 → env 值 "" → Number("") = 0 → `> 0` 檢查擋住。
+    // 若把檢查錯改成 `Number.isInteger(selfPr)` 少了 `> 0`,0 會被加入 → #999
+    // 用某種方式湊到 0 就能繞。實務上不太可能但守門仍要在。這條驗證 env=""
+    // 不改變行為(等價於未設)
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [
+        { message: "init: no PR # merged", files: { "src/foo.md": "hello\n" } },
+      ],
+      workingTree: {
+        "docs/note.md": "see " + PREF_PR + "999 unknown\n",
+      },
+    });
+    const { code, out } = runChecker(dir, { MARKER_SELF_PR: "" });
+    expect(out).toContain("含未知 PR/pull 引用");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 批 8 Phase B B-e3:MARKER_SELF_PR 非數字 / 負值 → 仍嚴格擋", () => {
+    // 惡意或錯設場景:env 值為 "abc"(→ NaN)、"-1"(< 0)、"0"(= 0)。
+    // 三種都應被 `Number.isInteger(selfPr) && selfPr > 0` 檢查擋住,不進
+    // allowedPrs → 工作樹引用 #999 仍未知 → exit 1
+    for (const badVal of ["abc", "-1", "0"]) {
+      const dir = makeRepo({
+        deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+        commits: [
+          { message: "init: no PR # merged", files: { "src/foo.md": "hello\n" } },
+        ],
+        workingTree: {
+          "docs/note.md": "see " + PREF_PR + "999 unknown\n",
+        },
+      });
+      const { code, out } = runChecker(dir, { MARKER_SELF_PR: badVal });
+      expect(out, `MARKER_SELF_PR=${badVal} 應被擋`).toContain("含未知 PR/pull 引用");
+      expect(code, `MARKER_SELF_PR=${badVal} 應 exit 1`).toBe(1);
+    }
+  });
 });
