@@ -415,13 +415,31 @@ function buildMergedPrSet(): Set<number> {
   return merged;
 }
 
+/**
+ * 解析 `MARKER_SELF_PR` env 值,回傳可信 self-PR # 或 null(批 10 抽出、可 unit test)。
+ *
+ * ⚠️ 契約(對稱 check-no-source-terms.ts:loadAllowedPrs L411 的守):
+ *   - `Number.isInteger`:擋 NaN(如 "abc")、浮點(如 "1.5")、空字串
+ *     (Number("") = 0、非 integer 嗎?實際 Number.isInteger(0) = true,靠下方 > 0 擋)
+ *   - `> 0`:擋 0、負值、空字串轉出的 0
+ *   - `< 1e9`:上限對稱 parseAllowedPrs L132/L138 + extractPrRefsFromLine L172
+ *     (批 10 補、批 9 Step 5 F-round23-5 缺口)
+ * 三守合起來、單一入口、兩 script 讀 MARKER_SELF_PR 要一致。
+ */
+export function acknowledgeSelfPr(rawEnv: string | undefined): number | null {
+  const selfPr = Number(rawEnv);
+  if (Number.isInteger(selfPr) && selfPr > 0 && selfPr < 1e9) return selfPr;
+  return null;
+}
+
 function main() {
   const merged = buildMergedPrSet();
   // 解死鎖:SOP 鼓勵「同 PR 順手翻 marker 引用本 PR#」,但本 PR squash commit 在 merge 前不存在於
   // develop/main(且刻意排除 HEAD)→ 會擋下「產生證據的那次 merge」。CI 於 pull_request event 把
   // 當前 PR# 經 env `MARKER_SELF_PR` 傳入,視為合法 merge 證據(它正是即將 merge 出證據的 PR)。
-  const selfPr = Number(process.env.MARKER_SELF_PR);
-  if (Number.isInteger(selfPr) && selfPr > 0) merged.add(selfPr);
+  // 驗證邏輯抽在 acknowledgeSelfPr() pure fn(可 unit test、對稱 check-no-source-terms 契約)
+  const selfPr = acknowledgeSelfPr(process.env.MARKER_SELF_PR);
+  if (selfPr !== null) merged.add(selfPr);
   const prExists = (pr: number) => merged.has(pr);
 
   // 先解析所有 doc,再決定 merged set 是否為硬性前提:

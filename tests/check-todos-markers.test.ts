@@ -10,6 +10,7 @@ import {
   extractPrCitations,
   parseTodosMarkers,
   checkTodosMarkers,
+  acknowledgeSelfPr,
 } from '../scripts/check-todos-markers';
 
 describe('extractPrCitations', () => {
@@ -263,5 +264,51 @@ describe('checkTodosMarkers', () => {
     const parsed = parseTodosMarkers('**A-2 平台升級** [❌ pending]\n- 規劃中 PR #9999');
     const res = checkTodosMarkers(parsed, prExists);
     expect(res.advisories).toHaveLength(0);
+  });
+});
+
+// ───────────────────────────────────────── 批 10:acknowledgeSelfPr(MARKER_SELF_PR env 讀取)
+//
+// 契約對稱 check-no-source-terms.ts:loadAllowedPrs L411 的守——同一 MARKER_SELF_PR
+// env、兩 script 讀,兩處驗證要一致。批 9 Step 5 F-round23-5(conf 4)發現原本
+// check-todos-markers L424 只有 `Number.isInteger && > 0` 沒 `< 1e9` 上限、
+// 兩處不對稱。批 10 修法把驗證抽 pure fn 出來、單一入口 SSOT。
+
+describe('acknowledgeSelfPr — MARKER_SELF_PR env 讀取(批 10)', () => {
+  it('合法正整數 → 回傳該值', () => {
+    expect(acknowledgeSelfPr('42')).toBe(42);
+    expect(acknowledgeSelfPr('1')).toBe(1);
+    expect(acknowledgeSelfPr('999999999')).toBe(999999999); // 1e9 - 1、剛好過
+  });
+
+  it('undefined(env 未設)→ null', () => {
+    expect(acknowledgeSelfPr(undefined)).toBe(null);
+  });
+
+  it('空字串(non-PR event 展開)→ null', () => {
+    // Number("") === 0、`> 0` 擋。GitHub Actions non-PR event
+    // `github.event.pull_request.number` 展開為空字串的預期行為
+    expect(acknowledgeSelfPr('')).toBe(null);
+  });
+
+  it('非數字(NaN)→ null', () => {
+    expect(acknowledgeSelfPr('abc')).toBe(null);
+    expect(acknowledgeSelfPr('foo123')).toBe(null);
+  });
+
+  it('負值 / 零 → null', () => {
+    expect(acknowledgeSelfPr('-1')).toBe(null);
+    expect(acknowledgeSelfPr('0')).toBe(null);
+  });
+
+  it('浮點 → null(Number.isInteger 擋)', () => {
+    expect(acknowledgeSelfPr('1.5')).toBe(null);
+    expect(acknowledgeSelfPr('42.0')).toBe(42); // 42.0 是 integer(Number.isInteger 認)
+  });
+
+  it('🔴 批 10 F-round23-5 修法:≥ 1e9 上限守 → null', () => {
+    // 若 mutation 拿掉 `< 1e9`(恢復 pre-batch-10 行為),此 case 會轉紅
+    expect(acknowledgeSelfPr('1000000000')).toBe(null); // = 1e9 精確邊界
+    expect(acknowledgeSelfPr('9999999999')).toBe(null); // 遠超上限
   });
 });
