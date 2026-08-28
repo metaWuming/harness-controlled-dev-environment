@@ -12,7 +12,9 @@
 
 批 8 = 收乾批 7 兩條 P3（Phase A+B），加 round 1+2 兩輪 fix。所有 fix 都是 test 覆蓋強化 + 敘述收窄 + 診斷輸出格式改進，無新機制。
 
-五個 atomic commits：Phase A（1536fa7）/ Phase B（4855117）/ round 1 fix（63cdb44）/ round 2 fix（c7d947a）/ round 3 fix（6e746bb，加 B-e4 history-blob 覆蓋）。
+多個 atomic commits（`git log main..HEAD` 可看）：初始 Phase A（e2e 覆蓋前三條 fallback）/ Phase B（checker + workflow 加 MARKER_SELF_PR env）+ 若干輪 codex review fix commits（test 覆蓋強化 + 敘述收窄 + 診斷輸出格式改進）。
+
+⚠️ 本 scope note 刻意不列 commit SHA 清單——避免「每輪 fix commit 需要更新此檔、此檔又落後下一輪」的 self-referential 迴圈（round 4/5 finding）。
 
 ## 本 PR scope 內請找
 
@@ -24,4 +26,4 @@
 
 ## Round 收乾判準
 
-批 7 教訓：5 輪後主動評估收乾。目前 round 3 只 1 P2，findings 已收斂。若 round 4 findings ≤ 1 且屬「該做更多」型，defer TODOS P3 而非本 sprint 修。
+批 7 教訓：5 輪後主動評估收乾。目前 findings 趨勢 4 → 4 → 1 → 1 → 1（r5 為 self-referential scope note 死循環、屬「該做更多」型），已明確收斂。**round 5 收乾**、進 Step 4.5 / 4.6 / 5。
