@@ -5,23 +5,26 @@
 //   - parseTodosMarkers:完成宣稱行 / 結構化 marker pending 條目 / fenced code 跳過
 //   - checkTodosMarkers:硬 violation(完成宣稱引用未 merged PR)+ 軟 advisory(pending 引 merged PR 無阻塞詞)
 
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   extractPrCitations,
   parseTodosMarkers,
   checkTodosMarkers,
   acknowledgeSelfPr,
-} from '../scripts/check-todos-markers';
+} from "../scripts/check-todos-markers";
 
-const REPO_ROOT = execFileSync('git', ['rev-parse', '--show-toplevel'], {
-  encoding: 'utf-8',
+// 批 10 Step 5 F3:新加 imports 統一雙引號、對齊 check-no-source-terms.test.ts
+// (兩支同族 e2e test 保持視覺一致)。既有 describe/it 內既有引號留原樣、
+// 避免大量無關 diff。
+const REPO_ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+  encoding: "utf-8",
 }).trim();
-const SCRIPT = join(REPO_ROOT, 'scripts/check-todos-markers.ts');
-const TSX_BIN = join(REPO_ROOT, 'node_modules/.bin/tsx');
+const SCRIPT = join(REPO_ROOT, "scripts/check-todos-markers.ts");
+const TSX_BIN = join(REPO_ROOT, "node_modules/.bin/tsx");
 
 const created: string[] = [];
 afterEach(() => {

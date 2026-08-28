@@ -18,12 +18,11 @@
 
 ⚠️ scope note 刻意不列 commit SHA 清單——批 8 round 4/5 self-referential 死循環教訓。
 
-## 本 PR scope 內請找
+## 本 PR scope 內請找(round 1 fix 後)
 
-- **workflow-level env 收兩 step 是否漂**：TODOS Markers Check 移除的 batch 6 「belt-and-suspenders」註解(set-head 失敗仍能 fetch default_branch)敘述由 workflow-level env 承接、是否還完整?兩 step 的 `MARKER_SELF_PR` step-level env 是否有應該提到 workflow-level 的 downstream?
-- **D0 policy A 拍板 workflow yml 註解**：註解說「GitFlow importer 客製 workflow yml 覆蓋常數即可」——具體怎麼覆蓋（覆蓋 workflow-level env、還是覆蓋 step-level env、還是 fork 整支 workflow）?註解缺 explicit 指引?
-- **抽 pure fn `acknowledgeSelfPr` 契約完整性**：
-  - docstring 說「單一入口、兩 script 讀 MARKER_SELF_PR 要一致」——check-no-source-terms.ts 的等價邏輯是否有機會也用同 pure fn（DRY）?若不用、如何保證未來兩處驗證同步不漂?
-  - `Number.isInteger(42.0)` 回 true——test 內有斷言此行為（`acknowledgeSelfPr('42.0')` returns 42）,是否 GitHub Actions env `github.event.pull_request.number` 展開會給 `"42.0"` 這種格式?若不會,此測試斷言是否值得留（audit trail 或 misleading）?
-- **Phase B call site 有無另守**：批 5 教訓「純函式測了、CLI 接線沒守」——`main()` 的 `if (selfPr !== null) merged.add(selfPr)` 是否有 e2e 覆蓋?若無、pure fn 通過但 main() 接線斷掉會靜默失敗
-- **batch-10.md 本 scope note 內容有無 self-referential 漏洞**（批 8 R4/R5 死循環教訓）
+- **round 1 fix 是否引入新表面**:
+  - 抽 shared lib `scripts/lib/marker-self-pr.ts` 兩 script 共用,import 路徑對嗎?tsc 認嗎?
+  - check-todos-markers.ts 保留 `export { acknowledgeSelfPr } from ...` re-export + import as `_acknowledgeSelfPr`——export/import naming 是否有 stale 引用漂?
+  - CLI e2e minimal makeRepo 用 `git init -b main` + 無 origin remote → buildMergedPrSet 走 last-resort local main fallback → merged set 空(P2-2 反例 case 依賴此),此依賴是否 fragile?
+- **P2-2 e2e 正對照 fixture**:`# TODOS\n\n## P3\n\n### ✅ some completion (#42)\n- done\n` 是否觸發 completionClaim 對?若 parseTodosMarkers 對此 markdown 結構有邊界(某些 heading 格式不當 completion),case 可能誤綠
+- **上輪 3 scope 是否有 regression**:workflow-level env / D0 policy 註解 / acknowledgeSelfPr 抽出

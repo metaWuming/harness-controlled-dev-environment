@@ -49,6 +49,13 @@ permissions:
 # Owner 拍板 A(統一方向)、跨兩 step 對齊。
 env:
   DELIVERY_REFS: origin/${{ github.event.repository.default_branch }}
+  # 🔴 批 10 Step 5 F1(conf 7):MARKER_SELF_PR 也提到 workflow-level(同 SSOT 論證延伸)。
+  # 兩 step 的 MARKER_SELF_PR 都寫 `${{ github.event.pull_request.number }}`——
+  # 未來若換表達式(如 `github.event.number`)只要漏改一處,兩 script 拿到不同
+  # self-PR 值,正是批 10 想擋的漂移。集中在 workflow-level SSOT 一份。
+  # non-PR event(push / schedule / workflow_dispatch)展開為空字串 → 兩 script
+  # 的 acknowledgeSelfPr("") 都回 null,對其他不需要它的 step 也無害。
+  MARKER_SELF_PR: ${{ github.event.pull_request.number }}
 
 jobs:
   ci:
@@ -158,12 +165,9 @@ jobs:
         # `release/**`),同步把它加進下面的條件,否則 mainline push 的 marker 治理
         # 會被靜默跳過(Codex batch 6 round 3 P2)。
         if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/develop'
-        env:
-          MARKER_SELF_PR: ${{ github.event.pull_request.number }}
-          # 🔴 批 10:DELIVERY_REFS 繼承 workflow-level env(見檔頭 `env:` 區塊)。
-          # policy A 拍板統一「只 default_branch」+ SSOT 擋兩處值漂(F-round23-4)。
-          # Step 5 #6 belt-and-suspenders 原意(fetch step 已把 default_branch
-          # fetch 好、set-head 失敗也不 fail-hard)由 workflow-level env 承接。
+        # 🔴 批 10:DELIVERY_REFS + MARKER_SELF_PR 都繼承 workflow-level env
+        # (見檔頭 `env:` 區塊)、無需 step-level 覆蓋。policy A 拍板統一「只
+        # default_branch」+ SSOT 擋兩處值漂(批 9 F-round23-4 / 批 10 F1)。
         run: npx tsx scripts/check-todos-markers.ts
 
       - name: Source-term scan (de-identification gate)
@@ -198,8 +202,8 @@ jobs:
         # (例:release/**),同步把它加進下面的條件——與 TODOS Markers Check 三處
         # 同步紀律(批 6 LESSONS L89)。
         if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/develop'
-        env:
-          MARKER_SELF_PR: ${{ github.event.pull_request.number }}
+        # 🔴 批 10:DELIVERY_REFS + MARKER_SELF_PR 都繼承 workflow-level env
+        # (見檔頭 `env:` 區塊)、無需 step-level 覆蓋(F1 修法)。
         run: npm run check:no-source-terms
 
       - name: Test (vitest)
