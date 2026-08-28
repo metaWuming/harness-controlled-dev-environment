@@ -718,9 +718,10 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
           "see " + PREF_PR + "8 in ref a and " + PREF_PR + "18 in ref b\n",
       },
     });
-    // 逗號分隔 + 一項含前導空白 → 也驗 .trim() 語意
+    // 逗號分隔:一項含尾隨空白、另一項含前導空白 → 驗 .trim() 語意兩側都守
+    // (round 2 P2 修法:原本只中間有空白 → 只守到 trimStart / trimEnd 之一)
     const { code, out } = runChecker(dir, {
-      DELIVERY_REFS: "origin/release-line-a, origin/release-line-b",
+      DELIVERY_REFS: "origin/release-line-a ,  origin/release-line-b",
     });
     expect(out).toContain("self-PR 引用放行");
     expect(out).toContain("✅ 去識別化掃描全數通過");
@@ -772,15 +773,11 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
 
   // ─────────────────── 批 8 Phase B:MARKER_SELF_PR env 通道 e2e ───────────────────
   //
-  // 動機:批 7 (#32) Codex round 6 P2-2(defer 進 TODOS.md P3)——checker 已建
-  // 上下文感知 CA 判定,但 sprint 內 self-reference(commit 訊息 / diff 引用「本
-  // PR 號」)在 squash merge 前 delivery ref 找不到證據 → 被誤擋。以往 workaround
-  // 是改用「(井號+N)」括號格式繞。修法對齊 scripts/check-todos-markers.ts:423-424
-  // 已有機制:CI pull_request event 把 `github.event.pull_request.number` 經
-  // env MARKER_SELF_PR 傳入 checker,加入 allowedPrs。
-  //
-  // 安全性 assertion:僅放行「這一個」PR#,其他未 merge PR 仍嚴格擋;
-  // env 為空字串 / 非數字 / 負值 → 一律擋(Number.isInteger + `> 0` 檢查)
+  // 完整契約與範圍(哪段 scan 適用、安全性 assertion)見
+  // scripts/check-no-source-terms.ts 的 loadAllowedPrs docstring(SSOT)。
+  // 本組 e2e 只覆蓋 CA scan 走的兩段(第 1 段工作樹 + 第 2 段 git 歷史 blob);
+  // 第 3 段 commit 訊息 scan 走 strict、不受本 env 影響(既有 R6 P2-4 case
+  // tests/check-no-source-terms.test.ts:560-575 已守)。
 
   it("🔴 批 8 Phase B B-e1:MARKER_SELF_PR 傳入自己的未 merge PR# → 放行", () => {
     // 工作樹引用 (井號+42),delivery ref log 內完全沒有 #42(sprint 內 self-ref
@@ -820,16 +817,20 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     });
     const { code, out } = runChecker(dir, { MARKER_SELF_PR: "" });
     expect(out).toContain("含未知 PR/pull 引用");
-    expect(out).toContain("allowedPrs: 0 個"); // round 1 P2:非法值不進 allowlist
+    // round 1 P2:非法值不進 allowlist(round 2 P2 更新診斷輸出格式)
+    expect(out).toContain("allowedPrs: 0 個 PR 號");
+    expect(out).toContain("self-PR 0");
     expect(code).toBe(1);
   });
 
-  it("🔴 批 8 Phase B B-e3:MARKER_SELF_PR 非數字 / 負值 → 仍嚴格擋 + allowedPrs 保持 0", () => {
-    // 惡意或錯設場景:env 值為 "abc"(→ NaN)、"-1"(< 0)、"0"(= 0)。
-    // 三種都應被 `Number.isInteger(selfPr) && selfPr > 0` 檢查擋住,不進
-    // allowedPrs → 工作樹引用 #999 仍未知 → exit 1。round 1 P2 修法:加
-    // 「allowedPrs: 0 個」斷言(理由同 B-e2)
-    for (const badVal of ["abc", "-1", "0"]) {
+  it("🔴 批 8 Phase B B-e3:MARKER_SELF_PR 非數字 / 負值 / 浮點 → 仍嚴格擋 + allowedPrs 保持 0", () => {
+    // 惡意或錯設場景:env 值為 "abc"(→ NaN)、"-1"(< 0)、"0"(= 0)、"1.5"(浮點)。
+    // 四種都應被 `Number.isInteger(selfPr) && selfPr > 0` 檢查擋住,不進
+    // allowedPrs → 工作樹引用 #999 仍未知 → exit 1。
+    // round 2 P2 修法:加 "1.5" case——若把 `Number.isInteger` 單獨拿掉、
+    // 留 `> 0`,原本 abc/-1/0 三個 case 仍綠(全被 `> 0` 擋),但 "1.5" 會
+    // 進 allowlist、違反「正整數」契約
+    for (const badVal of ["abc", "-1", "0", "1.5"]) {
       const dir = makeRepo({
         deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
         commits: [
@@ -841,7 +842,9 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
       });
       const { code, out } = runChecker(dir, { MARKER_SELF_PR: badVal });
       expect(out, `MARKER_SELF_PR=${badVal} 應被擋`).toContain("含未知 PR/pull 引用");
-      expect(out, `MARKER_SELF_PR=${badVal} 不進 allowlist`).toContain("allowedPrs: 0 個");
+      // round 2 P2:改用新格式「allowedPrs: N 個 PR 號」+ 分開報 self-PR 數
+      expect(out, `MARKER_SELF_PR=${badVal} 不進 allowlist`).toContain("allowedPrs: 0 個 PR 號");
+      expect(out, `MARKER_SELF_PR=${badVal} self-PR 分項應 0`).toContain("self-PR 0");
       expect(code, `MARKER_SELF_PR=${badVal} 應 exit 1`).toBe(1);
     }
   });

@@ -346,7 +346,39 @@ function buildDeliveryRefs(root: string): string[] {
   return refs;
 }
 
-function loadAllowedPrs(root: string): Set<number> {
+/**
+ * 建立 allowedPrs set + 分別回報 delivery / self-PR 貢獻數(給診斷輸出用)。
+ *
+ * 兩來源:
+ *   1) delivery refs(buildDeliveryRefs 四條 fallback)的 git log subject 抽出
+ *      canonical squash 尾綴 / merge subject 開頭的 PR 號——「本 repo 已 merge」
+ *   2) env `MARKER_SELF_PR`(sprint 內 self-reference 死鎖解法,批 8 Phase B):
+ *      本 PR 尚未 squash merge 前,**diff 內(工作樹追蹤檔)/ 文件 blob(git
+ *      全史)** 引用「本 PR 號」的行找不到 delivery ref 內的證據 → 會被 CA scan
+ *      當「未知 PR 引用」擋。CI 於 pull_request event 把當前 PR# 經 env 傳入,
+ *      視為合法引用來源(它正是即將產生證據的 PR)。
+ *
+ * ⚠️ 範圍精確:MARKER_SELF_PR 只影響 CA 判定(mode="self-pr")的兩段掃描——
+ *    第 1 段工作樹 + 第 2 段 git 歷史 blob。**第 3 段 commit 訊息掃描固定
+ *    mode="strict"、不看 allowedPrs**——這是批 7 round 6 P2-4 明確測試
+ *    (commit 訊息 CA hit 一律嚴格擋、對齊 commit-msg hook)、既定政策。
+ *    實務上 sprint 內 self-PR commit 訊息用 canonical squash 格式「(井號+N)」,
+ *    CA pattern `PR #[0-9]` 不 match 括號形式,不會被抓;裸寫「PR #N」屬
+ *    anti-pattern、本來就該擋。
+ *
+ * MARKER_SELF_PR 安全性:
+ *   - 僅 CI pull_request event 有 `github.event.pull_request.number`;
+ *     其他 event(push / schedule)展開為空字串 → Number("") = 0 →
+ *     被 `> 0` 檢查擋住,不會誤放行
+ *   - `Number.isInteger` 檢查同時擋掉 NaN(如 "abc")與浮點值(如 "1.5")
+ *   - 命名對齊 scripts/check-todos-markers.ts:423-424(批 6 加的既有機制)
+ *   - 只放行「這一個」PR#,其他未 merge PR 仍嚴格擋
+ */
+function loadAllowedPrs(root: string): {
+  prs: Set<number>;
+  mergedCount: number;
+  selfPrCount: number;
+} {
   const refs = buildDeliveryRefs(root);
   const prs =
     refs.length === 0
@@ -357,28 +389,14 @@ function loadAllowedPrs(root: string): Set<number> {
             maxBuffer: 512 * 1024 * 1024,
           })
         );
-  // 批 8 Phase B:解 sprint 內 self-reference 死鎖——本 PR 尚未 squash merge
-  // 前,**diff 內(工作樹追蹤檔)/ 文件 blob(git 全史)** 引用「本 PR 號」
-  // 的行找不到 delivery ref 內的證據 → 會被 CA scan 當「未知 PR 引用」擋。
-  // CI 於 pull_request event 把當前 PR# 經 env `MARKER_SELF_PR` 傳入,
-  // 視為合法引用來源(它正是即將產生證據的 PR)。
-  //
-  // ⚠️ 範圍精確:本 env 只影響 CA 判定(mode="self-pr")的兩段掃描——第 1 段
-  // 工作樹 + 第 2 段 git 歷史 blob。**第 3 段 commit 訊息掃描固定 mode="strict"、
-  // 不看 allowedPrs**——這是批 7 round 6 P2-4 明確測試(commit 訊息 CA hit
-  // 一律嚴格擋、對齊 commit-msg hook)、既定政策。實務上 sprint 內 self-PR
-  // commit 訊息用 canonical squash 格式「(井號+N)」,CA pattern `PR #[0-9]`
-  // 不 match 括號形式,不會被抓;裸寫「PR #N」屬 anti-pattern、本來就該擋。
-  //
-  // 安全性:
-  //   - 僅 CI pull_request event 有 `github.event.pull_request.number`;
-  //     其他 event(push / schedule)展開為空字串 → Number("") = 0 →
-  //     被 `> 0` 檢查擋住,不會誤放行
-  //   - 命名對齊 scripts/check-todos-markers.ts:423-424(批 6 加的既有機制)
-  //   - 只放行「這一個」PR#,其他未 merge PR 仍嚴格擋
+  const mergedCount = prs.size;
   const selfPr = Number(process.env.MARKER_SELF_PR);
-  if (Number.isInteger(selfPr) && selfPr > 0) prs.add(selfPr);
-  return prs;
+  let selfPrCount = 0;
+  if (Number.isInteger(selfPr) && selfPr > 0 && !prs.has(selfPr)) {
+    prs.add(selfPr);
+    selfPrCount = 1;
+  }
+  return { prs, mergedCount, selfPrCount };
 }
 
 /** 把 pattern 陣列寫進臨時檔,回傳檔路徑與 cleanup callback。 */
@@ -643,9 +661,9 @@ function main(): number {
   // SYNTAX 例外檔只掃 non-CA(等同舊「縮減 pattern 集」)
   const syntaxNonCaFile = nonCaFile;
 
-  const allowedPrs = loadAllowedPrs(root);
+  const { prs: allowedPrs, mergedCount, selfPrCount } = loadAllowedPrs(root);
   console.log(
-    `── allowedPrs: ${allowedPrs.size} 個本 repo 已 merge PR 號被納入放行清單 ──`
+    `── allowedPrs: ${allowedPrs.size} 個 PR 號被納入放行清單(delivery 已 merge ${mergedCount} + self-PR ${selfPrCount})──`
   );
 
   let fail = false;

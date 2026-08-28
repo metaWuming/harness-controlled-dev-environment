@@ -160,17 +160,9 @@ jobs:
         # 到 develop 的 PR 就會被誤擋)。不存在的 ref 由 buildDeliveryRefs 的
         # `git rev-parse --verify` 檢查自動跳過,列多個是安全的。
         #
-        # 🔴 批 8 Phase B(TODOS.md P3 收):MARKER_SELF_PR 解 sprint 內 self-reference
-        # 死鎖 —— 本 PR 內 diff / 文件 blob(第 1 段工作樹 + 第 2 段 git 歷史)
-        # 引用「本 PR 號」時,squash merge 前 delivery ref 找不到證據 → 被 CA
-        # scan 誤擋。CI pull_request event 把 `github.event.pull_request.number`
-        # 傳入,checker 視為合法引用來源。
-        # ⚠️ 範圍精確:第 3 段 commit 訊息掃描固定 strict、本 env 不影響
-        # (批 7 R6 P2-4 既定政策——commit 訊息 CA hit 一律嚴格擋、對齊
-        # commit-msg hook)。sprint 內 self-PR commit 用 canonical squash
-        # 格式「(井號+N)」,CA pattern 不 match 括號形式、不會被抓。
-        # 其他未 merge PR 仍嚴格擋(僅放行「這一個」PR#)。non-PR event(push /
-        # schedule)`pull_request.number` 展開為空 → Number("") = 0 → 被擋。
+        # 🔴 批 8 Phase B:MARKER_SELF_PR 解 sprint 內 self-reference 死鎖。
+        # 完整契約與範圍見 scripts/check-no-source-terms.ts 的 loadAllowedPrs
+        # docstring(SSOT)——本註解僅點名該 env 用途,不重述細節。
         # 命名對齊上方 TODOS Markers Check step 的既有 env(批 6 加的)。
         env:
           DELIVERY_REFS: origin/${{ github.event.repository.default_branch }},origin/develop
