@@ -71,19 +71,38 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 - **工時**:1h
 - **交付**:Phase B + review round 1 fail-closed 加固(startHead ↔ endHead 綁定 + `decideHeadBinding` 純函式);SOP 選「補一行接線」路線、四步都補;template 段落改「Step 3-6」補通用 SSOT 例
 
-### ❌ pending: workflow yml Source-term scan step 加 `if:` gate 對齊 delivery-branch 白名單
+### ✅ workflow yml Source-term scan step 加 `if:` gate 對齊 delivery-branch 白名單 (#34)
 - **來源**:2026-08-28 批 8 Step 5 F4(adversarial-reviewer, confidence 4)
-- **內容**:批 8 Phase B 只解 `pull_request` event 的 self-PR ref 死鎖;`push:feature/**` event 下無 `pull_request.number` → self-PR 引用仍撞 CI 紅。真正解法是把 Source-term scan step 加 `if:` gate 對齊上方 TODOS Markers Check step L144(`github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/develop'`)、跳過 non-delivery-branch push。同時對齊 batch 6 LESSONS L89「event filter / workflow if / marker check env 三處要同步」紀律
-- **工時**:0.5h(單一 yml 改動 + 1 條 e2e test)
-- **風險**:低——TODOS Markers Check step 已有此 gate 一段時間、pattern 驗證過
+- **內容**:批 8 Phase B 只解 `pull_request` event 的 self-PR ref 死鎖;`push:feature/**` event 下無 `pull_request.number` → self-PR 引用仍撞 CI 紅
+- **工時**:0.5h
+- **交付**:批 9 Phase A(commit `7de32f4`)—— Source-term scan step 加 `if:` gate 對齊 TODOS Markers Check step 既有 pattern。註解記錄「導入者若 delivery branch 不是 default_branch 或 develop 要同步加」
 
-### ❌ pending: batch 8 Step 5 F1/F2/F5 三條 informational 累積
+### ✅ batch 8 Step 5 F1/F2/F5 三條 informational 累積 (#34)
 - **來源**:2026-08-28 批 8 Step 5(adversarial-reviewer)
-- **內容**:
-  - **F1** (conf 4):`MARKER_SELF_PR` 缺 `< 1e9` 上限,與 `parseAllowedPrs` 契約不對稱(現實不可利用因 `extractPrRefsFromLine` 也有同守)
-  - **F2** (conf 3):`selfPrCount` 在 self-PR 已 ∈ delivery-merged 時報 0(純診斷字面誤導)
-  - **F5** (conf 2):`.claude/sop/codex-review-scope-note-drafts/` 無明確 archival trigger 條件
-- **工時**:1h 三條合修(全純契約潔癖 / 診斷字面 / 文檔紀律,無行為級 bug)
-- **defer 理由**:全 confidence ≤ 4、無實質風險、若累積再處理
+- **內容**:F1(`MARKER_SELF_PR` 缺 `< 1e9`)/ F2(`selfPrCount` 診斷字面誤導)/ F5(drafts archival policy 缺)
+- **工時**:1h
+- **交付**:批 9 Phase B(commit `fe8bf94`)+ round 1-3 fix
+  - F1:loadAllowedPrs 加 `selfPr < 1e9`;e2e 加 "9999999999" case;round 2 加 "1000000000" boundary case 守 `<` vs `<=` 邊界
+  - F2:selfPrCount 語意改「env 通道 acknowledge」(collision 不受影響)+ 診斷用詞 + docstring「僅診斷用」contract
+  - F5:archival 政策先加 template.md → round 3 挪到 CLAUDE.md Part 4.6(placeholder-style + 導入者可刪尾註,避免 GitHub template 散布 harness-internal 命名)
+
+### ❌ pending: develop-branch policy 拍板(跨 workflow yml TODOS Markers Check vs Source-term scan 兩處統一方向)
+- **來源**:2026-08-28 批 9 Codex round 2 P2-1(add develop → legacy 誤放行)vs round 3 P2-1(不 add → GitFlow 假紅)—— pre-existing 兩難的兩面
+- **內容**:workflow yml 兩處 `DELIVERY_REFS` env 對 `origin/develop` 選擇相反(TODOS Markers Check 只 default_branch、Source-term scan 加 `,origin/develop`)。真正解法是**Owner 拍板方向**(main-only default vs GitFlow default vs 兩 profile flag),再跨兩處 workflow step 統一。
+- **選項**:(A) 兩處都不加 develop、GitFlow importer 自訂 (B) 兩處都加、legacy 誤放行接受 (C) 加 project-level flag env
+- **工時**:0.5h(方向拍板後動 2 處 workflow yml 環境變數 + 1-2 條 e2e case)
+- **defer 理由**:policy 拍板不該靠 codex review 拉扯,批 7 教訓 ①「findings 挑理論邊界時 defer 而非本 sprint 修」
+
+### ❌ pending: workflow-level `DELIVERY_REFS` 常數機械化(SSOT、擋兩處 env 值漂)
+- **來源**:2026-08-28 批 9 Step 5 二輪 F-round23-4(conf 5)
+- **內容**:workflow yml 頂端 `env:` 區塊定義 workflow-level `DELIVERY_REFS` 常數、兩 step 都 reference。**不解決** develop policy 兩難、但**機械化擋掉「兩處值漂」的漏洞**——以後翻該值只翻一處。
+- **工時**:0.5h(頂端加 env 常數 + 兩 step 從 step-level env 改 workflow-level ref)
+- **注意**:與上條 develop-branch policy 拍板順序有依賴——policy 定了值再統一。可拆兩 sprint 或合一 sprint
+
+### ❌ pending: `check-todos-markers.ts:424` `MARKER_SELF_PR` 補 `< 1e9` 對稱
+- **來源**:2026-08-28 批 9 Step 5 二輪 F-round23-5(conf 4)
+- **內容**:批 9 F1 修法把 `check-no-source-terms.ts:411` 補 `< 1e9`(對齊同檔 parseAllowedPrs / extractPrRefsFromLine 契約),但 `check-todos-markers.ts:424` 也讀同一 `MARKER_SELF_PR` env、只有 `Number.isInteger && > 0` 沒上限——兩 script 對同 env 驗證不對稱、9999999999 之類值在一處擋一處放行
+- **工時**:0.5h(1 行守 + 1 條 case)
+- **defer 理由**:現實 GitHub PR # 非攻擊者控制、check-todos-markers 已受 subject 邊界守;純契約潔癖
 
 ## IDEA
