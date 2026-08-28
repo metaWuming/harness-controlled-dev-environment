@@ -347,7 +347,8 @@ function buildDeliveryRefs(root: string): string[] {
 }
 
 /**
- * 建立 allowedPrs set + 分別回報 delivery / self-PR 貢獻數(給診斷輸出用)。
+ * 建立 allowedPrs set,並回報 delivery merged 唯一數與 self-PR env acknowledge 狀態
+ *(僅供診斷輸出用、不做決策——見下方契約段)。
  *
  * ⚠️ 契約:`mergedCount` / `selfPrCount` **僅供 diagnostic 輸出**,不做決策用。
  *    批 9 F2 修法後 `selfPrCount` 語意是「env 通道 acknowledge」(env 值合法即 = 1),

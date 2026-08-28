@@ -870,6 +870,26 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     expect(code).toBe(1);
   });
 
+  it("🔴 批 9 F1 boundary(round 2 P2):MARKER_SELF_PR = 1e9 精確邊界 → 仍嚴格擋", () => {
+    // round 2 P2 修法:原 F1 case 用 "9999999999"、mutation `< 1e9` → `<= 1e9`
+    // 仍會通過(9999999999 兩者都 false)。加 "1000000000"(= 1e9)守精確邊界:
+    // `< 1e9` = false(擋)、`<= 1e9` = true(誤放行 → case 轉紅)
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [
+        { message: "init: no PR # merged", files: { "src/foo.md": "hello\n" } },
+      ],
+      workingTree: {
+        "docs/note.md": "see " + PREF_PR + "999 unknown\n",
+      },
+    });
+    const { code, out } = runChecker(dir, { MARKER_SELF_PR: "1000000000" });
+    expect(out).toContain("含未知 PR/pull 引用");
+    expect(out).toContain("allowedPrs: 0 個 PR 號");
+    expect(out).toContain("self-PR 0");
+    expect(code).toBe(1);
+  });
+
   it("🔴 批 9 F2:MARKER_SELF_PR 已 ∈ delivery(collision)→ self-PR 計數仍為 1", () => {
     // 批 8 Step 5 F2(confidence 3)修法:selfPrCount 語意改「本次 env 通道有效」計數,
     // 不再受 delivery collision 影響。舊行為(!prs.has 條件包 selfPrCount = 1):
