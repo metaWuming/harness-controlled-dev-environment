@@ -104,8 +104,11 @@ like the rest of the harness docs — see the language note below).
 ### Design principles
 
 - **Dogfooding** — this template eats its own gates: its CI runs gitleaks over full
-  history, runs its own self-check scripts, runs 221 tests, plus a de-identification
-  scan that keeps source-project terms out of the template forever
+  history, runs its own self-check scripts, runs 453 tests, plus a de-identification
+  scan that keeps source-project terms out of the template forever. Ten backfill
+  sprints (batches 1–10) have walked the 7-step SOP end-to-end on the template
+  itself; TODOS P3 backlog is currently cleared to zero — proof the harness's own
+  work-management gates run through to completion
 - **Degradation paths are written down** — every external tool the SOP references
   (Codex CLI, gstack skills, gbrain) is optional; each reference carries a
   "what to do without it" note ([`docs/DEGRADATION.md`](docs/DEGRADATION.md)).
@@ -232,7 +235,9 @@ Harness 元件分兩個方向(Fowler / Böckeler 框架):
 ### 設計原則
 
 - **Dogfooding**:模板自己吃自己的 gate——CI 跑 gitleaks 全史、跑自檢腳本、
-  跑 221 個測試,還多一道去識別化掃描(確保來源專案詞彙永遠進不了模板)
+  跑 453 個測試,還多一道去識別化掃描(確保來源專案詞彙永遠進不了模板)。
+  10 次 backfill sprint(批 1-10)已在模板自身走過 7 步 SOP 全流程、TODOS P3
+  backlog 現況清 0——證明本 harness 自己的工作管理閘門能被走完
 - **降級路徑明文化**:SOP 引用的外部工具(Codex CLI、gstack、gbrain)全部
   optional,每個引用旁附「沒有時怎麼辦」([`docs/DEGRADATION.md`](docs/DEGRADATION.md))
   ——流程骨架不依賴任何單一工具
