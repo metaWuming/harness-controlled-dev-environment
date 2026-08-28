@@ -147,14 +147,15 @@ jobs:
           # 🔴 Step 5 #6:belt-and-suspenders——若 `git remote set-head` 因網路 hiccup
           # 失敗、origin/HEAD 讀不到,script 靠這條 env 顯式指定 default_branch remote-tracking,
           # 避免整支 CI 只因 set-head 失敗而 fail-hard(fetch step 已把 default_branch fetch 好)
-          # 🔴 批 9 Step 5 F1 → round 2 revert:pre-existing 保持只傳 default_branch。
-          # 加 `,origin/develop` 反向漂移——main-only 專案若保留 abandoned develop,
-          # 該分支上的 `feat (井號+N)` 會被 buildMergedPrSet 掃入 merged set → TODOS
-          # 完工宣稱誤放行(這正是 scripts/check-todos-markers.ts:307 註解要避免的
-          # round-6 假通過)。fallback 邏輯已在 script L307 處理(refs.length===0
-          # 時 push origin/develop),env explicit 傳會強制加入、跳過那個 gate。
-          # GitFlow importer 要 develop 涵蓋:自行客製此 env(不在本模板預設)。
-          # 同問題在 Source-term scan L181 pre-existing、defer 進 TODOS P3。
+          # 🔴 批 9 Step 5 F1 → round 2/3 defer:pre-existing 兩難、保持只傳 default_branch。
+          # trade-off(兩 codex rounds 抓到相反面向,defer TODOS P3 由 Owner 拍板):
+          #   - 加 `,origin/develop`:GitFlow-only PR 涵蓋、但 main-only 專案的
+          #     abandoned develop 分支 PR # 會誤放行(round 2 finding)
+          #   - 只 default_branch:main-only 專案安全、但 GitFlow-only PR 假紅
+          #     (round 3 finding)
+          # 現況選 safer default(只 default_branch);GitFlow importer 自行客製。
+          # 同問題在 Source-term scan L181 pre-existing 相反方向(batch 7 R3-4
+          # 選了「加 develop」)、跨兩處對齊的方向要由 Owner 決策後統一。
           DELIVERY_REFS: origin/${{ github.event.repository.default_branch }}
         run: npx tsx scripts/check-todos-markers.ts
 
