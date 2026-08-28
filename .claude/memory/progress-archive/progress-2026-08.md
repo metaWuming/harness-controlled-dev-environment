@@ -10,6 +10,16 @@ type: archive
 
 ---
 
+📅 2026-08-28 ③ — **批 9:收乾批 8 兩條 TODOS P3 defer(workflow if: gate + F1/F2/F5 informational)**
+
+> **緣起**:批 8 (#33) 收尾 defer 兩條 P3:①Source-term scan 加 `if:` gate 對齊 delivery-branch 白名單(F4);②F1/F2/F5 三條 informational。合計 ~1.5h。
+> **改動**:6 檔 +100/-19 —— workflow yml 加 `if:` gate;`check-no-source-terms.ts` loadAllowedPrs 加 `< 1e9` 上限 + selfPrCount 語意改「env 通道 acknowledge 狀態」+ docstring「僅診斷用」contract;`codex-review-scope-note-template.md` 加 archival routing;`CLAUDE.md` Part 4.6 加 archival policy(placeholder-style);tests 加 F1(9999999999)+ boundary(1000000000)+ F2 collision(#42)三 case;`batch-9.md` 新 scope note。TODOS 兩條翻 ✅(#34)+ 加 3 條新 P3。LESSONS 加兩則教訓。
+> **審查**:Codex CLI 3 rounds(0→3→2 收斂)+ Step 5 兩輪各 6 findings。r2 3 P2(F1 加 develop 反向漂移 → revert / boundary test / docstring 首句貢獻數矛盾);r3 2 P2(F1 revert 後 GitFlow 假紅 vs abandoned develop 誤放行 pre-existing 兩難 → defer / CLAUDE.md archival importer 洩漏 → placeholder)。**Step 5 fresh** 6 全 INFORMATIONAL、修 F1(行號漂 → 錨到 step name)F2(template.md 對 importer 懸空 pointer)、defer F3-F5、skip F6。cross-model agreement ≈ 0 再度驗證。
+> **驗證**:typecheck / lint / test 56 / mutation 探針 3 條命中 / dogfood / doc-refs 163 / check:todos 綠。
+> **⭐ 教訓**:①Codex 兩輪對同 pre-existing 問題發抓相反面 = 該做更多型變體、defer 由 Owner 決策方向、跨全部 call site 統一(LESSONS 新教訓)。②GitHub template CLAUDE.md 會被 `Use this template` 複製、放 harness-internal 政策要 placeholder + 導入者可刪(LESSONS 新教訓)。③罕見一輪 codex 過(r1 0 SHIP)不代表沒問題——Step 5 fresh 立刻抓 6 條、其中 F1 conf 6 直接觸發 r2/r3。
+> 📊 成本:CC ~3.5h / Codex 3 rounds + Step5 2 / P1 0 / P2 5 / Step5 12(兩輪各 6)/ 累計 17。
+> 📐 量測:baseline SHA `931fc20f22c08e4257b78ae89387d9f54bd3f634`。
+
 📅 2026-08-28 ② — **批 8:收乾批 7 兩條 TODOS P3 defer(check-no-source-terms buildDeliveryRefs e2e + MARKER_SELF_PR env 通道)**
 
 > **緣起**:批 7 (#32) 收尾 defer 兩條 P3 進 TODOS.md:①`buildDeliveryRefs` 前三條 fallback 路徑無 e2e 覆蓋(Step 5 F2,confidence 7);②`.github/workflows/ci.yml` Source-term scan 缺 `MARKER_SELF_PR` env(codex R6 P2-2)。兩支同源(check-no-source-terms.ts 的 self-PR 治理面)、合計 ~1.5-3h、一批做審一次比兩次省(批 5 同 pattern 已驗)。起手 git 核實:main 乾淨、TODOS P3 兩條對得上批 7 entry 下一棒候選。**⚠️ D0 修正**:TODOS 措辭寫「buildDeliveryRefs」但該 fn 只在 `check-no-source-terms.ts`(L299-347)、`check-todos-markers.ts` 對應物叫 `buildMergedPrSet`——確認 Task A 目標檔 = `check-no-source-terms.ts`(批 7 就是動這支的 CA 升級 follow-up)。
