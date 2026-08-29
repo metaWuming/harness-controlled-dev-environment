@@ -354,14 +354,15 @@ function loadBaselineConfig(root: string): { baseline: string | null } {
 /**
  * PR A1:驗證 baseline 值合法性(fail-closed 前提)。
  *
- * baseline 字串支援兩種前綴語法(round 1 P1 修法):
+ * baseline 字串支援兩種前綴語法(round 1 P1 修法 → round 2 P1a 收):
  *   ① 純 hex SHA(嚴格模式):40-hex + rev-parse + ancestor 三檢查,任一失敗
  *      → { kind: "fail" }(下游 fork 用這種、主線值也必須成立)
- *   ② `template:<40-hex>` prefix(template 遺產模式,round 1 P1):給 template
- *      repo 自身用的 baseline。若 rev-parse 失敗(下游 fork 走 GitHub Template
- *      workflow、new history 不含此 SHA)→ 回 { kind: "template-fallback" }
- *      → main() 印 warning + 降級到「跳過 history scan」。40-hex 語法錯 / ancestor
- *      失敗仍 fail(這兩條在 template repo 自己也不能允許)。
+ *   ② `template:<40-hex>` prefix(template 遺產模式):給 template repo 自身用
+ *      的 baseline。若 rev-parse 失敗(下游 fork 走 GitHub Template workflow、
+ *      new history 不含此 SHA)→ 回 { kind: "template-fallback" }
+ *      → main() 印 warning + **降級為全史掃描**(baseline=null,走既有 tree
+ *      scan;round 2 P1a 修法:舊 skip 語意讓洗白 A→B 同 PR 通過,改全史掃擋)。
+ *      40-hex 語法錯 / ancestor 失敗仍 fail(這兩條在 template repo 自己也不能允許)。
  *
  * 三條檢查逐條可獨立 kill;移除任一條 → 對應測試轉綠(P1e/P1f/P1i)。
  * 通過 → { kind: "ok", sha }。呼叫端 main 依 kind 分派:
@@ -712,12 +713,17 @@ function scanRevDiff(
   mode: Mode,
   pathspec: string[]
 ): Scan {
+  // Round 3 P2 修法:加 `-m` 讓 merge commit 拆成「每 parent 一份普通 diff」,
+  // 避免 git show 對 merge 預設輸出 combined format(`diff --cc`,`++forbidden`
+  // 等雙 marker 前綴)導致 parser strip 一個 marker 後仍有 `+`、anchored pattern
+  // 不 match。`-m` 對 non-merge commit 無作用(仍是普通單 parent diff)。
   const showRes = spawnSync(
     "git",
     [
       "-C",
       root,
       "show",
+      "-m",
       "--format=",
       "--unified=0",
       "--no-color",

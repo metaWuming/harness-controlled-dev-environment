@@ -1325,9 +1325,11 @@ describe("check-no-source-terms — history baseline(PR A1)", () => {
     expect(code).toBe(1);
   });
 
-  it("🔴 P1zz3(round 2 P1b 修法):POSIX ERE `^pattern` 對新增行內容命中(baseline..HEAD diff scan)", () => {
-    // 舊 parser 保留 `+` 標記 → pattern `^forbidden` 因為錨點對 `+forbidden`
-    // 不 match → false negative。新 parser strip 一個 `+` → 命中
+  it("🔴 P1zz3(round 2 P1b 修法 → round 3 P2 test-isolation 加固):POSIX ERE `^pattern` 對 baseline..HEAD 內新增行**歷史 blob** 命中", () => {
+    // Round 3 P2 抓到:舊版把 x.md 留在 HEAD → current tree scan 也會抓 → 即使
+    // history 掃漏,working tree scan 也讓 test 通過(false green)。修法:
+    // 加一個刪除 commit,current tree 乾淨,只有 history 內含 forbidden →
+    // 若 diff scan 漏 anchored pattern,working tree/msg 都乾淨、gate 通過 → test 轉綠
     const dir = makeRepo({
       deny: ["^forbidden_start_term"], // POSIX ERE ^ 錨點
       commits: [
@@ -1338,14 +1340,52 @@ describe("check-no-source-terms — history baseline(PR A1)", () => {
             "src/x.md": "forbidden_start_term at line start\n",
           },
         },
+        // Round 3 P2 加:remove polluted → current tree clean、只有 history 有
+        { message: "remove polluted", deletions: ["src/x.md"] },
       ],
     });
     writeBaselineConfig(dir, {
       schemaVersion: 1,
-      sourceTermHistoryBaseline: shaAt(dir, "HEAD~1"),
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD~2"),
     });
     const { code, out } = runChecker(dir);
-    expect(out).toContain("含來源專案識別詞");
+    // 專釘 history blob 段(此段紅才代表 diff scan 有抓到 anchored ^pattern)
+    expect(out).toContain("git 歷史 blob 含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1zz4(round 3 P2 修法):baseline..HEAD 內 merge commit 引入 forbidden(conflict resolution 加的 `+forbidden`)→ combined-diff 也要抓", () => {
+    // Round 3 P2:git show 對 merge commit 預設輸出 combined diff(`++forbidden`
+    // 前綴),strip 一個 marker 後仍有 `+`、anchored pattern `^forbidden` 不 match。
+    // 修法:git show 加 `-m` → merge commit 拆成每 parent 一份普通 diff、抓得到。
+    const dir = makeRepo({
+      deny: ["^forbidden_merge_term"],
+      commits: [
+        { message: "baseline", files: { "src/base.md": "hello\n" } },
+      ],
+    });
+    // 手動建 side branch → main 有另一 commit → merge with conflict resolution 加 forbidden
+    execFileSync("git", ["-C", dir, "checkout", "-q", "-b", "side"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "--allow-empty", "-qm", "side commit"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "checkout", "-q", "main"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "--allow-empty", "-qm", "main commit"], { stdio: "ignore" });
+    // merge with -s ours strategy 產生 merge commit,然後手動 amend 加 forbidden 到 tree
+    execFileSync("git", ["-C", dir, "merge", "--no-ff", "-q", "-m", "merge side", "side"], { stdio: "ignore" });
+    // 在 merge commit 上直接 amend 加 forbidden(模擬 conflict resolution 加的內容)
+    writeFileSync(join(dir, "src/base.md"), "hello\nforbidden_merge_term added in merge\n", "utf-8");
+    execFileSync("git", ["-C", dir, "add", "src/base.md"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "--amend", "--no-edit", "-q"], { stdio: "ignore" });
+    // 再加一個刪除 commit 讓 current tree 乾淨
+    execFileSync("git", ["-C", dir, "rm", "-q", "src/base.md"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "remove base"], { stdio: "ignore" });
+    // baseline 設在 pre-merge:baseline..HEAD 含 merge commit + remove
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD~3"),
+    });
+    const { code, out } = runChecker(dir);
+    // history blob scan 要抓到 merge commit conflict resolution 加的 forbidden
+    expect(out).toContain("git 歷史 blob 含來源專案識別詞");
     expect(code).toBe(1);
   });
 
