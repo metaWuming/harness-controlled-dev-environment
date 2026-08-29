@@ -352,51 +352,79 @@ function loadBaselineConfig(root: string): { baseline: string | null } {
 }
 
 /**
- * PR A1:驗證 baseline SHA 三項合法性(fail-closed 前提)。
+ * PR A1:驗證 baseline 值合法性(fail-closed 前提)。
  *
- * 三條檢查(逐條可獨立 kill;移除任一條 → 對應 P1e/P1f/P1i 測試轉綠):
- *   ① 40 字元十六進位(擋短 SHA / 打錯字)
- *   ② `git rev-parse --verify <sha>` 成功(擋不存在的 SHA)
- *   ③ `git merge-base --is-ancestor <sha> HEAD` 成功(擋孤立 branch / 錯裝的
- *      baseline)——祖先才有 `baseline..HEAD` 語意
+ * baseline 字串支援兩種前綴語法(round 1 P1 修法):
+ *   ① 純 hex SHA(嚴格模式):40-hex + rev-parse + ancestor 三檢查,任一失敗
+ *      → { kind: "fail" }(下游 fork 用這種、主線值也必須成立)
+ *   ② `template:<40-hex>` prefix(template 遺產模式,round 1 P1):給 template
+ *      repo 自身用的 baseline。若 rev-parse 失敗(下游 fork 走 GitHub Template
+ *      workflow、new history 不含此 SHA)→ 回 { kind: "template-fallback" }
+ *      → main() 印 warning + 降級到「跳過 history scan」。40-hex 語法錯 / ancestor
+ *      失敗仍 fail(這兩條在 template repo 自己也不能允許)。
  *
- * 通過三條 → { ok: true };任一條失敗 → { ok: false, reason: <明確訊息>}。
- * 呼叫端(main)收到 !ok 一律 exit 1,不 fallback 到全史掃描——baseline 是治理
- * 決策,壞掉不能靜默降級。
+ * 三條檢查逐條可獨立 kill;移除任一條 → 對應測試轉綠(P1e/P1f/P1i)。
+ * 通過 → { kind: "ok", sha }。呼叫端 main 依 kind 分派:
+ *   ok               → 走 baseline..HEAD diff scan
+ *   template-fallback → 印 warning、跳過 history scan(current tree + commit msg 照跑)
+ *   fail             → exit 1(baseline 是治理決策,壞掉不能靜默降級)
  */
+export type BaselineDecision =
+  | { kind: "ok"; sha: string }
+  | { kind: "template-fallback"; templateSha: string; reason: string }
+  | { kind: "fail"; reason: string };
+
+/**
+ * PR A1 round 1 P1 修法:template repo 遺產 baseline 前綴。
+ * 值範例:「template:641065227924184b058b3f64c1c9f9971a3a17b4」。
+ */
+const TEMPLATE_BASELINE_PREFIX = "template:";
+
 export function validateBaseline(
   root: string,
-  baseline: string
-): { ok: true } | { ok: false, reason: string } {
-  if (!BASELINE_SHA_RE.test(baseline)) {
+  rawBaseline: string
+): BaselineDecision {
+  const isTemplate = rawBaseline.startsWith(TEMPLATE_BASELINE_PREFIX);
+  const sha = isTemplate
+    ? rawBaseline.slice(TEMPLATE_BASELINE_PREFIX.length)
+    : rawBaseline;
+  if (!BASELINE_SHA_RE.test(sha)) {
     return {
-      ok: false,
-      reason: `baseline 必須是 40 字元 hex SHA(收到「${baseline}」)`,
+      kind: "fail",
+      reason: `baseline SHA 必須是 40 字元 hex(收到「${sha}」${isTemplate ? "(去掉 template: prefix 後)" : ""})`,
     };
   }
   const rp = spawnSync(
     "git",
-    ["-C", root, "rev-parse", "--verify", "--quiet", `${baseline}^{commit}`],
+    ["-C", root, "rev-parse", "--verify", "--quiet", `${sha}^{commit}`],
     { encoding: "utf-8", stdio: "pipe" }
   );
   if (rp.status !== 0) {
+    if (isTemplate) {
+      // Template baseline 在下游 fork 的新 history 內找不到 → 降級,不 fail-closed
+      return {
+        kind: "template-fallback",
+        templateSha: sha,
+        reason: `template baseline「${sha.slice(0, 8)}」在當前 repo history 找不到 — 判定為 downstream fork(GitHub Template workflow 建的 new history 不含 template repo 的 SHA)`,
+      };
+    }
     return {
-      ok: false,
-      reason: `baseline SHA rev-parse 失敗 — 找不到 commit「${baseline}」(是否 shallow clone / SHA 打錯?)`,
+      kind: "fail",
+      reason: `baseline SHA rev-parse 失敗 — 找不到 commit「${sha}」(是否 shallow clone / SHA 打錯?)`,
     };
   }
   const mb = spawnSync(
     "git",
-    ["-C", root, "merge-base", "--is-ancestor", baseline, "HEAD"],
+    ["-C", root, "merge-base", "--is-ancestor", sha, "HEAD"],
     { encoding: "utf-8", stdio: "pipe" }
   );
   if (mb.status !== 0) {
     return {
-      ok: false,
-      reason: `baseline 不是 HEAD 的 ancestor(baseline ${baseline.slice(0, 8)} 與 HEAD 無祖先關係 → baseline..HEAD 語意不成立)`,
+      kind: "fail",
+      reason: `baseline 不是 HEAD 的 ancestor(baseline ${sha.slice(0, 8)} 與 HEAD 無祖先關係 → baseline..HEAD 語意不成立)`,
     };
   }
-  return { ok: true };
+  return { kind: "ok", sha };
 }
 
 /**
@@ -946,24 +974,43 @@ function main(): number {
   );
 
   // PR A1:載入 baseline config、決定 history scan 範圍(fail-closed on error)
+  // Round 1 P1:baseline 決策擴充成三態(ok / template-fallback / fail)
   let baseline: string | null = null;
+  let skipHistoryScan = false;
   try {
-    baseline = loadBaselineConfig(root).baseline;
+    const rawBaseline = loadBaselineConfig(root).baseline;
+    if (rawBaseline !== null) {
+      const decision = validateBaseline(root, rawBaseline);
+      if (decision.kind === "fail") {
+        console.error(`❌ baseline 驗證失敗:${decision.reason}`);
+        for (const c of cleanups) c();
+        return 1;
+      }
+      if (decision.kind === "template-fallback") {
+        // Downstream fork 走 GitHub Template workflow → 降級,不 fail-closed
+        console.warn(`⚠️  ${decision.reason}`);
+        console.warn(
+          `    → history scan 跳過(new history 無 template 遺留 blob 可對照)`
+        );
+        console.warn(
+          `    → 若你要嚴格 grandfather 語意,請把 ${BASELINE_CONFIG_PATH} 的 sourceTermHistoryBaseline 改成本 repo 的 initial commit SHA(去掉 template: prefix);或設為 null 走全史掃描。`
+        );
+        skipHistoryScan = true;
+      } else {
+        baseline = decision.sha;
+      }
+    }
   } catch (e) {
     console.error(`❌ baseline config 載入失敗:${(e as Error).message}`);
     for (const c of cleanups) c();
     return 1;
   }
-  if (baseline !== null) {
-    const v = validateBaseline(root, baseline);
-    if (!v.ok) {
-      console.error(`❌ baseline 驗證失敗:${v.reason}`);
-      for (const c of cleanups) c();
-      return 1;
-    }
-  }
   // Startup 印掃描範圍(plan §5「啟動時輸出掃描範圍」)
-  if (baseline) {
+  if (skipHistoryScan) {
+    console.log(
+      `── history scan range: skipped(template baseline in downstream fork;current tree + commit msg 照掃)──`
+    );
+  } else if (baseline) {
     console.log(
       `── history scan range: baseline..HEAD(grandfather ≤ ${baseline.slice(0, 8)},見 ${BASELINE_CONFIG_PATH})──`
     );
@@ -988,28 +1035,32 @@ function main(): number {
     if (!wtFail) console.log("✅ working tree 乾淨");
     else fail = true;
 
-    console.log(
-      baseline
-        ? "── [2/3] git 歷史 blob 掃描(baseline..HEAD)──"
-        : "── [2/3] git 全史 blob 掃描 ──"
-    );
-    let histFail = false;
-    for (const scan of scanGitHistoryBlobs(
-      root,
-      nonCaFile?.file ?? null,
-      caFile?.file ?? null,
-      syntaxNonCaFile?.file ?? null,
-      baseline
-    )) {
-      if (!processScan(scan, allowedPrs)) histFail = true;
-    }
-    if (histFail) {
-      console.error(
-        "❌ git 歷史 blob 含來源專案識別詞或掃描錯誤(需 rebase / filter-repo 清除)"
-      );
-      fail = true;
+    if (skipHistoryScan) {
+      console.log("── [2/3] git 歷史 blob 掃描:skipped(template-fallback)──");
     } else {
-      console.log("✅ git 歷史 blob 乾淨");
+      console.log(
+        baseline
+          ? "── [2/3] git 歷史 blob 掃描(baseline..HEAD diff)──"
+          : "── [2/3] git 全史 blob 掃描 ──"
+      );
+      let histFail = false;
+      for (const scan of scanGitHistoryBlobs(
+        root,
+        nonCaFile?.file ?? null,
+        caFile?.file ?? null,
+        syntaxNonCaFile?.file ?? null,
+        baseline
+      )) {
+        if (!processScan(scan, allowedPrs)) histFail = true;
+      }
+      if (histFail) {
+        console.error(
+          "❌ git 歷史 blob 含來源專案識別詞或掃描錯誤(需 rebase / filter-repo 清除)"
+        );
+        fail = true;
+      } else {
+        console.log("✅ git 歷史 blob 乾淨");
+      }
     }
 
     console.log("── [3/3] commit 訊息 + 作者掃描 ──");

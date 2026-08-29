@@ -1208,4 +1208,66 @@ describe("check-no-source-terms — history baseline(PR A1)", () => {
     expect(out).toContain("schemaVersion");
     expect(code).toBe(1);
   });
+
+  it("🔴 P1z(round 1 P1 修法):template: prefix + rev-parse 失敗(downstream fork)→ 降級 + warning + exit 0", () => {
+    // 模擬 downstream fork 走 GitHub Template workflow:new history 不含 template
+    // repo 的 baseline SHA。config baseline 有 `template:` prefix → 降級跳過
+    // history scan,current tree / commit msg 依既有語意掃、乾淨即 exit 0
+    const dir = makeRepo({
+      deny: ["forbidden_dl_term"],
+      commits: [{ message: "init clean", files: { "src/a.md": "clean\n" } }],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: "template:" + "0".repeat(40),
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("template baseline");
+    expect(out).toContain("history scan range: skipped");
+    expect(out).toContain("✅ 去識別化掃描全數通過");
+    expect(code).toBe(0);
+  });
+
+  it("🔴 P1zz(round 1 P1 修法):template: prefix + 40-hex 語法錯 → fail-closed(語法錯不因 prefix 降級)", () => {
+    // Template prefix 只在 rev-parse 失敗時降級;若 SHA 本身語法錯(< 40 hex /
+    // 非 hex),仍 fail-closed——語法錯是打錯字、不是 fork 情境,不該降級
+    const dir = makeRepo({
+      deny: ["forbidden_zz_term"],
+      commits: [{ message: "init", files: { "src/a.md": "clean\n" } }],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: "template:not-a-real-sha",
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("baseline SHA 必須是 40 字元 hex");
+    expect(out).toContain("template: prefix");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1yy(round 1 P1 修法):template: prefix + rev-parse OK(template repo 自己)→ 走 baseline..HEAD diff scan", () => {
+    // Template repo 自己跑 checker:template: prefix 值的 SHA 在自己的 history
+    // 內 rev-parse 得到 → 不降級、走 baseline..HEAD 正規 diff scan。此測試釘住
+    // 「template prefix 不代表永遠降級」——rev-parse 通過就正規走
+    const dir = makeRepo({
+      deny: ["forbidden_yy_term"],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        {
+          message: "add polluted after baseline",
+          files: { "src/polluted.md": "contains forbidden_yy_term\n" },
+        },
+      ],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: "template:" + shaAt(dir, "HEAD~1"),
+    });
+    const { code, out } = runChecker(dir);
+    // 不降級 → 走 baseline..HEAD、抓到 baseline 之後的新增 forbidden
+    expect(out).toContain("history scan range: baseline..HEAD");
+    expect(out).not.toContain("history scan range: skipped");
+    expect(out).toContain("含來源專案識別詞");
+    expect(code).toBe(1);
+  });
 });
