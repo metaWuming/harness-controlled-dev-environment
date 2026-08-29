@@ -1354,6 +1354,65 @@ describe("check-no-source-terms — history baseline(PR A1)", () => {
     expect(code).toBe(1);
   });
 
+  it("🔴 P1zz6(round 5 P1 rename 修法):rename dance(rename excluded → scanned + 加內容 + rename 回)→ history scan 抓到", () => {
+    // git show 預設開 rename detection → 舊版兩份 patch 只印 rename metadata、
+    // 無 + hunk → 洗白通過。新版 `--no-renames` → destination 印成完整新增內容
+    const dir = makeRepo({
+      deny: ["forbidden_rename_term"],
+      commits: [
+        // baseline:clean init
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+      ],
+    });
+    // Baseline 之後 3 個 commit 做 rename dance
+    const baselineSha = shaAt(dir, "HEAD");
+    // c1: 新增檔案(路徑 A)含 forbidden
+    writeFileSync(join(dir, "src/laundered.md"), "contains forbidden_rename_term inline\n", "utf-8");
+    execFileSync("git", ["-C", dir, "add", "-A"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "add laundered"], { stdio: "ignore" });
+    // c2: rename 到路徑 B(內容不變)
+    execFileSync("git", ["-C", dir, "mv", "src/laundered.md", "src/renamed.md"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "rename dance"], { stdio: "ignore" });
+    // c3: 刪除,current tree 乾淨
+    execFileSync("git", ["-C", dir, "rm", "-q", "src/renamed.md"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "delete final"], { stdio: "ignore" });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: baselineSha,
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("git 歷史 blob 含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1zz7(round 5 P1 -diff 修法):.gitattributes 標 -diff 讓 git show 印 Binary → history scan 仍抓", () => {
+    // .gitattributes 標 `path -diff` 讓 git show 對純文字檔輸出「Binary files differ」→
+    // 無 hunk → 洗白通過。新版 `--text` 強制 text 輸出、`--no-textconv` 關 filter
+    const dir = makeRepo({
+      deny: ["forbidden_binary_term"],
+      commits: [{ message: "baseline", files: { "src/base.md": "hello\n" } }],
+    });
+    const baselineSha = shaAt(dir, "HEAD");
+    // 加 .gitattributes 標記 src/*.md 為 -diff
+    writeFileSync(join(dir, ".gitattributes"), "src/*.md -diff\n", "utf-8");
+    execFileSync("git", ["-C", dir, "add", ".gitattributes"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "add -diff attr"], { stdio: "ignore" });
+    // 加 forbidden 內容
+    writeFileSync(join(dir, "src/base.md"), "hello\ncontains forbidden_binary_term\n", "utf-8");
+    execFileSync("git", ["-C", dir, "add", "src/base.md"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "add forbidden"], { stdio: "ignore" });
+    // 刪除、current tree 乾淨
+    execFileSync("git", ["-C", dir, "rm", "-q", "src/base.md"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "delete"], { stdio: "ignore" });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: baselineSha,
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("git 歷史 blob 含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
   it("🔴 P1zz5(round 4 P2 修法):shallow clone + template: prefix + rev-parse 失敗 → fail-closed(不誤降級)", () => {
     // Round 4 P2:template-fallback 在 shallow clone 誤降級 → 全史掃只覆蓋 shallow
     // suffix、洗白 blob 在 shallow 邊界之前的漏抓、false green。修法:template-

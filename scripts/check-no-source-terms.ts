@@ -727,10 +727,17 @@ function scanRevDiff(
   mode: Mode,
   pathspec: string[]
 ): Scan {
-  // Round 3 P2 修法:加 `-m` 讓 merge commit 拆成「每 parent 一份普通 diff」,
+  // Round 3 P2 修法:`-m` 讓 merge commit 拆成「每 parent 一份普通 diff」,
   // 避免 git show 對 merge 預設輸出 combined format(`diff --cc`,`++forbidden`
   // 等雙 marker 前綴)導致 parser strip 一個 marker 後仍有 `+`、anchored pattern
   // 不 match。`-m` 對 non-merge commit 無作用(仍是普通單 parent diff)。
+  // Round 5 P1 修法(兩條洗白路徑):
+  //   `--no-renames`:git show 預設開 rename detection → rename excluded file
+  //     (如 deny-terms.txt)到 scanned path + 加內容 + 再 rename 回,只印 rename
+  //     metadata、無 + hunk → 漏抓。關掉 rename 讓 destination 印成新增內容。
+  //   `--text` + `--no-textconv`:.gitattributes `-diff` 屬性讓 git show 只印
+  //     「Binary files differ」→ 無 hunk → 漏抓。強制 text 輸出 + 關 textconv
+  //     filter,確保純文字 patch。
   const showRes = spawnSync(
     "git",
     [
@@ -738,6 +745,9 @@ function scanRevDiff(
       root,
       "show",
       "-m",
+      "--no-renames",
+      "--text",
+      "--no-textconv",
       "--format=",
       "--unified=0",
       "--no-color",
