@@ -1146,6 +1146,55 @@ describe("check-no-source-terms — history baseline(PR A1)", () => {
     expect(code).toBe(1);
   });
 
+  it("🔴 P1y(round 1 P2 修法):baseline 之後 commit 未動 forbidden 檔(繼承 baseline 遺留 blob)→ diff scan 不誤觸發", () => {
+    // 場景:baseline 已含 forbidden(去識別化 debt);feature 從 baseline 分岔、
+    // 加一個無關檔的 commit。舊 tree-scan:feature commit 的 tree 仍含 baseline
+    // 遺留 forbidden → 誤紅;新 diff-scan:feature commit 的 diff 沒動 forbidden
+    // 檔 → 通過。此測試把 tree-scan → diff-scan 語意轉換釘住。
+    const dir = makeRepo({
+      deny: ["forbidden_legacy_term"],
+      commits: [
+        // baseline commit:含 forbidden(去識別化 debt)
+        {
+          message: "baseline: legacy debt",
+          files: { "src/legacy.md": "contains forbidden_legacy_term inline\n" },
+        },
+        // baseline 後 commit:動另一無關檔、不動 legacy.md
+        {
+          message: "feat: unrelated change",
+          files: { "src/unrelated.md": "totally clean\n" },
+        },
+      ],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD~1"),
+    });
+    const { code, out } = runChecker(dir);
+    // ⚠️ current tree 仍含 legacy.md 的 forbidden → 會被 working tree scan 抓
+    //    (預期行為:baseline 只影響 history scan)。此測試專注 history scan
+    //    語意,先把 legacy.md 從工作樹刪除、但保留 commit 內容
+    // (以 fs delete 而非 git rm——後者會再新增一個 commit)
+    // → 但這樣 working tree 仍未 stage delete → tracked-but-deleted 狀態
+    //   working tree scan 走 `git grep -- .`,對 tracked-but-deleted 不掃(內容不存在)
+    // 實際上更乾淨:讓 baseline commit 之後再加一個「刪除 legacy.md」的 commit,
+    // 讓 current tree 完全乾淨,但 baseline..HEAD 內的兩個 commit 仍會走 diff scan
+    // → 刪除 commit 的 diff 是 `-` 行(不觸發 grep `+` filter)→ 通過
+    // → 這條測試的 setup 已達成:HEAD~1 有 legacy(baseline)、HEAD 加無關檔
+    //   diff scan 只看 HEAD commit(unrelated.md)的 `+` 行 → 無 forbidden
+    // 但 current tree 仍含 legacy → working tree scan 會抓
+    // 為避免這個干擾,我們宣稱這個測試「檢查 history scan 語意」——
+    // 用 expect 分別檢查 working tree 段和 history 段,不看整體 exit code
+    expect(out).toContain("history scan range: baseline..HEAD");
+    // history scan 段落內不應含「git 歷史 blob 含來源專案識別詞」
+    // (若 tree scan 語意仍在,legacy.md blob 會被抓;diff scan 語意下不會)
+    const hasHistBlobHit = out.includes("git 歷史 blob 含來源專案識別詞");
+    expect(hasHistBlobHit).toBe(false);
+    // current tree 仍含 forbidden → 整體 exit 1(預期行為,不是本測試的重點)
+    expect(code).toBe(1);
+    expect(out).toContain("working tree(non-CA,全域):含來源專案識別詞");
+  });
+
   it("🔴 P1x:schemaVersion 未知 → fail-closed exit 1(擋 future schema 誤讀)", () => {
     const dir = makeRepo({
       deny: ["forbidden_term_x"],

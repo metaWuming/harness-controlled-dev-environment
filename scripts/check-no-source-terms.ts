@@ -621,6 +621,144 @@ function scanWorkingTree(
   return scans;
 }
 
+/**
+ * 過濾 `git show -p` patch 文字,只回傳新增行(`+<content>`,不含 `+++` 檔頭)。
+ * PR A1 round 1 P2 修法用(見 scanGitHistoryDiffs docstring)。
+ */
+export function extractAddedLinesFromPatch(patch: string): string {
+  return patch
+    .split("\n")
+    .filter((l) => l.startsWith("+") && !l.startsWith("+++"))
+    .join("\n");
+}
+
+/**
+ * PR A1 round 1 P2 修法:per-commit diff scan(替換 baseline 給時的 tree scan)。
+ *
+ * 舊行為(tree scan)問題:baseline..HEAD 內每個 commit 掃**整 tree**,只要
+ * 未動的既存檔案含 forbidden(baseline 之前就存在的去識別化 debt)也會被抓
+ * → false positive。真實觸發場景:feature branch 從 baseline 分岔、加一個
+ * 無關的 commit,那個 commit 的 tree 繼承所有 baseline 檔(含 baseline 之前
+ * 就存在的來源專案識別詞)→ 誤紅。
+ *
+ * 新語意:baseline..HEAD 每個 commit 相對於 parent 的 **diff 新增行**才掃。
+ * 未動的 blob 不算「新引入」→ 不會誤觸發;真正 baseline 之後新加的 forbidden
+ * (即使後來又刪掉、per-commit 仍抓)照抓。
+ *
+ * ⚠️ file:line attribution:grep 對 patch 純文字掃,hit 為 `+<content>` 行。
+ *    沒有 filename 與 line number(要精確 attribution 需 mini patch parser),
+ *    但錯誤訊息仍能定位到 rev + 內容片段,對本 gate 目的夠用。
+ *
+ * 洗白場景(A 加 forbidden + B 刪 forbidden 在同一 PR)per-commit 仍抓 commit A;
+ * 淨 diff 版本會漏(此設計刻意選 per-commit 而非淨 diff)。
+ */
+function scanRevDiff(
+  root: string,
+  rev: string,
+  patternFile: string,
+  label: string,
+  mode: Mode,
+  pathspec: string[]
+): Scan {
+  const showRes = spawnSync(
+    "git",
+    [
+      "-C",
+      root,
+      "show",
+      "--format=",
+      "--unified=0",
+      "--no-color",
+      rev,
+      "--",
+      ...pathspec,
+    ],
+    { encoding: "utf-8", maxBuffer: 256 * 1024 * 1024 }
+  );
+  if (showRes.status !== 0) {
+    return { label, mode, hits: [], rc: showRes.status ?? 2 };
+  }
+  const added = extractAddedLinesFromPatch(showRes.stdout || "");
+  if (added.length === 0) {
+    return { label, mode, hits: [], rc: 1 }; // clean(等同 git grep 的 rc=1)
+  }
+  const grepRes = spawnSync("grep", ["-niIE", "-f", patternFile], {
+    input: added,
+    encoding: "utf-8",
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  const hits = (grepRes.stdout || "")
+    .split("\n")
+    .filter((l) => l.length > 0)
+    .map((h) => `${rev.slice(0, 8)} [+diff] ${h}`);
+  return { label, mode, hits, rc: grepRes.status ?? 2 };
+}
+
+/**
+ * PR A1 round 1 P2 修法:baseline..HEAD per-commit diff scan(替代 baseline
+ * 給時的 tree scan)。實作策略:對每個 rev 開三段 diff scan(non-CA / CA /
+ * SYNTAX 例外),分別對應原 tree scan 的三種模式;pathspec 對齊 tree scan。
+ */
+function scanBaselineToHeadDiffs(
+  root: string,
+  nonCaFile: string | null,
+  caFile: string | null,
+  syntaxNonCaFile: string | null,
+  baseline: string
+): Scan[] {
+  const revs = execFileSync(
+    "git",
+    ["-C", root, "rev-list", `${baseline}..HEAD`],
+    { encoding: "utf-8", maxBuffer: 256 * 1024 * 1024 }
+  )
+    .split("\n")
+    .filter(Boolean);
+  const scans: Scan[] = [];
+  const mainPathspec = [".", ...FULL_EXCLUDES];
+  for (const rev of revs) {
+    if (nonCaFile) {
+      scans.push(
+        scanRevDiff(
+          root,
+          rev,
+          nonCaFile,
+          `史 ${rev.slice(0, 8)}(non-CA diff)`,
+          "strict",
+          mainPathspec
+        )
+      );
+    }
+    if (caFile) {
+      scans.push(
+        scanRevDiff(
+          root,
+          rev,
+          caFile,
+          `史 ${rev.slice(0, 8)}(CA diff,self-PR 判定)`,
+          "self-pr",
+          mainPathspec
+        )
+      );
+    }
+    if (syntaxNonCaFile) {
+      // SYNTAX 例外檔:若該 rev 的 SYNTAX_EXEMPT_FILES 有 diff,用縮減 pattern
+      // 集(non-CA only)掃;檔案不存在的 rev 直接跳過。git show 對不存在 pathspec
+      // 不報錯,產出空 patch → scanRevDiff 回 clean、無害。
+      scans.push(
+        scanRevDiff(
+          root,
+          rev,
+          syntaxNonCaFile,
+          `史 ${rev.slice(0, 8)}(SYNTAX 例外檔 non-CA diff)`,
+          "strict",
+          SYNTAX_EXEMPT_FILES
+        )
+      );
+    }
+  }
+  return scans;
+}
+
 function scanGitHistoryBlobs(
   root: string,
   nonCaFile: string | null,
@@ -628,14 +766,12 @@ function scanGitHistoryBlobs(
   syntaxNonCaFile: string | null,
   baseline: string | null
 ): Scan[] {
-  // PR A1:baseline 給 → 只掃 `baseline..HEAD`(grandfather baseline 及更早);
-  // baseline null → 全史掃(舊行為 / D3-D4 fallback)。
-  // ⚠️ `baseline..HEAD` 排除 baseline 本身 → baseline 的 blob 也被 grandfather。
-  //    這是刻意設計:baseline 是「主線當下狀態」的 snapshot,包含當時已存在的
-  //    去識別化 debt;fix commit 產生的**新** blob 落在 baseline..HEAD、仍會被掃。
-  const revListArgs = baseline
-    ? ["-C", root, "rev-list", `${baseline}..HEAD`]
-    : ["-C", root, "rev-list", "--all"];
+  // PR A1 round 1 P2:baseline 給 → per-commit diff scan(scanRevDiff);
+  // baseline null → tree scan(舊行為,見下方)
+  if (baseline) {
+    return scanBaselineToHeadDiffs(root, nonCaFile, caFile, syntaxNonCaFile, baseline);
+  }
+  const revListArgs = ["-C", root, "rev-list", "--all"];
   const revs = execFileSync("git", revListArgs, {
     encoding: "utf-8",
     maxBuffer: 256 * 1024 * 1024,
