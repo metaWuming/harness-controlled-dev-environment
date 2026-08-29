@@ -55,9 +55,14 @@ describe('extractRefs', () => {
     ]);
   });
 
-  it('glob `**/pattern` 的後半截不被誤收(前字元是 `/` 屬 glob 一部分 → 跳)', () => {
-    // regression:SOP 的清單常寫 `**/tests/*.test.ts` 這類 glob,regex 從 `tests/`
-    // 起匹配、把 `**/` 留在外面 → 舊版會誤報「repo 根下有個 tests/*.test.ts」而假陽性
+  it('glob `**/pattern` 的後半截不被誤收(兩層守門:字元類無 `*` + prev-char 檢查)', () => {
+    // regression:SOP 的清單常寫 `**/tests/*.test.ts` 這類 glob。兩層守門:
+    //   (a) PLAIN_PATH_RE 字元類不含 `*` → 含 `*` 的 pattern(如 `**/tests/*.test.ts`)
+    //       整條 match 不到、根本不會被考慮
+    //   (b) prev-char 守門 → 對 `**/scripts/foo.ts` 這種只有前置斜線的 glob(不含尾段
+    //       `*`)、regex 從 `scripts/` 起匹配,把 `**/` 留在外面 → prev 是 `/` skip
+    // 本 case 兩半各自驗一種:第一半靠 (a)、第二半靠 (b)。若未來為支援 glob 把 `*`
+    // 加進字元類且拿掉 prev-char 檢查、第二半會轉紅、抓到 regression。
     const refs = extractRefs('清單:`**/tests/*.test.ts`、`**/scripts/foo.ts`');
     expect(refs).toEqual([]);
   });
