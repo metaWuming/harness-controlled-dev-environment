@@ -944,3 +944,219 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     }
   });
 });
+
+// ────────────────── PR A1:history baseline cutover 契約 ──────────────────
+//
+// 動機:HARNESS_OPTIMIZATION_IMPLEMENTATION_PLAN.md §5——main history 舊 blob 含
+// 來源專案識別詞(不能 rewrite 主線歷史),但要讓 gate 綠。做法:machine-readable
+// `scripts/source-term-baseline.json` 記錄 baseline SHA,checker history scan 只掃
+// `baseline..HEAD`;baseline 本身損壞一律 fail-closed。
+//
+// 契約(逐條對應 plan file Phase 1 P1a-P1i):
+//   - Current tree 永遠嚴格,baseline 只影響 history scan
+//   - baseline..HEAD 內的 blob:嚴格擋
+//   - baseline 及更早的 blob:grandfather 通過
+//   - baseline malformed / 非祖先 / rev-parse 失敗 / schemaVersion 未知 / JSON malformed
+//     → fail-closed exit 1(不降級到全史掃)
+//   - config 檔不存在 / baseline null → 舊行為(全史掃)——向下相容
+// Mutation probe:拿掉 validateBaseline 的 ancestor 檢查 → P1e 立刻轉綠 → 手動探針
+// 在 Step 4.5 執行(乾淨工作樹 + 明確步驟見 plan file)。
+
+function shaAt(dir: string, ref: string): string {
+  return execFileSync("git", ["-C", dir, "rev-parse", ref], {
+    encoding: "utf-8",
+  }).trim();
+}
+
+function writeBaselineConfig(dir: string, body: unknown | string): void {
+  const text = typeof body === "string" ? body : JSON.stringify(body);
+  writeFileSync(join(dir, "scripts/source-term-baseline.json"), text, "utf-8");
+}
+
+describe("check-no-source-terms — history baseline(PR A1)", () => {
+  it("🔴 P1a:current tree 含 non-CA term(即使 baseline 已 grandfather 歷史)→ 嚴格擋", () => {
+    const dir = makeRepo({
+      deny: ["forbidden_cur_term"],
+      commits: [
+        { message: "init clean", files: { "src/init.md": "hello\n" } },
+      ],
+      workingTree: {
+        "docs/note.md": "contains forbidden_cur_term inline\n",
+      },
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD"),
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1b:baseline 前 historical blob hit、current tree 乾淨 → grandfather 通過", () => {
+    const dir = makeRepo({
+      deny: ["forbidden_hist_term"],
+      commits: [
+        {
+          message: "add polluted",
+          files: { "src/polluted.md": "contains forbidden_hist_term\n" },
+        },
+        { message: "remove polluted", deletions: ["src/polluted.md"] },
+      ],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD"),
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("history scan range: baseline..HEAD");
+    expect(out).toContain("✅ 去識別化掃描全數通過");
+    expect(code).toBe(0);
+  });
+
+  it("🔴 P1c:baseline 之後新引入的 historical blob hit → 嚴格擋", () => {
+    const dir = makeRepo({
+      deny: ["forbidden_new_hist"],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        {
+          message: "add polluted after baseline",
+          files: { "src/polluted.md": "contains forbidden_new_hist\n" },
+        },
+        { message: "remove polluted", deletions: ["src/polluted.md"] },
+      ],
+    });
+    // baseline = clean init(HEAD~2);後續兩個 commit 進入 baseline..HEAD 範圍
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD~2"),
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("git 歷史 blob 含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1d:config 檔不存在 → 舊行為(全史掃),baseline 前歷史 hit 也擋", () => {
+    // 向下相容釘子:未來 refactor 若把 default 改成 grandfather-all,此條轉紅
+    const dir = makeRepo({
+      deny: ["forbidden_default_term"],
+      commits: [
+        {
+          message: "add polluted",
+          files: { "src/polluted.md": "contains forbidden_default_term\n" },
+        },
+        { message: "remove polluted", deletions: ["src/polluted.md"] },
+      ],
+    });
+    // 刻意不寫 scripts/source-term-baseline.json
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("history scan range: --all");
+    expect(out).toContain("git 歷史 blob 含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1e:baseline 非 HEAD 祖先 → fail-closed exit 1(mutation kill 錨點)", () => {
+    // 建孤立 branch 拿一個非祖先 SHA。若拿掉 validateBaseline 的 ancestor 檢查,
+    // 此 case 從紅轉綠 → mutation 未 kill → 探針失效
+    const dir = makeRepo({
+      deny: ["forbidden_term_e"],
+      commits: [{ message: "main1", files: { "src/a.md": "clean\n" } }],
+    });
+    execFileSync("git", ["-C", dir, "checkout", "--orphan", "orphan"], {
+      stdio: "ignore",
+    });
+    execFileSync(
+      "git",
+      ["-C", dir, "commit", "--allow-empty", "-qm", "orphan commit"],
+      { stdio: "ignore" }
+    );
+    const orphanSha = shaAt(dir, "HEAD");
+    execFileSync("git", ["-C", dir, "checkout", "-q", "main"], {
+      stdio: "ignore",
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: orphanSha,
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("baseline");
+    expect(out).toContain("ancestor");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1f:baseline 是短 SHA(< 40 hex)→ fail-closed exit 1", () => {
+    const dir = makeRepo({
+      deny: ["forbidden_term_f"],
+      commits: [{ message: "init", files: { "src/a.md": "clean\n" } }],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: "abc1234",
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("baseline");
+    expect(out).toContain("40");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1g:baseline 為 null → 舊行為(全史)", () => {
+    const dir = makeRepo({
+      deny: ["forbidden_term_g"],
+      commits: [
+        {
+          message: "add polluted",
+          files: { "src/polluted.md": "contains forbidden_term_g\n" },
+        },
+        { message: "remove polluted", deletions: ["src/polluted.md"] },
+      ],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: null,
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("history scan range: --all");
+    expect(out).toContain("git 歷史 blob 含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1h:config JSON malformed → fail-closed exit 1", () => {
+    const dir = makeRepo({
+      deny: ["forbidden_term_h"],
+      commits: [{ message: "init", files: { "src/a.md": "clean\n" } }],
+    });
+    writeBaselineConfig(dir, "{ this is not json");
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("source-term-baseline.json");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1i:baseline 是合法 40-hex 但 rev-parse 找不到 → fail-closed exit 1", () => {
+    const dir = makeRepo({
+      deny: ["forbidden_term_i"],
+      commits: [{ message: "init", files: { "src/a.md": "clean\n" } }],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: "0".repeat(40),
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("baseline");
+    // rev-parse 失敗 or 非祖先都收在同一 error 訊息內
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1x:schemaVersion 未知 → fail-closed exit 1(擋 future schema 誤讀)", () => {
+    const dir = makeRepo({
+      deny: ["forbidden_term_x"],
+      commits: [{ message: "init", files: { "src/a.md": "clean\n" } }],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 999,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD"),
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("schemaVersion");
+    expect(code).toBe(1);
+  });
+});
