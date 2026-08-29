@@ -62,6 +62,17 @@ describe('extractRefs', () => {
     expect(refs).toEqual([]);
   });
 
+  it('`./` 前綴的相對路徑要被抽出(Codex R1 F1 regression)', () => {
+    // regression:前字元檢查會把 `.`/`/` 當「更長 token 的一部分」而 skip,
+    // 讓 `./scripts/foo.ts` 這種常見寫法逃過驗證 = fail-open。修法:PLAIN_PATH_RE
+    // 前綴加 `(?:\.\/)?`,rawPath 保留 `./`(path.posix.normalize 後續會消掉)。
+    const refs = extractRefs('see ./scripts/definitely-missing.ts and ./docs/x.md');
+    expect(refs).toEqual([
+      { type: 'plain', rawPath: './scripts/definitely-missing.ts', line: 1 },
+      { type: 'plain', rawPath: './docs/x.md', line: 1 },
+    ]);
+  });
+
   it('跳過 fenced code block 內容', () => {
     const content = '```\nscripts/in-fence.ts\n```\nscripts/out.ts';
     expect(extractRefs(content)).toEqual([{ type: 'plain', rawPath: 'scripts/out.ts', line: 4 }]);

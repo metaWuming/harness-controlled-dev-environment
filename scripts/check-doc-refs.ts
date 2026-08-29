@@ -57,10 +57,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-// CWD-independent root resolution(git 不可用時退回本檔位置的上一層)
+// CWD-independent root resolution(git 不可用時退回本檔位置的上一層)。
+// isGitRepo flag 給 collectDocFiles 選 strategy:git repo 用 `git ls-files`
+// (本機/CI 同組輸入);非 git repo(如 published tarball 執行)fallback fs walk。
+let isGitRepo = false;
 const REPO_ROOT = (() => {
   try {
-    return execSync('git rev-parse --show-toplevel', { encoding: 'utf-8' }).trim();
+    const root = execSync('git rev-parse --show-toplevel', { encoding: 'utf-8' }).trim();
+    isGitRepo = true;
+    return root;
   } catch {
     return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   }
@@ -97,8 +102,12 @@ const FILE_EXT_RE = /\.(md|markdown|ts|tsx|mjs|cjs|js|jsx|prisma|sh|json|ya?ml|h
 //    Astro 動態 segment 都用同一形狀(如 `stack/nextjs-prisma/app/[token]/page.tsx`)。
 //    不含中括號就會在 `[` 斷掉、抽出半截路徑或整條漏驗。規則本身通用、不假設特定框架;
 //    採用者若不用動態 segment 也不會誤觸(`[` 不會出現在一般路徑就不影響)。
+// `(?:\.\/)?` 可選 `./` 前綴(Codex R1 F1):`./scripts/foo.ts` 這種常見寫法要
+// 抽得出來,否則前字元檢查把 `/` 當 glob 一部分而 skip = fail-open。
+// path.posix.normalize 會把 `./docs/foo.md` 正規化成 `docs/foo.md`,後續 checkRefs
+// 不受影響。
 const PLAIN_PATH_RE =
-  /(?:docs|scripts|tests|stack|\.claude|\.github)\/[A-Za-z0-9._/[\]-]+\.(?:md|tsx|ts|mjs|prisma|sh|json|ya?ml)/g;
+  /(?:\.\/)?(?:docs|scripts|tests|stack|\.claude|\.github)\/[A-Za-z0-9._/[\]-]+\.(?:md|tsx|ts|mjs|prisma|sh|json|ya?ml)/g;
 const MD_LINK_RE = /\[[^\]]*\]\(([^)]+)\)/g;
 const IMPORT_RE = /^@([A-Za-z0-9._/-]+\.[A-Za-z0-9]+)\s*$/;
 
@@ -239,31 +248,63 @@ export function checkRefs(
  *      `:(glob)` fnmatch magic 讓 `*` 不吃 `/`。這裡保留原意:SCAN_DIRS 非遞迴、
  *      SCAN_DIRS_RECURSIVE 遞迴。
  */
-function collectDocFiles(): { files: string[]; missingRootDocs: string[] } {
+function collectDocFiles(): {
+  files: string[];
+  missingRootDocs: string[];
+  gitLsErrors: string[];
+} {
   const files: string[] = [];
   const missingRootDocs: string[] = [];
+  const gitLsErrors: string[] = [];
   for (const f of ROOT_DOCS) {
     if (fs.existsSync(path.join(REPO_ROOT, f))) files.push(f);
     else missingRootDocs.push(f);
   }
-  const addFromGit = (pathspec: string) => {
-    let listed = '';
-    try {
-      listed = execFileSync('git', ['-C', REPO_ROOT, 'ls-files', '--', pathspec], {
-        encoding: 'utf-8',
-      });
-    } catch {
-      return; // 目錄不存在 / 非 git repo → 跳過(ROOT_DOCS 那組已足以判定 gate 有輸入)
-    }
-    for (const rel of listed.split('\n').filter(Boolean)) {
-      if (!files.includes(rel)) files.push(rel);
-    }
+  const pushIfNew = (rel: string) => {
+    if (!files.includes(rel)) files.push(rel);
   };
-  // 非遞迴:`:(glob)` 開 fnmatch、`*` 不吃 `/` → 只匹配直屬 .md
-  for (const dir of SCAN_DIRS) addFromGit(`:(glob)${dir}/*.md`);
-  // 遞迴:預設 pathspec prefix 匹配、涵蓋所有深度
-  for (const dir of SCAN_DIRS_RECURSIVE) addFromGit(`${dir}/*.md`);
-  return { files, missingRootDocs };
+
+  if (isGitRepo) {
+    // Git repo:用 `git ls-files` 只認 tracked、gitignored 草稿不誤報。
+    // Codex R1 F2:失敗 fail-closed(不靜默少掃)。git ls-files 對不存在目錄回
+    // 空 list、不進 catch;catch 到必為真錯(git 環境問題、pathspec 語法錯)。
+    const addFromGit = (pathspec: string) => {
+      try {
+        const listed = execFileSync('git', ['-C', REPO_ROOT, 'ls-files', '--', pathspec], {
+          encoding: 'utf-8',
+        });
+        for (const rel of listed.split('\n').filter(Boolean)) pushIfNew(rel);
+      } catch (e) {
+        const msg = (e as Error).message.split('\n')[0] ?? 'unknown';
+        gitLsErrors.push(`git ls-files ${pathspec}: ${msg}`);
+      }
+    };
+    // 非遞迴:`:(glob)` 開 fnmatch、`*` 不吃 `/` → 只匹配直屬 .md
+    for (const dir of SCAN_DIRS) addFromGit(`:(glob)${dir}/*.md`);
+    // 遞迴:預設 pathspec prefix 匹配、涵蓋所有深度
+    for (const dir of SCAN_DIRS_RECURSIVE) addFromGit(`${dir}/*.md`);
+  } else {
+    // 非 git repo(如 published tarball 執行):fs walk fallback,保 gate 可運作。
+    // ⚠️ 失去「本機/CI 同組輸入」保證,採用者若打包執行請自己權衡。
+    for (const dir of SCAN_DIRS) {
+      const abs = path.join(REPO_ROOT, dir);
+      if (!fs.existsSync(abs)) continue;
+      for (const entry of fs.readdirSync(abs)) {
+        if (entry.endsWith('.md')) pushIfNew(`${dir}/${entry}`);
+      }
+    }
+    const walk = (relDir: string) => {
+      const abs = path.join(REPO_ROOT, relDir);
+      if (!fs.existsSync(abs)) return;
+      for (const entry of fs.readdirSync(abs, { withFileTypes: true })) {
+        const rel = `${relDir}/${entry.name}`;
+        if (entry.isDirectory()) walk(rel);
+        else if (entry.name.endsWith('.md')) pushIfNew(rel);
+      }
+    };
+    for (const dir of SCAN_DIRS_RECURSIVE) walk(dir);
+  }
+  return { files, missingRootDocs, gitLsErrors };
 }
 
 function main() {
@@ -289,8 +330,18 @@ function main() {
     plannedSkips++;
     return true;
   };
-  const { files: docs, missingRootDocs } = collectDocFiles();
+  const { files: docs, missingRootDocs, gitLsErrors } = collectDocFiles();
   console.log(`📚 掃 ${docs.length} 份 harness 文件的檔案引用…`);
+
+  // Codex R1 F2:git ls-files 真錯 → fail-closed(不靜默少掃)
+  if (gitLsErrors.length > 0) {
+    console.error(
+      `\n❌ git ls-files 失敗(${gitLsErrors.length} 條 pathspec)—— fail-closed 避免 gate 少掃靜默通過:\n` +
+        gitLsErrors.map((e) => `  - ${e}`).join('\n') +
+        '\n💡 檢查 git 可執行、pathspec 合法(母 repo 保 :(glob) fnmatch magic 相容)。'
+    );
+    process.exit(1);
+  }
 
   // 缺了固定 ROOT_DOCS → 直接失敗(不是靜默少驗一份)
   if (missingRootDocs.length > 0) {
