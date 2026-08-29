@@ -1,3 +1,4 @@
+// @vitest-environment node
 // Tests for scripts/check-doc-refs.ts(doc-ref checker)
 //
 // 驗 pure functions:
@@ -42,6 +43,38 @@ describe('extractRefs', () => {
     expect(refs).toEqual([
       { type: 'plain', rawPath: 'stack/nextjs-prisma/components/widget.tsx', line: 1 },
       { type: 'plain', rawPath: 'docs/example.tsx', line: 1 },
+    ]);
+  });
+
+  it('動態 segment `[foo]` 不被截斷(Next.js / SvelteKit / Astro 動態路由通用)', () => {
+    // regression:字元類不含 `[` `]` 會在 `[` 處斷、抽出半截路徑或漏驗整條
+    const refs = extractRefs('see stack/nextjs-prisma/app/[token]/page.tsx and docs/[locale]/README.md');
+    expect(refs).toEqual([
+      { type: 'plain', rawPath: 'stack/nextjs-prisma/app/[token]/page.tsx', line: 1 },
+      { type: 'plain', rawPath: 'docs/[locale]/README.md', line: 1 },
+    ]);
+  });
+
+  it('glob `**/pattern` 的後半截不被誤收(兩層守門:字元類無 `*` + prev-char 檢查)', () => {
+    // regression:SOP 的清單常寫 `**/tests/*.test.ts` 這類 glob。兩層守門:
+    //   (a) PLAIN_PATH_RE 字元類不含 `*` → 含 `*` 的 pattern(如 `**/tests/*.test.ts`)
+    //       整條 match 不到、根本不會被考慮
+    //   (b) prev-char 守門 → 對 `**/scripts/foo.ts` 這種只有前置斜線的 glob(不含尾段
+    //       `*`)、regex 從 `scripts/` 起匹配,把 `**/` 留在外面 → prev 是 `/` skip
+    // 本 case 兩半各自驗一種:第一半靠 (a)、第二半靠 (b)。若未來為支援 glob 把 `*`
+    // 加進字元類且拿掉 prev-char 檢查、第二半會轉紅、抓到 regression。
+    const refs = extractRefs('清單:`**/tests/*.test.ts`、`**/scripts/foo.ts`');
+    expect(refs).toEqual([]);
+  });
+
+  it('`./` 前綴的相對路徑要被抽出(Codex R1 F1 regression)', () => {
+    // regression:前字元檢查會把 `.`/`/` 當「更長 token 的一部分」而 skip,
+    // 讓 `./scripts/foo.ts` 這種常見寫法逃過驗證 = fail-open。修法:PLAIN_PATH_RE
+    // 前綴加 `(?:\.\/)?`,rawPath 保留 `./`(path.posix.normalize 後續會消掉)。
+    const refs = extractRefs('see ./scripts/definitely-missing.ts and ./docs/x.md');
+    expect(refs).toEqual([
+      { type: 'plain', rawPath: './scripts/definitely-missing.ts', line: 1 },
+      { type: 'plain', rawPath: './docs/x.md', line: 1 },
     ]);
   });
 
