@@ -56,7 +56,7 @@
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -66,6 +66,18 @@ import { acknowledgeSelfPr } from "./lib/marker-self-pr";
 // ───────────────────────────────────────── constants
 
 const DENY_SRC = "scripts/deny-terms.txt";
+/**
+ * PR A1:history baseline config 路徑。
+ * config 檔內容:{ "schemaVersion": 1, "sourceTermHistoryBaseline": "<40-hex>" | null }
+ * 用途:讓 history blob 掃描只掃 `baseline..HEAD`(grandfather baseline 及更早的
+ * 去識別化 debt),不重寫公開 git 歷史仍能讓 gate 綠。
+ * 完整契約:見 `loadBaselineConfig` docstring。
+ * ⚠️ 只影響 source-term(去識別化)掃描;**gitleaks 秘密掃描仍是全史政策**、
+ *    兩者不相干(見 `.github/workflows/ci.yml` 檔頭註解)。
+ */
+const BASELINE_CONFIG_PATH = "scripts/source-term-baseline.json";
+const BASELINE_SCHEMA_VERSION = 1;
+const BASELINE_SHA_RE = /^[0-9a-f]{40}$/i;
 const FULL_EXCLUDES = [
   ":!scripts/deny-terms.txt",
   ":!package-lock.json",
@@ -280,6 +292,111 @@ function repoRoot(): string {
 function loadDenyTerms(root: string): string[] {
   const p = path.join(root, DENY_SRC);
   return stripCommentsAndBlanks(readFileSync(p, "utf-8"));
+}
+
+/**
+ * PR A1:讀 baseline config,fail-closed 解析。
+ *
+ * 回傳 `{ baseline: string | null }`:
+ *   - baseline = null → 無 baseline(舊行為,history 全史掃)
+ *   - baseline = 字串 → history scan 只掃 `baseline..HEAD`(呼叫端還要 validate)
+ *
+ * fail-closed 情境(throw Error,呼叫端 catch → exit 1):
+ *   - config 檔存在但 JSON malformed
+ *   - `schemaVersion` 缺 / 非數字 / ≠ 支援版本(BASELINE_SCHEMA_VERSION)
+ *
+ * 舊行為 fallback(D3/D4,回 `{ baseline: null }`):
+ *   - config 檔不存在(D4:向下相容,downstream fork 未建 config 檔)
+ *   - `sourceTermHistoryBaseline` 缺 / null / 空字串(D3:讓「未設 baseline」的
+ *     downstream 專案沿用嚴格全史掃、不因為 config 檔存在就變寬鬆)
+ *
+ * ⚠️ 純資料 loader:baseline 值本身的合法性(40-hex / rev-parse / ancestor)
+ *    由 `validateBaseline` 另行檢查——三者任一失敗一律 fail-closed。
+ */
+export function parseBaselineConfig(text: string): { baseline: string | null } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (e) {
+    throw new Error(
+      `${BASELINE_CONFIG_PATH}:JSON 解析失敗 — ${(e as Error).message}`
+    );
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`${BASELINE_CONFIG_PATH}:root 必須是 JSON object`);
+  }
+  const obj = parsed as Record<string, unknown>;
+  if (obj.schemaVersion !== BASELINE_SCHEMA_VERSION) {
+    throw new Error(
+      `${BASELINE_CONFIG_PATH}:schemaVersion 未知(收到 ${JSON.stringify(
+        obj.schemaVersion
+      )},本 checker 只支援 ${BASELINE_SCHEMA_VERSION})`
+    );
+  }
+  const raw = obj.sourceTermHistoryBaseline;
+  if (raw === undefined || raw === null || raw === "") {
+    return { baseline: null };
+  }
+  if (typeof raw !== "string") {
+    throw new Error(
+      `${BASELINE_CONFIG_PATH}:sourceTermHistoryBaseline 必須是字串或 null(收到 ${typeof raw})`
+    );
+  }
+  return { baseline: raw };
+}
+
+function loadBaselineConfig(root: string): { baseline: string | null } {
+  const p = path.join(root, BASELINE_CONFIG_PATH);
+  if (!existsSync(p)) return { baseline: null };
+  return parseBaselineConfig(readFileSync(p, "utf-8"));
+}
+
+/**
+ * PR A1:驗證 baseline SHA 三項合法性(fail-closed 前提)。
+ *
+ * 三條檢查(逐條可獨立 kill;移除任一條 → 對應 P1e/P1f/P1i 測試轉綠):
+ *   ① 40 字元十六進位(擋短 SHA / 打錯字)
+ *   ② `git rev-parse --verify <sha>` 成功(擋不存在的 SHA)
+ *   ③ `git merge-base --is-ancestor <sha> HEAD` 成功(擋孤立 branch / 錯裝的
+ *      baseline)——祖先才有 `baseline..HEAD` 語意
+ *
+ * 通過三條 → { ok: true };任一條失敗 → { ok: false, reason: <明確訊息>}。
+ * 呼叫端(main)收到 !ok 一律 exit 1,不 fallback 到全史掃描——baseline 是治理
+ * 決策,壞掉不能靜默降級。
+ */
+export function validateBaseline(
+  root: string,
+  baseline: string
+): { ok: true } | { ok: false, reason: string } {
+  if (!BASELINE_SHA_RE.test(baseline)) {
+    return {
+      ok: false,
+      reason: `baseline 必須是 40 字元 hex SHA(收到「${baseline}」)`,
+    };
+  }
+  const rp = spawnSync(
+    "git",
+    ["-C", root, "rev-parse", "--verify", "--quiet", `${baseline}^{commit}`],
+    { encoding: "utf-8", stdio: "pipe" }
+  );
+  if (rp.status !== 0) {
+    return {
+      ok: false,
+      reason: `baseline SHA rev-parse 失敗 — 找不到 commit「${baseline}」(是否 shallow clone / SHA 打錯?)`,
+    };
+  }
+  const mb = spawnSync(
+    "git",
+    ["-C", root, "merge-base", "--is-ancestor", baseline, "HEAD"],
+    { encoding: "utf-8", stdio: "pipe" }
+  );
+  if (mb.status !== 0) {
+    return {
+      ok: false,
+      reason: `baseline 不是 HEAD 的 ancestor(baseline ${baseline.slice(0, 8)} 與 HEAD 無祖先關係 → baseline..HEAD 語意不成立)`,
+    };
+  }
+  return { ok: true };
 }
 
 /**
@@ -508,9 +625,18 @@ function scanGitHistoryBlobs(
   root: string,
   nonCaFile: string | null,
   caFile: string | null,
-  syntaxNonCaFile: string | null
+  syntaxNonCaFile: string | null,
+  baseline: string | null
 ): Scan[] {
-  const revs = execFileSync("git", ["-C", root, "rev-list", "--all"], {
+  // PR A1:baseline 給 → 只掃 `baseline..HEAD`(grandfather baseline 及更早);
+  // baseline null → 全史掃(舊行為 / D3-D4 fallback)。
+  // ⚠️ `baseline..HEAD` 排除 baseline 本身 → baseline 的 blob 也被 grandfather。
+  //    這是刻意設計:baseline 是「主線當下狀態」的 snapshot,包含當時已存在的
+  //    去識別化 debt;fix commit 產生的**新** blob 落在 baseline..HEAD、仍會被掃。
+  const revListArgs = baseline
+    ? ["-C", root, "rev-list", `${baseline}..HEAD`]
+    : ["-C", root, "rev-list", "--all"];
+  const revs = execFileSync("git", revListArgs, {
     encoding: "utf-8",
     maxBuffer: 256 * 1024 * 1024,
   })
@@ -683,6 +809,34 @@ function main(): number {
     `── allowedPrs: ${allowedPrs.size} 個 PR 號被納入放行清單(delivery 已 merge ${mergedCount} + self-PR ${selfPrCount};collision 時 self ∈ delivery)──`
   );
 
+  // PR A1:載入 baseline config、決定 history scan 範圍(fail-closed on error)
+  let baseline: string | null = null;
+  try {
+    baseline = loadBaselineConfig(root).baseline;
+  } catch (e) {
+    console.error(`❌ baseline config 載入失敗:${(e as Error).message}`);
+    for (const c of cleanups) c();
+    return 1;
+  }
+  if (baseline !== null) {
+    const v = validateBaseline(root, baseline);
+    if (!v.ok) {
+      console.error(`❌ baseline 驗證失敗:${v.reason}`);
+      for (const c of cleanups) c();
+      return 1;
+    }
+  }
+  // Startup 印掃描範圍(plan §5「啟動時輸出掃描範圍」)
+  if (baseline) {
+    console.log(
+      `── history scan range: baseline..HEAD(grandfather ≤ ${baseline.slice(0, 8)},見 ${BASELINE_CONFIG_PATH})──`
+    );
+  } else {
+    console.log(
+      `── history scan range: --all(no baseline configured,${BASELINE_CONFIG_PATH} 不存在或 baseline 為 null)──`
+    );
+  }
+
   let fail = false;
   try {
     console.log("── [1/3] working tree 掃描 ──");
@@ -698,13 +852,18 @@ function main(): number {
     if (!wtFail) console.log("✅ working tree 乾淨");
     else fail = true;
 
-    console.log("── [2/3] git 全史 blob 掃描 ──");
+    console.log(
+      baseline
+        ? "── [2/3] git 歷史 blob 掃描(baseline..HEAD)──"
+        : "── [2/3] git 全史 blob 掃描 ──"
+    );
     let histFail = false;
     for (const scan of scanGitHistoryBlobs(
       root,
       nonCaFile?.file ?? null,
       caFile?.file ?? null,
-      syntaxNonCaFile?.file ?? null
+      syntaxNonCaFile?.file ?? null,
+      baseline
     )) {
       if (!processScan(scan, allowedPrs)) histFail = true;
     }

@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "sourceTermHistoryBaseline": "641065227924184b058b3f64c1c9f9971a3a17b4",
+  "_comment": "PR A1(HARNESS_OPTIMIZATION_IMPLEMENTATION_PLAN.md §5):source-term(去識別化)gate 的 history scan cutover。baseline 及更早的 blob 一律 grandfather(去識別化 debt 不重寫公開歷史);baseline..HEAD 內的新 blob 仍嚴格擋。⚠️ 只影響 source-term 掃描,不影響 gitleaks 秘密全史掃描(兩者獨立政策)。schema/loader/validator 定義:scripts/check-no-source-terms.ts(parseBaselineConfig / validateBaseline / BASELINE_SCHEMA_VERSION)。baseline 更新為治理決策,不得隨意翻動——修改本檔請走 PR + Owner 拍板。"
+}
