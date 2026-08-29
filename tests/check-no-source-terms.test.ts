@@ -1354,6 +1354,82 @@ describe("check-no-source-terms — history baseline(PR A1)", () => {
     expect(code).toBe(1);
   });
 
+  it("🔴 P1zz8(round 6 P1 修法):post-baseline commit 含 NUL byte + forbidden text → grep 仍抓(不因 binary detection 短路)", () => {
+    // 舊 grep -I → 對含 NUL 的 stdin 判 binary、整份不掃 → 洗白通過。
+    // 新 grep -a → 強制當 text、繼續掃 text 行、抓 forbidden
+    const dir = makeRepo({
+      deny: ["forbidden_nul_term"],
+      commits: [{ message: "baseline", files: { "src/init.md": "hello\n" } }],
+    });
+    const baselineSha = shaAt(dir, "HEAD");
+    // Commit A:同一 commit 加「含 NUL 的檔」與「含 forbidden text 的檔」
+    writeFileSync(join(dir, "src/binaryish.bin"), "prefix\x00suffix\n", "utf-8");
+    writeFileSync(join(dir, "src/textfile.md"), "contains forbidden_nul_term inline\n", "utf-8");
+    execFileSync("git", ["-C", dir, "add", "-A"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "add binary + forbidden"], { stdio: "ignore" });
+    // Commit B:刪除 forbidden(current tree 剩 binary、乾淨)
+    execFileSync("git", ["-C", dir, "rm", "-q", "src/textfile.md"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "remove forbidden"], { stdio: "ignore" });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: baselineSha,
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("git 歷史 blob 含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1zz9(round 6 P2 修法):merge commit 保留 grandfathered 內容(baseline 已有)→ --first-parent 不誤觸發", () => {
+    // baseline commit 已含 forbidden(grandfathered);main branch 保留、side branch
+    // 刪除;merge side into main → merge commit 對 first parent(main)diff 空
+    // → 不誤觸發。舊 -m 對 side parent 的 diff 把 forbidden 標為 add → 誤紅
+    const dir = makeRepo({
+      deny: ["forbidden_gf_term"],
+      commits: [
+        {
+          message: "baseline with grandfathered",
+          files: { "src/legacy.md": "contains forbidden_gf_term inline\n" },
+        },
+      ],
+    });
+    const baselineSha = shaAt(dir, "HEAD");
+    // 分 side branch 刪除 legacy
+    execFileSync("git", ["-C", dir, "checkout", "-q", "-b", "side"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "rm", "-q", "src/legacy.md"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "side: delete legacy"], { stdio: "ignore" });
+    // 回 main 加無關檔
+    execFileSync("git", ["-C", dir, "checkout", "-q", "main"], { stdio: "ignore" });
+    writeFileSync(join(dir, "src/other.md"), "unrelated\n", "utf-8");
+    execFileSync("git", ["-C", dir, "add", "src/other.md"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "main: unrelated"], { stdio: "ignore" });
+    // Merge side into main;side 刪除但 main 保留 → merge 結果:legacy.md 仍在
+    // (conflict? no,一邊刪一邊留 = ours 保留;但 git merge 預設會刪
+    //  除非 recursive resolve;用 -s ours 明確保留 main 版本)
+    execFileSync("git", ["-C", dir, "merge", "--no-ff", "-s", "ours", "-q", "-m", "merge side (keep main)", "side"], { stdio: "ignore" });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: baselineSha,
+    });
+    const { code, out } = runChecker(dir);
+    // baseline..HEAD 內三個 commit(side delete、main unrelated、merge)
+    // - side delete commit 若被歸為 baseline..HEAD 內(orphan side branch 不會被 rev-list 到)
+    //   → 側 branch 未 merge 進主線前 rev-list 掃不到
+    //   → merge 之後,side commit 進入 rev-list baseline..HEAD
+    //   → side commit 對其 parent(baseline)diff:`-forbidden_gf_term`(刪除,不是 add)
+    //   → 不觸發
+    // - main unrelated commit 對 parent diff:`+unrelated`,不含 forbidden
+    // - merge commit 對 first parent(main)diff:legacy.md 未變(both 有)→ 空
+    // 三個 commit 都不出 forbidden add hit → 通過
+    expect(out).toContain("history scan range: baseline..HEAD");
+    // history 段乾淨(此段紅代表 --first-parent 沒生效、誤觸發)
+    const hasHistBlobHit = out.includes("git 歷史 blob 含來源專案識別詞");
+    expect(hasHistBlobHit).toBe(false);
+    // current tree 仍含 legacy(main keep)→ working tree scan 抓 → exit 1
+    // 這是預期,不是本測試的重點
+    expect(code).toBe(1);
+    expect(out).toContain("working tree(non-CA,全域):含來源專案識別詞");
+  });
+
   it("🔴 P1zz6(round 5 P1 rename 修法):rename dance(rename excluded → scanned + 加內容 + rename 回)→ history scan 抓到", () => {
     // git show 預設開 rename detection → 舊版兩份 patch 只印 rename metadata、
     // 無 + hunk → 洗白通過。新版 `--no-renames` → destination 印成完整新增內容

@@ -738,6 +738,12 @@ function scanRevDiff(
   //   `--text` + `--no-textconv`:.gitattributes `-diff` 屬性讓 git show 只印
   //     「Binary files differ」→ 無 hunk → 漏抓。強制 text 輸出 + 關 textconv
   //     filter,確保純文字 patch。
+  // Round 6 P2 修法:`--first-parent` 對 merge commit 只產出「側 branch 帶進來
+  //   的新增」diff。舊版 `-m` 對每 parent 各自 diff → merge 保留 grandfathered
+  //   內容(baseline 已有、first parent 保留、另一 parent 刪除)時對另一 parent
+  //   的 diff 會誤把該行標為 add → 誤觸發。--first-parent 只看 first parent、
+  //   避免誤觸發;conflict resolution 加的內容仍在 first-parent-diff 內出現
+  //   (R3 P2 場景仍抓)。
   const showRes = spawnSync(
     "git",
     [
@@ -745,6 +751,7 @@ function scanRevDiff(
       root,
       "show",
       "-m",
+      "--first-parent",
       "--no-renames",
       "--text",
       "--no-textconv",
@@ -764,7 +771,11 @@ function scanRevDiff(
   if (added.length === 0) {
     return { label, mode, hits: [], rc: 1 }; // clean(等同 git grep 的 rc=1)
   }
-  const grepRes = spawnSync("grep", ["-niIE", "-f", patternFile], {
+  // Round 6 P1 修法:`-a`(`--binary-files=text`)覆蓋 `-I` 的 binary detection。
+  // 舊 `-I` 讓 grep 對含 NUL byte 的 stdin 直接判 binary + 不掃、回 clean →
+  // post-baseline commit 含 NUL byte 檔 + 加 forbidden text 行、後刪除 → 洗白。
+  // 加 `-a` 強制當 text 掃(input 已由 git show --text 強制文字產出,不會爆量)。
+  const grepRes = spawnSync("grep", ["-naiE", "-f", patternFile], {
     input: added,
     encoding: "utf-8",
     maxBuffer: 256 * 1024 * 1024,
