@@ -270,10 +270,15 @@ function collectDocFiles(): {
     // 空 list、不進 catch;catch 到必為真錯(git 環境問題、pathspec 語法錯)。
     const addFromGit = (pathspec: string) => {
       try {
-        const listed = execFileSync('git', ['-C', REPO_ROOT, 'ls-files', '--', pathspec], {
+        // Codex R2 F4:`-z` NUL 分隔避開 `core.quotePath` C-style escape。
+        // 預設 git 對非 ASCII/換行檔名(如 `docs/規格.md`)會加雙引號 + escape,
+        // `.split('\n')` 拿到 quoted 字串傳給 readFileSync → ENOENT 崩潰,而
+        // fs walk fallback 拿原檔名不崩 → 兩 strategy 對特殊檔名不等價。
+        // 用 `-z` + `.split('\0')` 兩 strategy 對齊。
+        const listed = execFileSync('git', ['-C', REPO_ROOT, 'ls-files', '-z', '--', pathspec], {
           encoding: 'utf-8',
         });
-        for (const rel of listed.split('\n').filter(Boolean)) pushIfNew(rel);
+        for (const rel of listed.split('\0').filter(Boolean)) pushIfNew(rel);
       } catch (e) {
         const msg = (e as Error).message.split('\n')[0] ?? 'unknown';
         gitLsErrors.push(`git ls-files ${pathspec}: ${msg}`);
