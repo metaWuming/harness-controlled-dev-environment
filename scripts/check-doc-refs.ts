@@ -55,18 +55,21 @@
 import { execFileSync, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-// CWD-independent root resolution
+// CWD-independent root resolution(git 不可用時退回本檔位置的上一層)
 const REPO_ROOT = (() => {
   try {
     return execSync('git rev-parse --show-toplevel', { encoding: 'utf-8' }).trim();
   } catch {
-    return path.resolve(__dirname, '..');
+    return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   }
 })();
 
-// 要掃的 harness 文件:固定 root 檔 + 掃描目錄(不存在者自動跳過,見 collectDocFiles)
-const ROOT_DOCS = ['CLAUDE.md', 'AGENTS.md', 'README.md', 'TODOS.md'];
+// 要掃的 harness 文件:固定 root 檔 + 掃描目錄。ROOT_DOCS 缺檔會被 main() 明報
+// (改名/刪除要同步從清單移除、不允許靜默略過)。採用者可自行 append(如 AGENTS.md、
+// DESIGN.md、PROJECT_VISION.md 等專案專屬治理文件)。
+const ROOT_DOCS = ['CLAUDE.md', 'README.md', 'TODOS.md'];
 // 非遞迴掃描目錄(目錄下 *.md)
 const SCAN_DIRS = ['docs', '.claude/sop'];
 // 遞迴掃描目錄(目錄下 **/*.md;記憶層含 archive 子目錄)
@@ -90,8 +93,12 @@ const FILE_EXT_RE = /\.(md|markdown|ts|tsx|mjs|cjs|js|jsx|prisma|sh|json|ya?ml|h
 // ⚠️ 副檔名 alternation 必須「長的排前面」(tsx 在 ts 前):regex 是最先匹配優先,
 //    若 `ts` 排在 `tsx` 前,`foo.tsx` 會被截成 `foo.ts`(吃掉 ts、剩 x)→ 對真實 .tsx
 //    檔產生假陽性。見 tests/check-doc-refs.test.ts「.tsx 純路徑不被截斷」。
+// 字元類含 `[` `]`:路徑段內的字元類(`[foo]`)—— Next.js App Router / SvelteKit /
+//    Astro 動態 segment 都用同一形狀(如 `stack/nextjs-prisma/app/[token]/page.tsx`)。
+//    不含中括號就會在 `[` 斷掉、抽出半截路徑或整條漏驗。規則本身通用、不假設特定框架;
+//    採用者若不用動態 segment 也不會誤觸(`[` 不會出現在一般路徑就不影響)。
 const PLAIN_PATH_RE =
-  /(?:docs|scripts|tests|stack|\.claude|\.github)\/[A-Za-z0-9._/-]+\.(?:md|tsx|ts|mjs|prisma|sh|json|ya?ml)/g;
+  /(?:docs|scripts|tests|stack|\.claude|\.github)\/[A-Za-z0-9._/[\]-]+\.(?:md|tsx|ts|mjs|prisma|sh|json|ya?ml)/g;
 const MD_LINK_RE = /\[[^\]]*\]\(([^)]+)\)/g;
 const IMPORT_RE = /^@([A-Za-z0-9._/-]+\.[A-Za-z0-9]+)\s*$/;
 
@@ -166,6 +173,12 @@ export function extractRefs(content: string): Ref[] {
       const p = pm[0];
       if (linkPaths.has(p)) continue;
       if (isPlaceholder(p)) continue; // 範例 / 佔位符(prose 內 scripts/xxx.ts)
+      // 前一個字元屬「路徑／glob 的一部分」→ 這個 match 是更長 token 的**後半截**,
+      // 不是一個獨立的檔案引用。實例:SOP 寫 glob `**/tests/*.test.ts`,regex 從
+      // `tests/` 起匹配、把 `**/` 留在外面 → 會被當成「repo 根下有個 tests/*.test.ts」
+      // 而誤報。前字元含 `*` / `/` / 英數 → 屬前一段路徑或 glob wildcard、跳過。
+      const prev = pm.index > 0 ? line[pm.index - 1] : '';
+      if (prev && /[A-Za-z0-9_./*-]/.test(prev)) continue;
       refs.push({ type: 'plain', rawPath: p, line: lineNo });
     }
   }
@@ -214,32 +227,43 @@ export function checkRefs(
   return violations;
 }
 
-/** 列出要掃的 doc 檔(相對 repo root),只收實際存在的。 */
-function collectDocFiles(): string[] {
+/**
+ * 列出要掃的 doc 檔(相對 repo root)。
+ * 🔴 雙審 findings(兩邊都抓到、Activa 端已實證):
+ *   ① 舊版對 `ROOT_DOCS` 缺檔**靜默略過** → 把某個 root doc 改名就讓 gate 少驗一份、
+ *      而且照樣印 ✅。改成回報缺檔,由 main() 判成 violation(要移除就明確從清單刪)。
+ *   ② 舊版對 SCAN_DIRS/SCAN_DIRS_RECURSIVE 做 fs walk → gitignored 的本機草稿也會被
+ *      掃進來、「本機 gate 紅、CI 綠」。改用 `git ls-files` 只認被追蹤的檔案,本機
+ *      與 CI 才看到同一組輸入。
+ *   ⚠️ pathspec 語意:git 預設 `${dir}/*.md` 是**遞迴**(prefix 匹配),要非遞迴要用
+ *      `:(glob)` fnmatch magic 讓 `*` 不吃 `/`。這裡保留原意:SCAN_DIRS 非遞迴、
+ *      SCAN_DIRS_RECURSIVE 遞迴。
+ */
+function collectDocFiles(): { files: string[]; missingRootDocs: string[] } {
   const files: string[] = [];
-  const add = (rel: string) => {
-    if (fs.existsSync(path.join(REPO_ROOT, rel))) files.push(rel);
-  };
-  for (const f of ROOT_DOCS) add(f);
-  for (const dir of SCAN_DIRS) {
-    const abs = path.join(REPO_ROOT, dir);
-    if (!fs.existsSync(abs)) continue;
-    for (const entry of fs.readdirSync(abs)) {
-      if (entry.endsWith('.md')) add(`${dir}/${entry}`);
-    }
+  const missingRootDocs: string[] = [];
+  for (const f of ROOT_DOCS) {
+    if (fs.existsSync(path.join(REPO_ROOT, f))) files.push(f);
+    else missingRootDocs.push(f);
   }
-  // 遞迴目錄(記憶層含 archive 子目錄)
-  const walk = (relDir: string) => {
-    const abs = path.join(REPO_ROOT, relDir);
-    if (!fs.existsSync(abs)) return;
-    for (const entry of fs.readdirSync(abs, { withFileTypes: true })) {
-      const rel = `${relDir}/${entry.name}`;
-      if (entry.isDirectory()) walk(rel);
-      else if (entry.name.endsWith('.md')) add(rel);
+  const addFromGit = (pathspec: string) => {
+    let listed = '';
+    try {
+      listed = execFileSync('git', ['-C', REPO_ROOT, 'ls-files', '--', pathspec], {
+        encoding: 'utf-8',
+      });
+    } catch {
+      return; // 目錄不存在 / 非 git repo → 跳過(ROOT_DOCS 那組已足以判定 gate 有輸入)
+    }
+    for (const rel of listed.split('\n').filter(Boolean)) {
+      if (!files.includes(rel)) files.push(rel);
     }
   };
-  for (const dir of SCAN_DIRS_RECURSIVE) walk(dir);
-  return files;
+  // 非遞迴:`:(glob)` 開 fnmatch、`*` 不吃 `/` → 只匹配直屬 .md
+  for (const dir of SCAN_DIRS) addFromGit(`:(glob)${dir}/*.md`);
+  // 遞迴:預設 pathspec prefix 匹配、涵蓋所有深度
+  for (const dir of SCAN_DIRS_RECURSIVE) addFromGit(`${dir}/*.md`);
+  return { files, missingRootDocs };
 }
 
 function main() {
@@ -265,8 +289,19 @@ function main() {
     plannedSkips++;
     return true;
   };
-  const docs = collectDocFiles();
+  const { files: docs, missingRootDocs } = collectDocFiles();
   console.log(`📚 掃 ${docs.length} 份 harness 文件的檔案引用…`);
+
+  // 缺了固定 ROOT_DOCS → 直接失敗(不是靜默少驗一份)
+  if (missingRootDocs.length > 0) {
+    console.error(
+      `\n❌ ROOT_DOCS 清單裡有 ${missingRootDocs.length} 份 harness 文件不存在:\n` +
+        missingRootDocs.map((f) => `  - ${f}`).join('\n') +
+        '\n💡 檔案真的搬走／刪掉了 → 把它從 scripts/check-doc-refs.ts 的 ROOT_DOCS 明確移除;' +
+        '\n   否則這道 gate 會安靜地少驗一份文件還印 ✅。'
+    );
+    process.exit(1);
+  }
 
   const allViolations: Violation[] = [];
   let totalRefs = 0;
@@ -282,6 +317,15 @@ function main() {
     console.log(
       `ℹ️  ${plannedSkips} 個引用指向 PLANNED_PATHS(模板尚在建置的檔案)→ 暫跳過;檔案落地後自動開始驗證`
     );
+  }
+
+  // 一個引用都沒抽到 → 不是「全部通過」,是這道 gate 沒在驗任何東西(掃描清單壞了 /
+  // regex 壞了)。舊版會印 ✅ 並 exit 0(fail-open)。
+  if (totalRefs === 0) {
+    console.error(
+      '\n❌ 0 個檔案引用被抽出 — 這代表掃描清單或 regex 壞了,不代表文件乾淨(fail-closed)'
+    );
+    process.exit(1);
   }
 
   if (allViolations.length === 0) {
@@ -302,7 +346,9 @@ function main() {
   process.exit(1);
 }
 
-// 只在直接 invoke 時跑 main(unit test import 時跳過)
-if (typeof require !== 'undefined' && require.main === module) {
+// 只在直接 invoke 時跑 main(unit test import 時跳過)。
+// ESM 下沒有 require.main —— 比對 argv[1] 與本模組 URL。
+const invokedPath = process.argv[1];
+if (invokedPath && pathToFileURL(invokedPath).href === import.meta.url) {
   main();
 }

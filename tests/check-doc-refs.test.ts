@@ -1,3 +1,4 @@
+// @vitest-environment node
 // Tests for scripts/check-doc-refs.ts(doc-ref checker)
 //
 // 驗 pure functions:
@@ -43,6 +44,22 @@ describe('extractRefs', () => {
       { type: 'plain', rawPath: 'stack/nextjs-prisma/components/widget.tsx', line: 1 },
       { type: 'plain', rawPath: 'docs/example.tsx', line: 1 },
     ]);
+  });
+
+  it('動態 segment `[foo]` 不被截斷(Next.js / SvelteKit / Astro 動態路由通用)', () => {
+    // regression:字元類不含 `[` `]` 會在 `[` 處斷、抽出半截路徑或漏驗整條
+    const refs = extractRefs('see stack/nextjs-prisma/app/[token]/page.tsx and docs/[locale]/README.md');
+    expect(refs).toEqual([
+      { type: 'plain', rawPath: 'stack/nextjs-prisma/app/[token]/page.tsx', line: 1 },
+      { type: 'plain', rawPath: 'docs/[locale]/README.md', line: 1 },
+    ]);
+  });
+
+  it('glob `**/pattern` 的後半截不被誤收(前字元是 `/` 屬 glob 一部分 → 跳)', () => {
+    // regression:SOP 的清單常寫 `**/tests/*.test.ts` 這類 glob,regex 從 `tests/`
+    // 起匹配、把 `**/` 留在外面 → 舊版會誤報「repo 根下有個 tests/*.test.ts」而假陽性
+    const refs = extractRefs('清單:`**/tests/*.test.ts`、`**/scripts/foo.ts`');
+    expect(refs).toEqual([]);
   });
 
   it('跳過 fenced code block 內容', () => {
