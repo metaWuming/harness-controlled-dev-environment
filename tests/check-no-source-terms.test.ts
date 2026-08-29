@@ -1354,6 +1354,26 @@ describe("check-no-source-terms — history baseline(PR A1)", () => {
     expect(code).toBe(1);
   });
 
+  it("🔴 P1zz5(round 4 P2 修法):shallow clone + template: prefix + rev-parse 失敗 → fail-closed(不誤降級)", () => {
+    // Round 4 P2:template-fallback 在 shallow clone 誤降級 → 全史掃只覆蓋 shallow
+    // suffix、洗白 blob 在 shallow 邊界之前的漏抓、false green。修法:template-
+    // fallback 前先檢查 shallow,shallow + 找不到 SHA 一律 fail-closed
+    const dir = makeRepo({
+      deny: ["forbidden_shallow_term"],
+      commits: [{ message: "init", files: { "src/a.md": "clean\n" } }],
+    });
+    // Touch `.git/shallow`:git 認為此 repo 是 shallow clone
+    writeFileSync(join(dir, ".git/shallow"), shaAt(dir, "HEAD") + "\n", "utf-8");
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: "template:" + "0".repeat(40),
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("shallow clone");
+    expect(out).toContain("拒絕降級");
+    expect(code).toBe(1);
+  });
+
   it("🔴 P1zz4(round 3 P2 修法):baseline..HEAD 內 merge commit 引入 forbidden(conflict resolution 加的 `+forbidden`)→ combined-diff 也要抓", () => {
     // Round 3 P2:git show 對 merge commit 預設輸出 combined diff(`++forbidden`
     // 前綴),strip 一個 marker 後仍有 `+`、anchored pattern `^forbidden` 不 match。

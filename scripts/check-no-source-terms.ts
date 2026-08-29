@@ -403,6 +403,20 @@ export function validateBaseline(
   if (rp.status !== 0) {
     if (isTemplate) {
       // Template baseline 在下游 fork 的新 history 內找不到 → 降級,不 fail-closed
+      // Round 4 P2:先擋 shallow clone——rev-parse 失敗可能是 shallow 邊界之外
+      // 的合法 SHA、不是「不在 history」;誤降級成 template-fallback 只掃 shallow
+      // suffix → 洗白 blob 在 shallow 邊界之前的漏抓、false green。
+      const shallow = spawnSync(
+        "git",
+        ["-C", root, "rev-parse", "--is-shallow-repository"],
+        { encoding: "utf-8", stdio: "pipe" }
+      );
+      if (shallow.status === 0 && shallow.stdout.trim() === "true") {
+        return {
+          kind: "fail",
+          reason: `template baseline「${sha.slice(0, 8)}」rev-parse 失敗且當前是 shallow clone — 無法區分「downstream new history」與「合法 SHA 在 shallow 邊界之外」,拒絕降級全史掃(全史掃在 shallow 只覆蓋 shallow suffix、有洗白漏抓風險)。修法:用 fetch-depth: 0 拉全史,或改成本 repo 的 initial commit SHA(去掉 template: prefix)`,
+        };
+      }
       return {
         kind: "template-fallback",
         templateSha: sha,
