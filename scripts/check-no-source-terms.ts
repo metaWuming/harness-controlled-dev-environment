@@ -775,7 +775,12 @@ function scanRevDiff(
   // 舊 `-I` 讓 grep 對含 NUL byte 的 stdin 直接判 binary + 不掃、回 clean →
   // post-baseline commit 含 NUL byte 檔 + 加 forbidden text 行、後刪除 → 洗白。
   // 加 `-a` 強制當 text 掃(input 已由 git show --text 強制文字產出,不會爆量)。
-  const grepRes = spawnSync("grep", ["-naiE", "-f", patternFile], {
+  // Step 5 adversarial finding 3 修法:去掉 `-n` — 這裡 grep 對 patch 拼接的
+  //   `added` 字串掃,`-n` 印的 line number 是「拼接後合成序號」、不指向任何
+  //   真檔 patch line,誤導讀者去 <rev> 找「第 N 行」。file:line attribution
+  //   本來就是 diff-scan 語意的已知限制(見 scanBaselineToHeadDiffs docstring),
+  //   不印假數字比印誤導性數字誠實。
+  const grepRes = spawnSync("grep", ["-aiE", "-f", patternFile], {
     input: added,
     encoding: "utf-8",
     maxBuffer: 256 * 1024 * 1024,
@@ -944,7 +949,10 @@ function scanCommitMessages(root: string, allPatternFile: string): Scan {
     ["-C", root, "log", "--all", "--format=%H %an <%ae> %s %b"],
     { encoding: "utf-8", maxBuffer: 512 * 1024 * 1024 }
   );
-  const r = spawnSync("grep", ["-niIE", "-f", allPatternFile], {
+  // Step 5 adversarial finding 4 修法:對齊 scanRevDiff 用 `-a`,defense-in-depth
+  //   一致(即使 git log --format=%s%b 實務上不會產出 NUL、可觸發性極低,兩處
+  //   sink 都是 stdin-based grep、風險模型同樣)
+  const r = spawnSync("grep", ["-naiE", "-f", allPatternFile], {
     input: log,
     encoding: "utf-8",
     maxBuffer: 256 * 1024 * 1024,
