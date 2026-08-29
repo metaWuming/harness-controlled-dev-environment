@@ -10,6 +10,19 @@ type: archive
 
 ---
 
+📅 2026-08-28 ④ — **批 10:TODOS P3 全部收乾(develop-policy 拍板 A + workflow-level env SSOT + shared lib)**
+
+> **緣起**:批 9 (#34) 收尾 defer 進 TODOS P3 的三條 finding。**Owner 拍板本 sprint 全部結束、不再 defer**——Step 4/5 findings conf ≥ 4 一律修進本 sprint、conf ≤ 3 才 skip。三條:A. develop-branch policy 拍板;B. workflow-level `DELIVERY_REFS` 常數機械化;C. `check-todos-markers.ts` 補 `< 1e9` 對稱守。
+> **改動**:5 檔 +190/-29 —— `.github/workflows/ci.yml`(workflow-level `env:` 加 DELIVERY_REFS + MARKER_SELF_PR 常數、兩 step 移除 step-level 定義、註解記 D0 拍板 A);`scripts/lib/marker-self-pr.ts`(新、shared lib 單一入口 acknowledgeSelfPr 三守合起來);`scripts/check-no-source-terms.ts`(import lib 替代 inline 三守);`scripts/check-todos-markers.ts`(import lib + 抽 main() 內 selfPr 讀取 + re-export 給既有 test);`tests/check-todos-markers.test.ts`(7 unit test acknowledgeSelfPr + 2 CLI e2e case 守 call site 接線)。TODOS 三條翻 ✅(#35)+ 加「無 pending P3」尾註(批 10 收乾);progress-archive 歸檔批 8;本 entry。
+> **審查**:Codex CLI 2 rounds(trend 3→0、round 2 罕見 SHIP)——r1 3 P2(SSOT 不是真單一入口 → 抽 shared lib / CLI 接線 e2e 缺 → 加 disposable-repo harness / TODOS 待翻)、r2 0 SHIP。**安全關** `check:cso` fail-closed(表空)→ 純 workflow 集中 + shared lib 抽出 + test → 模板 repo 例外人工判定**不進高風險車道**(D4);**視覺關**未觸發(D5,無 UI 檔)。**Step 5** adversarial-reviewer fresh 審:0 CRITICAL / 3 INFORMATIONAL,Owner「不再 defer」全收:F1 conf 7(MARKER_SELF_PR 也提到 workflow-level、同 SSOT 論證延伸)、F2 conf 6(中段 import + `_` alias → top-level import + 檔頭 export)、F3 conf 5(引號統一雙引號對齊 check-no-source-terms)。cross-model agreement ≈ 0 再度驗證(codex 抓 shared lib / call site、Step 5 抓 SSOT 論證延伸 / 風格 consistency)。
+> **驗證**:typecheck / lint / test 96(56 + 40)/ mutation 探針 3 條(拿 `< 1e9` → boundary case 紅 / 刪 call site → e2e 紅 / F1 revert 前後 gate 綠)/ dogfood 綠 / doc-refs 170 / check:todos 3 個 PR 3 個有 merge 證據。
+> **⭐ 教訓**:①**「單一入口」要真的抽 shared lib、不是同檔 export**——批 10 Phase B 起初把 acknowledgeSelfPr 抽在 check-todos-markers.ts 內為 export pure fn(單 script 內部 SSOT),但 codex round 1 抓到「其實另一 script 仍複製同邏輯」——真正的 SSOT 要建 shared lib、兩 script 都 import。同 SSOT 論證要能延伸到所有相同表面(F1 揭示 MARKER_SELF_PR 表達式也符合、跟 DELIVERY_REFS 同時提工作 flow-level)。②**Owner「不再 defer」政策 + 「該做更多」型 defer 兩者不衝突**——批 7 教訓 ① 說「findings 挑理論邊界時 defer」,批 10 Owner 說「不再 defer」；解法:conf ≥ 4 全修、conf ≤ 3 skip(前者是「不 defer 就得修」的實作、後者是「conf 太低本來就不修」的例外)、無「defer TODOS P3」中間層。批 10 實測 findings 都 conf 5-7、全修得動。③**批 5-10 收乾:8 條 P3 交付 = 完整 TODOS P3 backlog 清 0**——無 pending backlog 就進入「新工作要從 Owner 指示 / 健康檢查 / 新 sprint defer 產出」的 fresh cycle。
+> **⏭️ 下一棒候選**(hint 非 truth):TODOS P3 backlog 清 0、無 pending 條目。若無新 Owner 指示,建議跑一次 weekly health check / 或 batch 7 Step 5 F5(hook vs checker 第 3 段對齊 e2e)散文級預備繼續。
+> **check:claims 逐條處置**:命中 0 處(check:claims dogfood 對本 sprint diff 綠、無新增量詞未 SSOT 錨定)。
+> 📊 成本:CC ~2.5h / Codex review 2 rounds + Step5 1 / P1 0 / P2 6 / Step5 獨立發現 3 個(全收)/ 累計 9 findings。
+> 📐 量測:主迴圈 claude-opus-4-7 預設 effort / Codex r1-2 non-interactive review medium / adversarial-reviewer default / baseline SHA:`2f351b1814d2bfde5f8cbc4e3492b2dd7498fe31` / 來源分佈:初始 patch 內既有缺陷 3(codex r1×3 全:shared lib / call site / TODOS 待翻)・初始 patch 漏改的外部 consumer 3(Step5 F1 MARKER_SELF_PR 同 SSOT 論證延伸、F2 import 風格、F3 引號)・baseline 後新增/修改引入 0(round 1 fix 不引入新表面)
+> **7 步 checklist 狀態**:1 ✅(plan file)/ 2 ✅(D0-D6 全 sensible default;D0 拍板 policy A)/ 3 ✅(2 phase atomic commits + round 1 fix + Step 5 fix + bookkeeping)/ 4 ✅(2 rounds 收乾)/ 4.5 ✅(不進高風險車道)/ 4.6 ✅(未觸發)/ 5 ✅(fresh 審全收)/ 6-7 待執行
+
 📅 2026-08-28 ③ — **批 9:收乾批 8 兩條 TODOS P3 defer(workflow if: gate + F1/F2/F5 informational)**
 
 > **緣起**:批 8 (#33) 收尾 defer 兩條 P3:①Source-term scan 加 `if:` gate 對齊 delivery-branch 白名單(F4);②F1/F2/F5 三條 informational。合計 ~1.5h。
