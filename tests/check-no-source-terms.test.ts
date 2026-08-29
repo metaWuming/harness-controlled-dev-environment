@@ -40,6 +40,7 @@ import {
   parseGrepZLine,
   displayGrepHit,
   findDriftedCaPatterns,
+  extractAddedLinesFromPatch,
 } from "../scripts/check-no-source-terms";
 
 const REPO_ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], {
@@ -294,6 +295,78 @@ describe("findDriftedCaPatterns — CA 常數 vs denylist 漂移守門(Step 5 F1
     const all = ["forbid_a"];
     const ca = ["PR " + "#[0-9]", PREF_PULL + "[0-9]"];
     expect(findDriftedCaPatterns(all, ca).length).toBe(2);
+  });
+});
+
+describe("extractAddedLinesFromPatch — round 2 P1b hunk 解析(strip 一個 + 標記)", () => {
+  it("hunk 內 `+foo` → 新增內容 `foo`(strip 一個 `+`)", () => {
+    const patch = [
+      "diff --git a/x b/x",
+      "index 111..222 100644",
+      "--- a/x",
+      "+++ b/x",
+      "@@ -1 +1 @@",
+      "+foo",
+    ].join("\n");
+    expect(extractAddedLinesFromPatch(patch)).toBe("foo");
+  });
+
+  it("🔴 P1b:內容真的以 `++` 開頭(patch 行為 `+++foo`)不被誤當檔頭丟", () => {
+    const patch = [
+      "diff --git a/x b/x",
+      "@@ -1 +1 @@",
+      "+++foo", // 內容是 `++foo`,strip 一個 `+` → `++foo`
+    ].join("\n");
+    expect(extractAddedLinesFromPatch(patch)).toBe("++foo");
+  });
+
+  it("🔴 P1b:檔頭 `+++ b/path` 出現在 `@@` 之前 → 不採", () => {
+    const patch = [
+      "diff --git a/x b/x",
+      "index 111..222 100644",
+      "--- a/x",
+      "+++ b/x", // 檔頭,不採
+      "@@ -1 +1 @@",
+      "+real content",
+    ].join("\n");
+    expect(extractAddedLinesFromPatch(patch)).toBe("real content");
+  });
+
+  it("🔴 P1b:hunk 間切換(第二 hunk 的 `+++ b/y` 檔頭仍不採)", () => {
+    const patch = [
+      "diff --git a/x b/x",
+      "@@ -1 +1 @@",
+      "+first",
+      "diff --git a/y b/y",
+      "--- a/y",
+      "+++ b/y",
+      "@@ -1 +1 @@",
+      "+second",
+    ].join("\n");
+    expect(extractAddedLinesFromPatch(patch)).toBe("first\nsecond");
+  });
+
+  it("🔴 P1b:hunk 內 `-line`(刪除)+ context 行不採,只採 `+`", () => {
+    const patch = [
+      "diff --git a/x b/x",
+      "@@ -1,3 +1,2 @@",
+      " context",
+      "-deleted",
+      "+added",
+    ].join("\n");
+    expect(extractAddedLinesFromPatch(patch)).toBe("added");
+  });
+
+  it("🔴 P1b:pattern `^foo` 對 strip 後內容命中(對照 grep POSIX ERE 錨點語意)", () => {
+    // 修法前:patch 行為 `+foo`,pattern `^foo` 因為 `^` 錨點對 `+foo` 不 match
+    // → false negative。修法後 strip 一個 `+` → 內容 `foo` → `^foo` 命中
+    const patch = [
+      "diff --git a/x b/x",
+      "@@ -1 +1 @@",
+      "+foo",
+    ].join("\n");
+    const added = extractAddedLinesFromPatch(patch);
+    expect(new RegExp("^foo", "m").test(added)).toBe(true);
   });
 });
 
@@ -1209,10 +1282,9 @@ describe("check-no-source-terms — history baseline(PR A1)", () => {
     expect(code).toBe(1);
   });
 
-  it("🔴 P1z(round 1 P1 修法):template: prefix + rev-parse 失敗(downstream fork)→ 降級 + warning + exit 0", () => {
-    // 模擬 downstream fork 走 GitHub Template workflow:new history 不含 template
-    // repo 的 baseline SHA。config baseline 有 `template:` prefix → 降級跳過
-    // history scan,current tree / commit msg 依既有語意掃、乾淨即 exit 0
+  it("🔴 P1z(round 1 P1 → round 2 P1a 收):template: prefix + rev-parse 失敗(downstream fork)→ 降級**全史掃**(不 skip)+ warning", () => {
+    // Round 2 P1a 改法:template-fallback 不 skip、改走全史掃(既有 tree scan)
+    // 洗白場景(下條 P1z2)才有機會被抓
     const dir = makeRepo({
       deny: ["forbidden_dl_term"],
       commits: [{ message: "init clean", files: { "src/a.md": "clean\n" } }],
@@ -1222,10 +1294,59 @@ describe("check-no-source-terms — history baseline(PR A1)", () => {
       sourceTermHistoryBaseline: "template:" + "0".repeat(40),
     });
     const { code, out } = runChecker(dir);
-    expect(out).toContain("template baseline");
-    expect(out).toContain("history scan range: skipped");
+    // ⚠️ template-fallback 的 warning 走 console.warn → stderr;成功 case(exit 0)
+    //    的 runChecker 只回 stdout,故 warning 字面在此不驗;驗 stdout 就好
+    expect(out).toContain("history scan range: --all(template-fallback");
     expect(out).toContain("✅ 去識別化掃描全數通過");
     expect(code).toBe(0);
+  });
+
+  it("🔴 P1z2(round 2 P1a 修法):template-fallback 下,洗白場景(A 加 forbidden 後 B 刪)→ 全史掃抓到 → exit 1", () => {
+    // 舊 skip 語意會通過(current tree/msg 乾淨、history 跳過);新全史掃語意
+    // 抓 downstream history 內 blob → 擋。此測試釘住「fallback 不能只 skip」。
+    const dir = makeRepo({
+      deny: ["forbidden_launder_term"],
+      commits: [
+        {
+          message: "add forbidden",
+          files: { "src/tmp.md": "contains forbidden_launder_term\n" },
+        },
+        { message: "remove forbidden", deletions: ["src/tmp.md"] },
+      ],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: "template:" + "0".repeat(40),
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("template baseline");
+    // 全史掃抓到中間 blob → 擋
+    expect(out).toContain("git 歷史 blob 含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1zz3(round 2 P1b 修法):POSIX ERE `^pattern` 對新增行內容命中(baseline..HEAD diff scan)", () => {
+    // 舊 parser 保留 `+` 標記 → pattern `^forbidden` 因為錨點對 `+forbidden`
+    // 不 match → false negative。新 parser strip 一個 `+` → 命中
+    const dir = makeRepo({
+      deny: ["^forbidden_start_term"], // POSIX ERE ^ 錨點
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        {
+          message: "add polluted",
+          files: {
+            "src/x.md": "forbidden_start_term at line start\n",
+          },
+        },
+      ],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD~1"),
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("含來源專案識別詞");
+    expect(code).toBe(1);
   });
 
   it("🔴 P1zz(round 1 P1 修法):template: prefix + 40-hex 語法錯 → fail-closed(語法錯不因 prefix 降級)", () => {

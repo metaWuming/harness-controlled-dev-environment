@@ -650,14 +650,38 @@ function scanWorkingTree(
 }
 
 /**
- * 過濾 `git show -p` patch 文字,只回傳新增行(`+<content>`,不含 `+++` 檔頭)。
- * PR A1 round 1 P2 修法用(見 scanGitHistoryDiffs docstring)。
+ * 從 `git show -p` patch 文字取出新增行的**內容**(strip 一個 `+` 標記)。
+ * PR A1 round 1 P2 修法 → round 2 P1b 加固。
+ *
+ * ⚠️ 兩個坑(round 2 P1b 抓到):
+ *   ① 舊版保留 `+` 前綴給 grep → pattern `^forbidden` 對新增內容 `forbidden`
+ *      不命中(POSIX ERE 錨點 `^` 對「+forbidden」不 match `forbidden`)。
+ *      現在 strip 一個 `+`。
+ *   ② 舊版用 `l.startsWith("+++")` 過濾檔頭 → hunk 內容以 `++foo` 開頭時
+ *      patch 行為 `+++foo`,會被誤當檔頭丟。現在用 hunk state:只在 hunk 內
+ *      (`@@` 之後、下一個 `diff --git` 之前)採 `+` 開頭行,strip 一個 `+`。
+ *      檔頭 `+++ b/path` 因為出現在 `@@` 之前 → inHunk=false → 不採。
+ *
+ * 純函式,供測試直接呼叫(見 tests/check-no-source-terms.test.ts P1b-parser)。
  */
 export function extractAddedLinesFromPatch(patch: string): string {
-  return patch
-    .split("\n")
-    .filter((l) => l.startsWith("+") && !l.startsWith("+++"))
-    .join("\n");
+  const out: string[] = [];
+  let inHunk = false;
+  for (const line of patch.split("\n")) {
+    if (line.startsWith("diff --git ")) {
+      inHunk = false;
+      continue;
+    }
+    if (line.startsWith("@@")) {
+      inHunk = true;
+      continue;
+    }
+    if (!inHunk) continue;
+    if (line.startsWith("+")) {
+      out.push(line.slice(1));
+    }
+  }
+  return out.join("\n");
 }
 
 /**
@@ -974,9 +998,12 @@ function main(): number {
   );
 
   // PR A1:載入 baseline config、決定 history scan 範圍(fail-closed on error)
-  // Round 1 P1:baseline 決策擴充成三態(ok / template-fallback / fail)
+  // Round 1 P1 + Round 2 P1a:baseline 決策三態(ok / template-fallback / fail)
+  // template-fallback → 降級為「全史掃」(baseline=null)、不 skip history scan。
+  // 洗白場景(A 加 forbidden + B 刪 forbidden 同一 PR)current tree/msg 都乾淨,
+  // 只有全史掃才抓得到中間 blob。skip 語意違反此契約(round 2 P1a 抓到)。
   let baseline: string | null = null;
-  let skipHistoryScan = false;
+  let templateFallback = false;
   try {
     const rawBaseline = loadBaselineConfig(root).baseline;
     if (rawBaseline !== null) {
@@ -987,15 +1014,15 @@ function main(): number {
         return 1;
       }
       if (decision.kind === "template-fallback") {
-        // Downstream fork 走 GitHub Template workflow → 降級,不 fail-closed
         console.warn(`⚠️  ${decision.reason}`);
         console.warn(
-          `    → history scan 跳過(new history 無 template 遺留 blob 可對照)`
+          `    → 降級為全史掃描(掃 downstream repo 全部 history,擋洗白場景)`
         );
         console.warn(
-          `    → 若你要嚴格 grandfather 語意,請把 ${BASELINE_CONFIG_PATH} 的 sourceTermHistoryBaseline 改成本 repo 的 initial commit SHA(去掉 template: prefix);或設為 null 走全史掃描。`
+          `    → 建議:把 ${BASELINE_CONFIG_PATH} 的 sourceTermHistoryBaseline 改成本 repo 的 initial commit SHA(去掉 template: prefix,走嚴格 baseline..HEAD 語意)`
         );
-        skipHistoryScan = true;
+        // baseline 保留 null → 走既有全史 tree scan(舊行為)
+        templateFallback = true;
       } else {
         baseline = decision.sha;
       }
@@ -1006,9 +1033,9 @@ function main(): number {
     return 1;
   }
   // Startup 印掃描範圍(plan §5「啟動時輸出掃描範圍」)
-  if (skipHistoryScan) {
+  if (templateFallback) {
     console.log(
-      `── history scan range: skipped(template baseline in downstream fork;current tree + commit msg 照掃)──`
+      `── history scan range: --all(template-fallback,downstream fork 未建 baseline;downstream 建議改成 initial commit SHA)──`
     );
   } else if (baseline) {
     console.log(
@@ -1035,32 +1062,30 @@ function main(): number {
     if (!wtFail) console.log("✅ working tree 乾淨");
     else fail = true;
 
-    if (skipHistoryScan) {
-      console.log("── [2/3] git 歷史 blob 掃描:skipped(template-fallback)──");
-    } else {
-      console.log(
-        baseline
-          ? "── [2/3] git 歷史 blob 掃描(baseline..HEAD diff)──"
-          : "── [2/3] git 全史 blob 掃描 ──"
+    console.log(
+      baseline
+        ? "── [2/3] git 歷史 blob 掃描(baseline..HEAD diff)──"
+        : templateFallback
+        ? "── [2/3] git 全史 blob 掃描(template-fallback)──"
+        : "── [2/3] git 全史 blob 掃描 ──"
+    );
+    let histFail = false;
+    for (const scan of scanGitHistoryBlobs(
+      root,
+      nonCaFile?.file ?? null,
+      caFile?.file ?? null,
+      syntaxNonCaFile?.file ?? null,
+      baseline
+    )) {
+      if (!processScan(scan, allowedPrs)) histFail = true;
+    }
+    if (histFail) {
+      console.error(
+        "❌ git 歷史 blob 含來源專案識別詞或掃描錯誤(需 rebase / filter-repo 清除)"
       );
-      let histFail = false;
-      for (const scan of scanGitHistoryBlobs(
-        root,
-        nonCaFile?.file ?? null,
-        caFile?.file ?? null,
-        syntaxNonCaFile?.file ?? null,
-        baseline
-      )) {
-        if (!processScan(scan, allowedPrs)) histFail = true;
-      }
-      if (histFail) {
-        console.error(
-          "❌ git 歷史 blob 含來源專案識別詞或掃描錯誤(需 rebase / filter-repo 清除)"
-        );
-        fail = true;
-      } else {
-        console.log("✅ git 歷史 blob 乾淨");
-      }
+      fail = true;
+    } else {
+      console.log("✅ git 歷史 blob 乾淨");
     }
 
     console.log("── [3/3] commit 訊息 + 作者掃描 ──");
