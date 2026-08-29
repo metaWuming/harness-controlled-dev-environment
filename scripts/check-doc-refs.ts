@@ -285,7 +285,7 @@ function collectDocFiles(): {
     for (const dir of SCAN_DIRS_RECURSIVE) addFromGit(`${dir}/*.md`);
   } else {
     // 非 git repo(如 published tarball 執行):fs walk fallback,保 gate 可運作。
-    // ⚠️ 失去「本機/CI 同組輸入」保證,採用者若打包執行請自己權衡。
+    // ⚠️ 失去「本機/CI 同組輸入」特性,採用者若打包執行請自己權衡。
     for (const dir of SCAN_DIRS) {
       const abs = path.join(REPO_ROOT, dir);
       if (!fs.existsSync(abs)) continue;
