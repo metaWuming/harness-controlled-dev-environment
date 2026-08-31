@@ -43,6 +43,17 @@ import {
   displayGrepHit,
   findDriftedCaPatterns,
   extractAddedLinesFromPatch,
+  // PR A1.1 F1
+  FULL_EXCLUDES,
+  SYNTAX_EXEMPT_FILES,
+  stripExcludeMagic,
+  decodeGitCQuote,
+  parsePatchDstPath,
+  extractAddedLinesByPath,
+  bucketAddedLines,
+  splitPatchStream,
+  scanBaselineToHeadDiffs,
+  processScan,
 } from "../scripts/check-no-source-terms";
 
 const REPO_ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], {
@@ -2263,5 +2274,399 @@ describe("PR A1.1 — patch 解析與分桶的 e2e 契約(disposable repo)", () 
     const { code, out } = runChecker(dir);
     expect(out).toContain("history scan range: baseline..HEAD");
     expect(code, "空 commit 必須有 separator、不得被判成串流缺 rev").toBe(0);
+  });
+});
+
+// ═══════════ PR A1.1 F1:patch parser / separator / 分桶的純函式與注入式契約 ═══════════
+
+const TAB = String.fromCharCode(9);
+const NUL = String.fromCharCode(0);
+
+describe("PR A1.1 — stripExcludeMagic(pathspec magic 正規化,S-1)", () => {
+  it("U12a:`:!X` 與 `:(exclude)X` → 裸路徑;裸路徑原樣", () => {
+    expect(stripExcludeMagic(":!package-lock.json")).toBe("package-lock.json");
+    expect(stripExcludeMagic(":(exclude)scripts/a.ts")).toBe("scripts/a.ts");
+    expect(stripExcludeMagic("scripts/a.ts")).toBe("scripts/a.ts");
+  });
+
+  it("🔴 U12b:未知 pathspec magic → throw(不得靜默當字面路徑)", () => {
+    expect(() => stripExcludeMagic(":(glob)docs/**")).toThrow(/不支援的 pathspec magic/);
+    expect(() => stripExcludeMagic(":/anything")).toThrow(/不支援的 pathspec magic/);
+  });
+
+  it("🔴 S-2 漂移守門:SYNTAX_EXEMPT_FILES ⊆ 正規化後的 FULL_EXCLUDES(兩桶互斥)", () => {
+    const ex = new Set(FULL_EXCLUDES.map(stripExcludeMagic));
+    for (const f of SYNTAX_EXEMPT_FILES) {
+      expect(
+        ex.has(f),
+        `${f} 必須同時在 FULL_EXCLUDES 內,否則 main 桶與 syntax 桶會雙掃該檔`
+      ).toBe(true);
+    }
+  });
+});
+
+describe("PR A1.1 — decodeGitCQuote / parsePatchDstPath(U1-U9)", () => {
+  it("U1:一般路徑 `+++ b/plain.txt`", () => {
+    expect(parsePatchDstPath("+++ b/plain.txt")).toEqual({
+      kind: "path",
+      path: "plain.txt",
+    });
+  });
+
+  it("🔴 U2:含空白的檔名帶尾端 TAB(git 追加的分隔符)→ 只 strip 一個 TAB", () => {
+    expect(parsePatchDstPath(`+++ b/sp ace.txt${TAB}`)).toEqual({
+      kind: "path",
+      path: "sp ace.txt",
+    });
+  });
+
+  it("🔴 U3:C-quoted tab 檔名 → 解回真實檔名", () => {
+    expect(parsePatchDstPath('+++ "b/tab\\tname.txt"')).toEqual({
+      kind: "path",
+      path: `tab${TAB}name.txt`,
+    });
+  });
+
+  it("🔴 U4:C-quoted newline 檔名 → 解回真實檔名", () => {
+    expect(parsePatchDstPath('+++ "b/nl\\nname.txt"')).toEqual({
+      kind: "path",
+      path: "nl\nname.txt",
+    });
+  });
+
+  it("🔴 U5:C-quoted 非 ASCII(八進位序列)→ 以 UTF-8 整批解,不逐 byte 轉字元", () => {
+    // "非" = E9 9D 9E,"A" = 41
+    expect(decodeGitCQuote('"b/\\351\\235\\236A.txt"')).toBe("b/非A.txt");
+    expect(parsePatchDstPath('+++ "b/\\351\\235\\236A.txt"')).toEqual({
+      kind: "path",
+      path: "非A.txt",
+    });
+  });
+
+  it("U6:`+++ /dev/null` → deleted", () => {
+    expect(parsePatchDstPath("+++ /dev/null")).toEqual({ kind: "deleted" });
+  });
+
+  it("🔴 U7:缺 dst-prefix(diff.noprefix 釘法失效)→ throw,不得當空 section", () => {
+    expect(() => parsePatchDstPath("+++ sp ace.txt")).toThrow(/缺 dst-prefix/);
+    expect(() => parsePatchDstPath("+++ zz/other.txt")).toThrow(/缺 dst-prefix/);
+  });
+
+  it("🔴 U8:C-quote 引號未閉合 → throw", () => {
+    expect(() => parsePatchDstPath('+++ "b/unterminated.txt')).toThrow(
+      /引號未閉合|缺 dst-prefix/
+    );
+    expect(() => decodeGitCQuote('"b/x')).toThrow(/引號未閉合/);
+  });
+
+  it("🔴 U9:未知 escape / 八進位不完整 → throw", () => {
+    expect(() => decodeGitCQuote('"b/x\\q.txt"')).toThrow(/未知 escape/);
+    expect(() => decodeGitCQuote('"b/x\\12"')).toThrow(/八進位 escape 不完整/);
+  });
+
+  it("U9b:支援的簡單 escape 全解得開", () => {
+    expect(decodeGitCQuote('"b/a\\\\b\\"c.txt"')).toBe('b/a\\b"c.txt');
+  });
+});
+
+describe("PR A1.1 — extractAddedLinesByPath(U10 / U11 / U-equiv)", () => {
+  const realistic = (path: string, lines: string[]): string =>
+    [
+      `diff --git a/${path} b/${path}`,
+      "index 0000000..1111111 100644",
+      `--- a/${path}`,
+      `+++ b/${path}`,
+      "@@ -0,0 +1 @@",
+      ...lines.map((l) => `+${l}`),
+    ].join("\n");
+
+  it("按檔案分組,strip 一個 `+`", () => {
+    const patch = [realistic("x.md", ["foo"]), realistic("y.md", ["bar", "baz"])].join(
+      "\n"
+    );
+    const m = extractAddedLinesByPath(patch);
+    expect(m.get("x.md")).toEqual(["foo"]);
+    expect(m.get("y.md")).toEqual(["bar", "baz"]);
+  });
+
+  it("🔴 U10:hunk 內容行長得像檔頭(diff --git / +++ b/x / @@)→ 當內容不誤判", () => {
+    const patch = [
+      "diff --git a/x.md b/x.md",
+      "--- a/x.md",
+      "+++ b/x.md",
+      "@@ -0,0 +3 @@",
+      "++++ b/fake.md",
+      "+diff --git a/fake b/fake",
+      "+@@ fake hunk @@",
+    ].join("\n");
+    const m = extractAddedLinesByPath(patch);
+    expect(m.get("x.md")).toEqual([
+      "+++ b/fake.md",
+      "diff --git a/fake b/fake",
+      "@@ fake hunk @@",
+    ]);
+    expect(m.has("fake.md")).toBe(false);
+  });
+
+  it("🔴 U11:hunk 新增行歸屬不明(缺 +++ 檔頭 / dst 是 /dev/null)→ throw", () => {
+    const noHeader = ["diff --git a/x b/x", "@@ -1 +1 @@", "+orphan"].join("\n");
+    expect(() => extractAddedLinesByPath(noHeader)).toThrow(/無法歸屬/);
+    const deleted = [
+      "diff --git a/x b/x",
+      "--- a/x",
+      "+++ /dev/null",
+      "@@ -1 +0,0 @@",
+      "+impossible",
+    ].join("\n");
+    expect(() => extractAddedLinesByPath(deleted)).toThrow(/無法歸屬/);
+  });
+
+  it("刪除 section(+++ /dev/null)只有 `-` 行 → 不產生任何桶內容", () => {
+    const patch = [
+      "diff --git a/gone.md b/gone.md",
+      "--- a/gone.md",
+      "+++ /dev/null",
+      "@@ -1 +0,0 @@",
+      "-bye",
+    ].join("\n");
+    expect(extractAddedLinesByPath(patch).size).toBe(0);
+  });
+
+  it("🔴 U-equiv:與 differential oracle extractAddedLinesFromPatch 產出同一組新增行", () => {
+    // 兩套狀態機(舊 oracle 無路徑歸屬 / 新解析器有)必須對同一份 patch 得到同樣的
+    // 新增行集合,否則就是漂移。用 realistic patch(帶 +++ 檔頭)比對。
+    const patches = [
+      realistic("x.md", ["foo"]),
+      [realistic("x.md", ["a", "b"]), realistic("y.md", ["c"])].join("\n"),
+      [
+        "diff --git a/x.md b/x.md",
+        "--- a/x.md",
+        "+++ b/x.md",
+        "@@ -1,3 +1,2 @@",
+        " context",
+        "-deleted",
+        "+added",
+      ].join("\n"),
+      [
+        "diff --git a/x.md b/x.md",
+        "--- a/x.md",
+        "+++ b/x.md",
+        "@@ -1 +1 @@",
+        "++foo",
+      ].join("\n"),
+    ];
+    for (const p of patches) {
+      const viaOracle = extractAddedLinesFromPatch(p)
+        .split("\n")
+        .filter((l) => l.length > 0)
+        .sort();
+      const viaNew = [...extractAddedLinesByPath(p).values()]
+        .flat()
+        .filter((l) => l.length > 0)
+        .sort();
+      expect(viaNew).toEqual(viaOracle);
+    }
+  });
+});
+
+describe("PR A1.1 — bucketAddedLines(C7:一份 extraction 同時產出兩桶)", () => {
+  it("🔴 C7:單次輸入 → main 桶與 syntax 桶,三組 policy 共用同一份 extraction", () => {
+    const excludes = FULL_EXCLUDES.map(stripExcludeMagic);
+    const byPath = new Map<string, string[]>([
+      ["src/normal.md", ["normal line"]],
+      ["package-lock.json", ["excluded line"]],
+      ["scripts/check-todos-markers.ts", ["syntax line"]],
+    ]);
+    const { main, syntax } = bucketAddedLines(byPath, excludes, SYNTAX_EXEMPT_FILES);
+    expect(main).toEqual(["normal line"]);
+    expect(syntax).toEqual(["syntax line"]);
+    // 豁免路徑不進任何桶;syntax 檔不進 main 桶(兩桶互斥)
+    expect(main).not.toContain("excluded line");
+    expect(main).not.toContain("syntax line");
+  });
+});
+
+describe("PR A1.1 — splitPatchStream fail-closed(N8c 純函式矩陣)", () => {
+  const M = "MARK";
+  const R1 = "a".repeat(40);
+  const R2 = "b".repeat(40);
+
+  it("正常:兩個 rev 各自切段", () => {
+    const stream = [`${M} ${R1}`, "patch one", `${M} ${R2}`, "patch two"].join("\n");
+    const m = splitPatchStream(stream, [R1, R2], M);
+    expect(m.get(R1)).toBe("patch one");
+    expect(m.get(R2)).toBe("patch two");
+  });
+
+  it("🔴 規則 1:第一個 separator 之前有未歸屬內容 → throw", () => {
+    const stream = ["stray bytes", `${M} ${R1}`, "patch"].join("\n");
+    expect(() => splitPatchStream(stream, [R1], M)).toThrow(/未歸屬內容/);
+  });
+
+  it("🔴 規則 2:未預期的 rev separator → throw", () => {
+    const stream = [`${M} ${R1}`, "patch", `${M} ${R2}`, "other"].join("\n");
+    expect(() => splitPatchStream(stream, [R1], M)).toThrow(/未預期的 rev separator/);
+  });
+
+  it("🔴 規則 3:同一 rev 的 separator 重複 → throw", () => {
+    const stream = [`${M} ${R1}`, "patch", `${M} ${R1}`, "again"].join("\n");
+    expect(() => splitPatchStream(stream, [R1], M)).toThrow(/separator 重複/);
+  });
+
+  it("🔴 規則 4:marker 開頭但格式損壞(SHA 非 40-hex / 有尾隨內容)→ throw", () => {
+    expect(() => splitPatchStream(`${M} notasha`, [R1], M)).toThrow(/格式損壞/);
+    expect(() => splitPatchStream(`${M} ${R1} trailing`, [R1], M)).toThrow(
+      /格式損壞/
+    );
+  });
+
+  it("🔴 規則 5:缺少某個 expected rev 的 separator → throw", () => {
+    const stream = [`${M} ${R1}`, "patch"].join("\n");
+    expect(() => splitPatchStream(stream, [R1, R2], M)).toThrow(/缺少 1 個 rev/);
+  });
+
+  it("空 patch(空 commit)仍算有 separator、不判成缺 rev", () => {
+    const stream = [`${M} ${R1}`, "", `${M} ${R2}`, ""].join("\n");
+    const m = splitPatchStream(stream, [R1, R2], M);
+    expect(m.size).toBe(2);
+  });
+});
+
+// ─────────── 注入式契約:E5 / N2 / N8a / N8b(真 repo、真 git,走匯出函式) ───────────
+
+function writePatterns(patterns: string[]): string {
+  const dir = mkdtempSync(join(tmpdir(), "cnst-pat-"));
+  created.push(dir);
+  const f = join(dir, "patterns");
+  writeFileSync(f, patterns.join("\n") + "\n", "utf-8");
+  return f;
+}
+
+/** 直接跑 diff scan(可注入 batchSize / marker / prefix),回傳全部 Scan。 */
+function runDiffScan(
+  dir: string,
+  patterns: string[],
+  baseline: string,
+  opts: Parameters<typeof scanBaselineToHeadDiffs>[5]
+) {
+  const f = writePatterns(patterns);
+  return scanBaselineToHeadDiffs(dir, f, null, null, baseline, opts);
+}
+
+describe("PR A1.1 — 注入式 fail-closed 與批次邊界(真 repo)", () => {
+  const FORB = "forbidden" + "_inj_term";
+
+  it("🔴 E5:dst-prefix 釘法失效 → patch 路徑解析 fail-closed(rc=2),不得靜默當乾淨", () => {
+    const dir = makeRepo({
+      deny: [FORB],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        { message: "add polluted", files: { "src/p.md": `${FORB}\n` } },
+      ],
+    });
+    const baseline = shaAt(dir, "HEAD~1");
+
+    // 對照組:預設(釘住 b/)→ 抓得到
+    const ok = runDiffScan(dir, [FORB], baseline, {});
+    expect(ok.some((s) => s.rc === 0 && s.hits.length > 0), "預設應抓到").toBe(true);
+
+    // 注入:dst-prefix 變成 zz/ → 解析器認不得 → **必須 rc=2**(不是 rc=1 乾淨)
+    const bad = runDiffScan(dir, [FORB], baseline, { dstPrefix: "zz/" });
+    expect(bad.length).toBeGreaterThan(0);
+    expect(
+      bad.every((s) => s.rc === 2),
+      `路徑解析失敗必須 fail-closed;實得 ${JSON.stringify(bad.map((s) => s.rc))}`
+    ).toBe(true);
+    // 呼叫點守門:rc=2 → processScan 判失敗
+    for (const s of bad) expect(processScan(s, new Set())).toBe(false);
+  });
+
+  it("🔴 N2:批次邊界(batchSize=3)——forbidden 落在某批最後 / 下批第一 / 最末批都抓得到", () => {
+    for (const k of [2, 3, 6]) {
+      const commits: Array<{ message: string; files?: Record<string, string> }> = [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+      ];
+      for (let i = 6; i >= 0; i--) {
+        commits.push({
+          message: `commit ${i}`,
+          files: {
+            [`src/c${i}.md`]: i === k ? `${FORB}\n` : `clean ${i}\n`,
+          },
+        });
+      }
+      const dir = makeRepo({ deny: [FORB], commits });
+      const baseline = shaAt(dir, "HEAD~7");
+      const scans = runDiffScan(dir, [FORB], baseline, { batchSize: 3 });
+      expect(
+        scans.some((s) => s.rc === 0 && s.hits.length > 0),
+        `HEAD~${k} 的 forbidden 應被抓到(batchSize=3)`
+      ).toBe(true);
+      // 沒有任何 scanner error
+      expect(scans.every((s) => s.rc !== 2)).toBe(true);
+    }
+  });
+
+  it("🔴 N8a:blob 新增行模仿 separator(未知 rev)→ fail-closed", () => {
+    const fake = "c".repeat(40);
+    const dir = makeRepo({
+      deny: [FORB],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        { message: "mimic separator", files: { "src/m.md": `MARK ${fake}\n` } },
+      ],
+    });
+    const baseline = shaAt(dir, "HEAD~1");
+    const scans = runDiffScan(dir, [FORB], baseline, { marker: "+MARK" });
+    expect(scans.length).toBeGreaterThan(0);
+    expect(
+      scans.every((s) => s.rc === 2),
+      "模仿 separator 必須 fail-closed,不得 silent split / skip"
+    ).toBe(true);
+  });
+
+  it("🔴 N8b:blob 新增行模仿成真 rev 的 separator(重複)→ fail-closed", () => {
+    const dir = makeRepo({
+      deny: [FORB],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        { message: "target", files: { "src/t.md": "target\n" } },
+      ],
+    });
+    const baseline = shaAt(dir, "HEAD~1");
+    const realRev = shaAt(dir, "HEAD");
+    writeFileSync(join(dir, "src/m.md"), `MARK ${realRev}\n`, "utf-8");
+    execFileSync("git", ["-C", dir, "add", "-A"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "mimic real rev"], {
+      stdio: "ignore",
+    });
+    const scans = runDiffScan(dir, [FORB], baseline, { marker: "+MARK" });
+    expect(scans.length).toBeGreaterThan(0);
+    expect(scans.every((s) => s.rc === 2), "重複 separator 必須 fail-closed").toBe(
+      true
+    );
+  });
+
+  it("🔴 N8d:呼叫點守門——scanner error(rc=2)一律判失敗;rc=1 才是乾淨", () => {
+    expect(processScan({ label: "x", mode: "strict", hits: [], rc: 2 }, new Set())).toBe(
+      false
+    );
+    expect(processScan({ label: "x", mode: "strict", hits: [], rc: 1 }, new Set())).toBe(
+      true
+    );
+  });
+
+  it("🔴 含 NUL byte 的新增行仍走 grep -a(不因 binary detection 短路)", () => {
+    const dir = makeRepo({
+      deny: [FORB],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        {
+          message: "nul + forbidden",
+          files: { "src/n.bin": `a${NUL}b\n${FORB}\n` },
+        },
+      ],
+    });
+    const scans = runDiffScan(dir, [FORB], shaAt(dir, "HEAD~1"), {});
+    expect(scans.some((s) => s.rc === 0 && s.hits.length > 0)).toBe(true);
   });
 });

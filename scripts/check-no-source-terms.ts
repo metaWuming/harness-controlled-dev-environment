@@ -56,7 +56,8 @@
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -78,7 +79,7 @@ const DENY_SRC = "scripts/deny-terms.txt";
 const BASELINE_CONFIG_PATH = "scripts/source-term-baseline.json";
 const BASELINE_SCHEMA_VERSION = 1;
 const BASELINE_SHA_RE = /^[0-9a-f]{40}$/i;
-const FULL_EXCLUDES = [
+export const FULL_EXCLUDES = [
   ":!scripts/deny-terms.txt",
   ":!package-lock.json",
   ":!scripts/check-todos-markers.ts",
@@ -96,7 +97,7 @@ const FULL_EXCLUDES = [
  *     non-CA 永久盲區(未來若測試檔誤含來源專案名不會被抓);改用縮減 pattern 集
  *     仍能守住 non-CA,CA 字面 fixture 由 runtime concat + 本清單雙重保險。
  */
-const SYNTAX_EXEMPT_FILES = [
+export const SYNTAX_EXEMPT_FILES = [
   "scripts/check-todos-markers.ts",
   "tests/check-todos-markers.test.ts",
   "tests/check-no-source-terms.test.ts",
@@ -604,9 +605,9 @@ function gitGrep(root: string, args: string[]): GrepResult {
 
 // ───────────────────────────────────────── 三段掃描
 
-type Mode = "strict" | "self-pr";
+export type Mode = "strict" | "self-pr";
 
-interface Scan {
+export interface Scan {
   label: string;
   mode: Mode;
   hits: string[];
@@ -678,6 +679,11 @@ function scanWorkingTree(
  *      檔頭 `+++ b/path` 因為出現在 `@@` 之前 → inHunk=false → 不採。
  *
  * 純函式,供測試直接呼叫(見 tests/check-no-source-terms.test.ts P1b-parser)。
+ *
+ * ⚠️ **PR A1.1 起本函式不再位於 production 掃描路徑**——production 走
+ *    `extractAddedLinesByPath`(多帶檔案路徑歸屬)。本函式保留為
+ *    **differential oracle**:6 輪 review 加固過的 hunk 分界語意留在這裡,
+ *    測試用它與新解析器逐份 patch 對照(見 tests 的 U-equiv),擋兩套狀態機漂移。
  */
 export function extractAddedLinesFromPatch(patch: string): string {
   const out: string[] = [];
@@ -699,111 +705,449 @@ export function extractAddedLinesFromPatch(patch: string): string {
   return out.join("\n");
 }
 
+// ─────────────────── PR A1.1 F1:單次 patch 提取 + 分桶批次 grep ───────────────────
+//
+// 取代 A1 的「每個 rev 各跑三次 `git show`(non-CA / CA / SYNTAX)」。
+// 舊版對 main pathspec 產兩次相同 patch(non-CA 與 CA 各一次)→ 同一份 patch 被
+// 提取兩次,且 subprocess 隨 baseline..HEAD 的 commit 數單調成長(3 次 git show +
+// 3 次 grep 每 commit),baseline 是治理決策不能為效能推進 → 會撞 CI 十分鐘上限。
+//
+// 新語意**與舊版完全相同**(per-commit diff 新增行、first-parent、豁免兩層),
+// 只改「怎麼取到那份 patch」:
+//   1. `git rev-list baseline..HEAD` 取 rev(metadata,不輸出 patch bytes)
+//   2. rev 分批,每批**一次** patch producer 呼叫、**不帶 pathspec**
+//   3. 每個 rev 的 patch **只解析一次** → `Map<path, 新增行[]>`
+//   4. 同一份 Map 分兩桶(main / syntax),供三組 policy 共用
+//   5. 每桶每 rev 寫暫存檔,三次 `grep -r` 批掃整個目錄
+//
+// ⚠️ pathspec 過濾從 git 移到 JS,因此**必須自己解析 patch 檔頭路徑**。
+//    這是本次改動新增的攻擊面,對應防線見 `parsePatchDstPath` / `decodeGitCQuote`
+//    的 docstring 與 tests 的 E1-E7 / U1-U12。任何解析不明確一律 fail-closed。
+
 /**
- * PR A1 round 1 P2 修法:per-commit diff scan(替換 baseline 給時的 tree scan)。
- *
- * 舊行為(tree scan)問題:baseline..HEAD 內每個 commit 掃**整 tree**,只要
- * 未動的既存檔案含 forbidden(baseline 之前就存在的去識別化 debt)也會被抓
- * → false positive。真實觸發場景:feature branch 從 baseline 分岔、加一個
- * 無關的 commit,那個 commit 的 tree 繼承所有 baseline 檔(含 baseline 之前
- * 就存在的來源專案識別詞)→ 誤紅。
- *
- * 新語意:baseline..HEAD 每個 commit 相對於 parent 的 **diff 新增行**才掃。
- * 未動的 blob 不算「新引入」→ 不會誤觸發;真正 baseline 之後新加的 forbidden
- * (即使後來又刪掉、per-commit 仍抓)照抓。
- *
- * ⚠️ file:line attribution:grep 對 patch 純文字掃,hit 為 `+<content>` 行。
- *    沒有 filename 與 line number(要精確 attribution 需 mini patch parser),
- *    但錯誤訊息仍能定位到 rev + 內容片段,對本 gate 目的夠用。
- *
- * 洗白場景(A 加 forbidden + B 刪 forbidden 在同一 PR)per-commit 仍抓 commit A;
- * 淨 diff 版本會漏(此設計刻意選 per-commit 而非淨 diff)。
+ * 一次 patch producer 呼叫最多處理幾個 rev。
+ * 目的是限制單一串流的 stdout 尺寸(maxBuffer),不是限制 subprocess 數量。
+ * 批次之間**互斥且完全覆蓋** rev-list(契約 C2b)。
  */
-function scanRevDiff(
+const PATCH_BATCH_SIZE = 200;
+/**
+ * patch producer 的 prefix / quoting 釘法。
+ *
+ * ⚠️ 使用者的 git config 會改變 `+++` 檔頭形狀(實測):
+ *   `diff.noprefix=true`      → `+++ sp ace.txt`(**沒有 `b/`**)
+ *   `diff.mnemonicPrefix=true`→ 前綴變 `i/` `w/` `c/` `o/`
+ *   `core.quotePath=true`     → 非 ASCII 檔名被 C-quote
+ * command-local 的 `--src-prefix` / `--dst-prefix` / `-c core.quotePath=false`
+ * 壓得過 repo 與 user config(契約 E6 / E6b / C5p 守這件事)。
+ *
+ * ⚠️ **tab / newline 檔名在任何設定下都仍是 C-quoted** → `decodeGitCQuote` 不可省。
+ */
+const PINNED_SRC_PREFIX = "a/";
+const PINNED_DST_PREFIX = "b/";
+/** batch separator 的固定前綴,後面接每次執行隨機產生的 32-hex。 */
+const PATCH_MARKER_PREFIX = "A1SEP-";
+
+/**
+ * 每次執行產生一個新的 separator marker。
+ * ⚠️ 隨機只是**降噪**,不是安全論據——碰撞防護由 `splitPatchStream` 的
+ *    fail-closed 檢查承擔(未知 rev / 重複 rev / 未歸屬 bytes / 缺 rev 一律報錯)。
+ */
+export function buildPatchMarker(): string {
+  return `${PATCH_MARKER_PREFIX}${randomBytes(16).toString("hex")}`;
+}
+
+/**
+ * 把 `FULL_EXCLUDES` 的 pathspec magic 轉成裸路徑,**只給 JS 端集合比對用**。
+ *
+ * 支援 `:!X` 與 `:(exclude)X`。其他 magic(`:(glob)` / `:(icase)` / `:/` …)
+ * **一律 throw**:本 checker 的排除語意假設「精確路徑」,把未知 magic 當字面
+ * 路徑會讓豁免失效(排不掉 → 誤報)或過度排除(漏抓),兩個方向都不能猜。
+ */
+export function stripExcludeMagic(spec: string): string {
+  if (spec.startsWith(":(exclude)")) return spec.slice(":(exclude)".length);
+  if (spec.startsWith(":!")) return spec.slice(2);
+  if (spec.startsWith(":")) {
+    throw new Error(
+      `不支援的 pathspec magic:「${spec}」(本 checker 只認 :! 與 :(exclude))`
+    );
+  }
+  return spec;
+}
+
+/**
+ * 解 git 的 C-quoted path(`"b/tab\tname.txt"` 這種形式)。
+ *
+ * git 對含 tab / newline / 雙引號 / 反斜線 / 非 ASCII 的檔名會加雙引號並做
+ * C-style escape。**`core.quotePath=false` 只讓非 ASCII 不 quote,tab / newline
+ * 仍然 quote**(實測),所以 decoder 不可省。
+ *
+ * 支援:`\\` `\"` `\a` `\b` `\f` `\n` `\r` `\t` `\v` 與 `\<3 位八進位>`。
+ * 八進位先組 byte,最後整批以 UTF-8 解 —— 非 ASCII 檔名是多個 `\ooo` 組成的
+ * UTF-8 序列,逐 byte 轉字元會壞掉。
+ *
+ * **未知 escape / 引號未閉合 → throw**(fail-closed,不猜)。
+ */
+export function decodeGitCQuote(quoted: string): string {
+  if (quoted.length < 2 || !quoted.startsWith('"') || !quoted.endsWith('"')) {
+    throw new Error(`C-quoted path 格式錯誤(引號未閉合):${quoted}`);
+  }
+  const body = quoted.slice(1, -1);
+  const simple: Record<string, number> = {
+    "\\": 0x5c,
+    '"': 0x22,
+    a: 0x07,
+    b: 0x08,
+    f: 0x0c,
+    n: 0x0a,
+    r: 0x0d,
+    t: 0x09,
+    v: 0x0b,
+  };
+  const bytes: number[] = [];
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i]!;
+    if (c !== "\\") {
+      for (const b of Buffer.from(c, "utf-8")) bytes.push(b);
+      continue;
+    }
+    const n = body[i + 1];
+    if (n === undefined) throw new Error(`C-quoted path escape 未完成:${quoted}`);
+    if (n >= "0" && n <= "7") {
+      const oct = body.slice(i + 1, i + 4);
+      if (!/^[0-7]{3}$/.test(oct)) {
+        throw new Error(`C-quoted path 八進位 escape 不完整:\\${oct}`);
+      }
+      bytes.push(parseInt(oct, 8));
+      i += 3;
+      continue;
+    }
+    const mapped = simple[n];
+    if (mapped === undefined) {
+      throw new Error(`C-quoted path 未知 escape:\\${n}(${quoted})`);
+    }
+    bytes.push(mapped);
+    i += 1;
+  }
+  return Buffer.from(bytes).toString("utf-8");
+}
+
+export type PatchDst = { kind: "deleted" } | { kind: "path"; path: string };
+
+/**
+ * 解 patch 的 `+++` 目的端檔頭,回傳 repo-relative 路徑。
+ *
+ * 釘住 flags 之後只會出現四種形狀(實測):
+ *   `+++ /dev/null`                → 刪除(該 section 不會有新增行)
+ *   `+++ b/plain.txt`              → 一般
+ *   `+++ b/sp ace.txt<TAB>`        → **檔名含空白時 git 會追加一個 TAB 分隔符**
+ *   `+++ "b/tab\tname.txt"`        → C-quoted(tab / newline / 引號 / 反斜線)
+ *
+ * ⚠️ unquoted 形式的名稱**不可能含 TAB**(含 TAB 一定觸發 quoting),所以
+ *    「移除至多一個尾端 TAB」是無損的;移除後若仍含 TAB → 形狀異常 → throw。
+ * ⚠️ 少了 `b/` 前綴代表 prefix 釘法失效(例如未來有人拿掉 `--dst-prefix`)
+ *    → **throw,不得把該 section 當空**——當空 = 該檔的新增行整段漏掃 = false green。
+ */
+export function parsePatchDstPath(line: string): PatchDst {
+  const HEAD = "+++ ";
+  if (!line.startsWith(HEAD)) {
+    throw new Error(`不是 +++ 檔頭:${line.slice(0, 120)}`);
+  }
+  const rest = line.slice(HEAD.length);
+  if (rest === "/dev/null") return { kind: "deleted" };
+  let decoded: string;
+  if (rest.startsWith('"')) {
+    decoded = decodeGitCQuote(rest);
+  } else {
+    decoded = rest.endsWith("\t") ? rest.slice(0, -1) : rest;
+    if (decoded.includes("\t")) {
+      throw new Error(`+++ 檔頭形狀異常(unquoted 名稱含非尾端 TAB):${line.slice(0, 120)}`);
+    }
+  }
+  if (!decoded.startsWith(PINNED_DST_PREFIX)) {
+    throw new Error(
+      `+++ 檔頭缺 dst-prefix「${PINNED_DST_PREFIX}」(收到「${decoded.slice(0, 120)}」)` +
+        " — patch producer 的 --dst-prefix 釘法可能失效,拒絕靜默略過"
+    );
+  }
+  return { kind: "path", path: decoded.slice(PINNED_DST_PREFIX.length) };
+}
+
+/**
+ * 從一份 rev 的 patch 取出「每個檔的新增行內容」(strip 一個 `+` 標記)。
+ *
+ * 狀態機沿用 `extractAddedLinesFromPatch` 的 hunk 分界規則(round 2 P1b 加固),
+ * 只多一件事:非 hunk 狀態下的 `+++ ` 行更新當前檔案路徑。
+ *   `diff --git ` → 離開 hunk、清空當前路徑
+ *   非 hunk 的 `+++ ` → parsePatchDstPath
+ *   `@@` → 進入 hunk
+ *   hunk 內 `+` 開頭 → 新增內容,strip 一個 `+`,歸給當前路徑
+ *
+ * ⚠️ hunk 內出現新增行但當前路徑不明(null 或 deleted)→ **throw**。
+ *    這種 patch 結構異常代表檔頭解析失敗或 patch 被截斷;吞掉它 = 漏掃。
+ * ⚠️ hunk 內容行長得像檔頭(`+++ b/x` / `diff --git ...` / `@@ ...`)不會誤判:
+ *    它們在 patch 內帶了額外的 `+` 前綴,不符合各分支的字面條件。
+ */
+export function extractAddedLinesByPath(patch: string): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  let inHunk = false;
+  let current: PatchDst | null = null;
+  for (const line of patch.split("\n")) {
+    if (line.startsWith("diff --git ")) {
+      inHunk = false;
+      current = null;
+      continue;
+    }
+    if (!inHunk && line.startsWith("+++ ")) {
+      current = parsePatchDstPath(line);
+      continue;
+    }
+    if (line.startsWith("@@")) {
+      inHunk = true;
+      continue;
+    }
+    if (!inHunk) continue;
+    if (!line.startsWith("+")) continue;
+    if (current === null || current.kind === "deleted") {
+      throw new Error(
+        `patch hunk 的新增行無法歸屬到檔案路徑(patch 結構異常):${line.slice(0, 120)}`
+      );
+    }
+    const arr = out.get(current.path);
+    if (arr) arr.push(line.slice(1));
+    else out.set(current.path, [line.slice(1)]);
+  }
+  return out;
+}
+
+/**
+ * 把**同一份** extraction 分成兩桶,供三組 policy 共用(INV-3):
+ *   main 桶   → main×non-CA 與 main×CA 兩組 policy
+ *   syntax 桶 → syntax×non-CA 一組 policy
+ *
+ * 語意逐條對齊舊版的兩種 pathspec:
+ *   main   = `. :!<FULL_EXCLUDES>`  → 路徑 ∉ 正規化後的 FULL_EXCLUDES
+ *   syntax = `<SYNTAX_EXEMPT_FILES>` → 路徑 ∈ SYNTAX_EXEMPT_FILES
+ * `SYNTAX_EXEMPT_FILES` 全部也在 `FULL_EXCLUDES` 內,所以這兩桶互斥
+ * (漂移守門見 tests 的 S-2)。
+ */
+export function bucketAddedLines(
+  byPath: Map<string, string[]>,
+  normalizedExcludes: string[],
+  syntaxFiles: string[]
+): { main: string[]; syntax: string[] } {
+  const ex = new Set(normalizedExcludes);
+  const syn = new Set(syntaxFiles);
+  const main: string[] = [];
+  const syntax: string[] = [];
+  for (const [p, lines] of byPath) {
+    if (!ex.has(p)) main.push(...lines);
+    if (syn.has(p)) syntax.push(...lines);
+  }
+  return { main, syntax };
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * 把一批 rev 的 patch 串流切成 `rev → patch`,**逐項 fail-closed 核對**。
+ *
+ * separator 行格式 `^<marker> <40-hex>$`(由 `--format` 產生)。
+ * 任一條不成立 → throw(呼叫端轉成 scanner error → exit 非 0):
+ *   1. 第一個 separator 之前不得有非空內容(未歸屬的 patch bytes)
+ *   2. separator 的 rev 必須 ∈ expectedRevs(未知 rev)
+ *   3. 每個 rev 的 separator 至多一次(重複)
+ *   4. marker 開頭但格式損壞(SHA 非 40-hex / 有尾隨內容)
+ *   5. 結束時 producedRevs 必須**恰等於** expectedRevs
+ *      (不帶 pathspec 時 git 對空 commit 也會印 format 行 → 可用等號)
+ *
+ * ⚠️ 碰撞時直接 fail-closed,不試圖繼續掃完——寧可紅,不可靜默切錯段。
+ */
+export function splitPatchStream(
+  stream: string,
+  expectedRevs: string[],
+  marker: string
+): Map<string, string> {
+  const expected = new Set(expectedRevs);
+  if (expected.size !== expectedRevs.length) {
+    throw new Error("splitPatchStream:expectedRevs 含重複 rev");
+  }
+  const sepRe = new RegExp(`^${escapeRegExp(marker)} ([0-9a-f]{40})$`);
+  const out = new Map<string, string>();
+  const seen = new Set<string>();
+  let cur: string | null = null;
+  let buf: string[] = [];
+  const flush = (): void => {
+    if (cur !== null) out.set(cur, buf.join("\n"));
+    cur = null;
+    buf = [];
+  };
+  for (const line of stream.split("\n")) {
+    if (line.startsWith(marker)) {
+      const m = sepRe.exec(line);
+      if (!m) {
+        throw new Error(`patch 串流 separator 格式損壞:「${line.slice(0, 120)}」`);
+      }
+      const rev = m[1]!;
+      if (!expected.has(rev)) {
+        throw new Error(`patch 串流含未預期的 rev separator:${rev}`);
+      }
+      if (seen.has(rev)) {
+        throw new Error(`patch 串流的 rev separator 重複:${rev}`);
+      }
+      seen.add(rev);
+      flush();
+      cur = rev;
+      continue;
+    }
+    if (cur === null) {
+      if (line.trim() !== "") {
+        throw new Error(
+          `patch 串流在第一個 separator 之前含未歸屬內容:「${line.slice(0, 120)}」`
+        );
+      }
+      continue;
+    }
+    buf.push(line);
+  }
+  flush();
+  if (out.size !== expected.size) {
+    const missing = expectedRevs.filter((r) => !out.has(r));
+    throw new Error(
+      `patch 串流缺少 ${missing.length} 個 rev 的 separator(如 ${missing
+        .slice(0, 3)
+        .map((r) => r.slice(0, 8))
+        .join(", ")})`
+    );
+  }
+  return out;
+}
+
+/** diff scan 的可注入參數。**production 一律走預設值**(契約 C5p 守這件事)。 */
+export interface DiffScanOptions {
+  /** 一次 patch producer 呼叫最多幾個 rev(測試用小值打批次邊界)。 */
+  batchSize?: number;
+  /** batch separator marker(測試用可預測值構造碰撞負對照)。 */
+  marker?: string;
+  /** patch 前綴釘法(測試用空值構造 fail-closed 負對照)。 */
+  srcPrefix?: string;
+  dstPrefix?: string;
+}
+
+function chunkRevs(revs: string[], size: number): string[][] {
+  const out: string[][] = [];
+  for (let i = 0; i < revs.length; i += size) out.push(revs.slice(i, i + size));
+  return out;
+}
+
+/**
+ * 一次取回一批 rev 的 patch。**不帶 pathspec**——pathspec 會讓 git 丟掉「該
+ * pathspec 下 diff 為空」的 rev(實測),rev 覆蓋就無法用等號驗;而且每個
+ * pathspec view 各跑一次 = 同一個 commit 的 patch 被提取多次(違反 INV-1)。
+ */
+function runPatchProducer(
   root: string,
-  rev: string,
-  patternFile: string,
-  label: string,
-  mode: Mode,
-  pathspec: string[]
-): Scan {
-  // Round 3 P2 修法:`-m` 讓 merge commit 拆成「每 parent 一份普通 diff」,
-  // 避免 git show 對 merge 預設輸出 combined format(`diff --cc`,`++forbidden`
-  // 等雙 marker 前綴)導致 parser strip 一個 marker 後仍有 `+`、anchored pattern
-  // 不 match。`-m` 對 non-merge commit 無作用(仍是普通單 parent diff)。
-  // Round 5 P1 修法(兩條洗白路徑):
-  //   `--no-renames`:git show 預設開 rename detection → rename excluded file
-  //     (如 deny-terms.txt)到 scanned path + 加內容 + 再 rename 回,只印 rename
-  //     metadata、無 + hunk → 漏抓。關掉 rename 讓 destination 印成新增內容。
-  //   `--text` + `--no-textconv`:.gitattributes `-diff` 屬性讓 git show 只印
-  //     「Binary files differ」→ 無 hunk → 漏抓。強制 text 輸出 + 關 textconv
-  //     filter,確保純文字 patch。
-  // Round 6 P2 修法:`--first-parent` 對 merge commit 只產出「側 branch 帶進來
-  //   的新增」diff。舊版 `-m` 對每 parent 各自 diff → merge 保留 grandfathered
-  //   內容(baseline 已有、first parent 保留、另一 parent 刪除)時對另一 parent
-  //   的 diff 會誤把該行標為 add → 誤觸發。--first-parent 只看 first parent、
-  //   避免誤觸發;conflict resolution 加的內容仍在 first-parent-diff 內出現
-  //   (R3 P2 場景仍抓)。
-  const showRes = spawnSync(
+  revs: string[],
+  marker: string,
+  srcPrefix: string,
+  dstPrefix: string
+): string {
+  const res = spawnSync(
     "git",
     [
       "-C",
       root,
-      "show",
+      "-c",
+      "core.quotePath=false",
+      "-c",
+      "diff.noprefix=false",
+      "-c",
+      "diff.mnemonicPrefix=false",
+      "log",
+      "--no-walk=unsorted",
+      "--stdin",
+      // 以下旗標與 A1 的 per-rev `git show` 逐字對齊(輸出實測逐字節相同):
+      // -m/--first-parent(merge 只看 first parent)、--no-renames(rename dance)、
+      // --text/--no-textconv(.gitattributes -diff)、--unified=0、--no-color
       "-m",
       "--first-parent",
       "--no-renames",
       "--text",
       "--no-textconv",
-      "--format=",
       "--unified=0",
       "--no-color",
-      rev,
-      "--",
-      ...pathspec,
+      `--src-prefix=${srcPrefix}`,
+      `--dst-prefix=${dstPrefix}`,
+      `--format=${marker} %H`,
     ],
-    { encoding: "utf-8", maxBuffer: 256 * 1024 * 1024 }
+    {
+      input: revs.join("\n") + "\n",
+      encoding: "utf-8",
+      maxBuffer: 256 * 1024 * 1024,
+    }
   );
-  if (showRes.status !== 0) {
-    return { label, mode, hits: [], rc: showRes.status ?? 2 };
+  if (res.status !== 0) {
+    throw new Error(
+      `patch producer 失敗(exit ${res.status}):${(res.stderr || "").slice(0, 300)}`
+    );
   }
-  const added = extractAddedLinesFromPatch(showRes.stdout || "");
-  if (added.length === 0) {
-    return { label, mode, hits: [], rc: 1 }; // clean(等同 git grep 的 rc=1)
-  }
-  // Round 6 P1 修法:`-a`(`--binary-files=text`)覆蓋 `-I` 的 binary detection。
-  // 舊 `-I` 讓 grep 對含 NUL byte 的 stdin 直接判 binary + 不掃、回 clean →
-  // post-baseline commit 含 NUL byte 檔 + 加 forbidden text 行、後刪除 → 洗白。
-  // 加 `-a` 強制當 text 掃(input 已由 git show --text 強制文字產出,不會爆量)。
-  // Step 5 adversarial finding 3 修法:去掉 `-n` — 這裡 grep 對 patch 拼接的
-  //   `added` 字串掃,`-n` 印的 line number 是「拼接後合成序號」、不指向任何
-  //   真檔 patch line,誤導讀者去 <rev> 找「第 N 行」。file:line attribution
-  //   本來就是 diff-scan 語意的已知限制(見 scanBaselineToHeadDiffs docstring),
-  //   不印假數字比印誤導性數字誠實。
-  const grepRes = spawnSync("grep", ["-aiE", "-f", patternFile], {
-    input: added,
+  return res.stdout || "";
+}
+
+/** 對一個目錄批掃(每檔一個 rev);hit 由 basename 還原 rev。 */
+function grepRevDir(
+  dir: string,
+  fileCount: number,
+  patternFile: string,
+  label: string,
+  mode: Mode
+): Scan {
+  if (fileCount === 0) return { label, mode, hits: [], rc: 1 }; // clean
+  // `-a` 覆蓋 binary detection(round 6 P1:NUL byte 洗白);`-H` 保證印檔名;
+  // `-E` POSIX ERE(不用 JS regex 反查 deny-terms);`-i` 對齊既有大小寫語意。
+  const r = spawnSync("grep", ["-aiEH", "-r", "-f", patternFile, dir], {
     encoding: "utf-8",
     maxBuffer: 256 * 1024 * 1024,
   });
-  const hits = (grepRes.stdout || "")
+  const prefix = `${dir}/`;
+  const hits = (r.stdout || "")
     .split("\n")
     .filter((l) => l.length > 0)
-    .map((h) => `${rev.slice(0, 8)} [+diff] ${h}`);
-  return { label, mode, hits, rc: grepRes.status ?? 2 };
+    .map((l) => {
+      const rest = l.startsWith(prefix) ? l.slice(prefix.length) : l;
+      const c = rest.indexOf(":");
+      if (c === -1) return `?? [+diff] ${rest}`;
+      return `${rest.slice(0, c).slice(0, 8)} [+diff] ${rest.slice(c + 1)}`;
+    });
+  return { label, mode, hits, rc: r.status ?? 2 };
 }
 
 /**
- * PR A1 round 1 P2 修法:baseline..HEAD per-commit diff scan(替代 baseline
- * 給時的 tree scan)。實作策略:對每個 rev 開三段 diff scan(non-CA / CA /
- * SYNTAX 例外),分別對應原 tree scan 的三種模式;pathspec 對齊 tree scan。
+ * PR A1 round 1 P2 語意 + PR A1.1 F1 實作:baseline..HEAD 的 per-commit diff scan。
+ *
+ * 語意(**與 A1 相同,本次未改**):
+ *   只掃「每個 commit 相對 first parent 的 diff 新增行」,不掃整棵 tree ——
+ *   未動的舊 blob(baseline 之前的去識別化 debt)不算新引入 → 不誤報;
+ *   baseline 之後新加的 forbidden 即使後來又刪掉,per-commit 仍抓得到(洗白防線)。
+ *
+ * ⚠️ file:line attribution:hit 只帶 rev 前 8 碼 + 內容片段,沒有檔名與行號。
+ *    這是 diff-scan 語意的已知限制(A1 就有,A1.1 未改),追蹤見 ADR
+ *    docs/architecture/source-term-history-baseline.md「已知限制」。
  */
-function scanBaselineToHeadDiffs(
+export function scanBaselineToHeadDiffs(
   root: string,
   nonCaFile: string | null,
   caFile: string | null,
   syntaxNonCaFile: string | null,
-  baseline: string
+  baseline: string,
+  opts: DiffScanOptions = {}
 ): Scan[] {
+  const batchSize = opts.batchSize ?? PATCH_BATCH_SIZE;
+  const marker = opts.marker ?? buildPatchMarker();
+  const srcPrefix = opts.srcPrefix ?? PINNED_SRC_PREFIX;
+  const dstPrefix = opts.dstPrefix ?? PINNED_DST_PREFIX;
+
   const revs = execFileSync(
     "git",
     ["-C", root, "rev-list", `${baseline}..HEAD`],
@@ -811,50 +1155,83 @@ function scanBaselineToHeadDiffs(
   )
     .split("\n")
     .filter(Boolean);
-  const scans: Scan[] = [];
-  const mainPathspec = [".", ...FULL_EXCLUDES];
-  for (const rev of revs) {
+  if (revs.length === 0) return [];
+
+  const workDir = mkdtempSync(path.join(tmpdir(), "cnst-diff-"));
+  const mainDir = path.join(workDir, "main");
+  const synDir = path.join(workDir, "syntax");
+  mkdirSync(mainDir, { recursive: true });
+  mkdirSync(synDir, { recursive: true });
+  let mainCount = 0;
+  let synCount = 0;
+  try {
+    const excludes = FULL_EXCLUDES.map(stripExcludeMagic);
+    for (const batch of chunkRevs(revs, batchSize)) {
+      const stream = runPatchProducer(root, batch, marker, srcPrefix, dstPrefix);
+      const perRev = splitPatchStream(stream, batch, marker);
+      for (const rev of batch) {
+        const byPath = extractAddedLinesByPath(perRev.get(rev) ?? "");
+        const { main, syntax } = bucketAddedLines(
+          byPath,
+          excludes,
+          SYNTAX_EXEMPT_FILES
+        );
+        if (main.length > 0) {
+          writeFileSync(path.join(mainDir, rev), main.join("\n") + "\n", "utf-8");
+          mainCount++;
+        }
+        if (syntax.length > 0) {
+          writeFileSync(path.join(synDir, rev), syntax.join("\n") + "\n", "utf-8");
+          synCount++;
+        }
+      }
+    }
+    const scans: Scan[] = [];
     if (nonCaFile) {
       scans.push(
-        scanRevDiff(
-          root,
-          rev,
-          nonCaFile,
-          `史 ${rev.slice(0, 8)}(non-CA diff)`,
-          "strict",
-          mainPathspec
-        )
+        grepRevDir(mainDir, mainCount, nonCaFile, "史 baseline..HEAD(non-CA diff)", "strict")
       );
     }
     if (caFile) {
       scans.push(
-        scanRevDiff(
-          root,
-          rev,
+        grepRevDir(
+          mainDir,
+          mainCount,
           caFile,
-          `史 ${rev.slice(0, 8)}(CA diff,self-PR 判定)`,
-          "self-pr",
-          mainPathspec
+          "史 baseline..HEAD(CA diff,self-PR 判定)",
+          "self-pr"
         )
       );
     }
     if (syntaxNonCaFile) {
-      // SYNTAX 例外檔:若該 rev 的 SYNTAX_EXEMPT_FILES 有 diff,用縮減 pattern
-      // 集(non-CA only)掃;檔案不存在的 rev 直接跳過。git show 對不存在 pathspec
-      // 不報錯,產出空 patch → scanRevDiff 回 clean、無害。
       scans.push(
-        scanRevDiff(
-          root,
-          rev,
+        grepRevDir(
+          synDir,
+          synCount,
           syntaxNonCaFile,
-          `史 ${rev.slice(0, 8)}(SYNTAX 例外檔 non-CA diff)`,
-          "strict",
-          SYNTAX_EXEMPT_FILES
+          "史 baseline..HEAD(SYNTAX 例外檔 non-CA diff)",
+          "strict"
         )
       );
     }
+    return scans;
+  } catch (e) {
+    // fail-closed:patch 提取 / 切段 / 路徑解析出錯一律回 scanner error(rc=2),
+    // 由 processScan 印訊息並讓 main() exit 1。**不得**回空 scan 當乾淨。
+    console.error(
+      `❌ 史 baseline..HEAD:patch 提取失敗 — ${(e as Error).message}`
+    );
+    return [
+      {
+        label: "史 baseline..HEAD(patch 提取)",
+        mode: "strict",
+        hits: [],
+        rc: 2,
+      },
+    ];
+  } finally {
+    rmSync(workDir, { recursive: true, force: true });
   }
-  return scans;
 }
 
 function scanGitHistoryBlobs(
@@ -969,7 +1346,7 @@ function scanCommitMessages(root: string, allPatternFile: string): Scan {
 // ───────────────────────────────────────── 處理單段掃描結果
 
 /** 回傳 true = 該段通過(乾淨或全部放行);false = 有真實命中或掃描器錯誤。 */
-function processScan(scan: Scan, allowedPrs: Set<number>): boolean {
+export function processScan(scan: Scan, allowedPrs: Set<number>): boolean {
   if (scan.rc === 1) return true; // clean
   if (scan.rc !== 0) {
     console.error(
