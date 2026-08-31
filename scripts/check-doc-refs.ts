@@ -76,7 +76,7 @@ const REPO_ROOT = (() => {
 // DESIGN.md、PROJECT_VISION.md 等專案專屬治理文件)。
 const ROOT_DOCS = ['CLAUDE.md', 'README.md', 'TODOS.md'];
 // 非遞迴掃描目錄(目錄下 *.md)
-const SCAN_DIRS = ['docs', '.claude/sop'];
+const SCAN_DIRS = ['docs', 'docs/architecture', '.claude/sop'];
 // 遞迴掃描目錄(目錄下 **/*.md;記憶層含 archive 子目錄)
 const SCAN_DIRS_RECURSIVE = ['.claude/memory'];
 

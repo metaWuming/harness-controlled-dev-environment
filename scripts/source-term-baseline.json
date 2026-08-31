@@ -1,5 +1,5 @@
 {
   "schemaVersion": 1,
   "sourceTermHistoryBaseline": "template:641065227924184b058b3f64c1c9f9971a3a17b4",
-  "_comment": "PR A1(HARNESS_OPTIMIZATION_IMPLEMENTATION_PLAN.md §5):source-term(去識別化)gate 的 history scan cutover。`template:` prefix 表示這是 template repo 自身的 baseline;下游採用者走 GitHub Template workflow 建的 new repo history 不含此 SHA,checker 偵測到後會**降級為全史掃描**(round 2 P1a 修法)並印明 warning——這樣下游若在自家 history 內有洗白場景(A 加 forbidden + B 刪 forbidden),全史掃仍能抓到中間 blob。若你採用本 template,建議把 sourceTermHistoryBaseline 改成本 repo 的 initial commit SHA(去掉 template: prefix、走嚴格 baseline..HEAD 模式)或設為 null 明示走全史掃描。baseline 及更早的 blob 一律 grandfather(去識別化 debt 不重寫公開歷史);baseline..HEAD 內的 diff 新增行仍嚴格擋。⚠️ 只影響 source-term 掃描,不影響 gitleaks 秘密全史掃描(兩者獨立政策)。schema/loader/validator 定義:scripts/check-no-source-terms.ts(parseBaselineConfig / validateBaseline / BASELINE_SCHEMA_VERSION)。baseline 更新為治理決策,不得隨意翻動——修改本檔請走 PR + Owner 拍板。"
+  "_comment": "source-term(去識別化)gate 的 history scan cutover。設計正本、政策邊界、三種 repo 情境、baseline 變更授權、導入步驟與已知限制,一律見 docs/architecture/source-term-history-baseline.md 的「決策」一節起(本欄不重複敘述,避免漂移)。`template:` prefix 表示這是 template repo 自身的 baseline;下游採用者的新 history 不含此 SHA 時 checker 會降級為全史掃描並印 warning。⚠️ baseline 更新是治理決策,不得為了讓 CI 轉綠而翻動——改本檔請走 PR + Owner 拍板。schema / loader / validator 定義:scripts/check-no-source-terms.ts。"
 }

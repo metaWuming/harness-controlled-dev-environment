@@ -5,6 +5,9 @@
 //   - extractRefs:@import / markdown link / 純路徑;跳過 fenced code / 外部 / 路由 / 佔位符
 //   - checkRefs:doc-dir vs repo-root 解析、../ 逃出 repo 跳過、gitignored / planned 跳過、缺檔報 violation
 
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { extractRefs, checkRefs, type Ref } from '../scripts/check-doc-refs';
 
@@ -158,5 +161,160 @@ describe('checkRefs', () => {
     expect(checkRefs(refs, 'README.md', existsIn(new Set()))).toEqual([
       { doc: 'README.md', line: 7, type: 'link', rawPath: 'docs/ADOPTION.md' },
     ]);
+  });
+});
+
+// ══════════ PR A1.1 F2:canonical ADR 引用治理(位置 + 數量型守門) ══════════
+//
+// 為什麼放這裡:這是 **doc reference governance**,不是 source-term 掃描行為。
+// `tests/check-no-source-terms.test.ts` 只留掃描行為與效能 / mutation 契約。
+//
+// ⚠️ 字面拆碎(`EXT_PLAN_*`):本檔要斷言「repo 內已無外部私人 plan 的檔名引用」,
+//    若把該檔名整串寫進 source,這個測試自己就會變成一個 hit(自我命中),
+//    只能靠豁免清單繞開 —— 那正是要禁止的做法。改用執行期 concat。
+//    **本測試不使用任何全域 value allowlist 自我豁免。**
+
+const REPO = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+  encoding: 'utf-8',
+}).trim();
+
+/**
+ * canonical ADR 的 repo-relative 路徑。
+ * ⚠️ 同樣拆碎:整串寫進 source 會讓本檔自己變成第 6 個引用點,
+ *    G2 的數量斷言就得靠自我豁免才能過 —— 那正是要禁止的做法。
+ */
+const ADR_PATH = 'docs/architecture/' + 'source-term-history-baseline.md';
+
+/** 外部私人規劃文件的檔名 / 路徑片段(拆碎,避免自我命中)。 */
+const EXT_PLAN_FILE = 'HARNESS_' + 'OPTIMIZATION_' + 'IMPLEMENTATION_' + 'PLAN.md';
+const EXT_PLAN_DIR = 'Documents' + '/Codex';
+
+/**
+ * canonical 引用的**預期位置與數量**。
+ * 改動 = 有意識的治理決定,必須同步改這張表(這正是位置+數量型守門的用意)。
+ */
+const EXPECTED_ADR_REFS: Array<[string, number]> = [
+  ['.github/workflows/ci.yml', 2],
+  ['scripts/source-term-baseline.json', 1],
+  ['tests/check-no-source-terms.test.ts', 1],
+  ['.claude/memory/progress.md', 1],
+];
+const EXPECTED_ADR_REF_TOTAL = 5;
+
+function trackedFiles(): string[] {
+  return execFileSync('git', ['-C', REPO, 'ls-files', '-z'], { encoding: 'utf-8' })
+    .split('\0')
+    .filter(Boolean);
+}
+
+function readTracked(rel: string): string {
+  return fs.readFileSync(path.join(REPO, rel), 'utf-8');
+}
+
+/** 掃全部 tracked 檔的文字內容,回傳 `rel -> 命中次數`(跳過讀不到的二進位檔)。 */
+function countInTracked(needle: string): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const rel of trackedFiles()) {
+    let text: string;
+    try {
+      text = readTracked(rel);
+    } catch {
+      continue;
+    }
+    let n = 0;
+    let i = text.indexOf(needle);
+    while (i !== -1) {
+      n++;
+      i = text.indexOf(needle, i + needle.length);
+    }
+    if (n > 0) out.set(rel, n);
+  }
+  return out;
+}
+
+/** 抽 ADR 的 H2 標題(引用要指到穩定標題,不是章節編號)。 */
+function adrHeadings(): string[] {
+  return readTracked(ADR_PATH)
+    .split('\n')
+    .filter((l) => l.startsWith('## '))
+    .map((l) => l.slice(3).trim());
+}
+
+describe('PR A1.1 F2 — canonical ADR 引用治理', () => {
+  it('🔴 G1:canonical ADR 存在且被 git 追蹤', () => {
+    expect(fs.existsSync(path.join(REPO, ADR_PATH))).toBe(true);
+    expect(trackedFiles()).toContain(ADR_PATH);
+    // 必要段落齊備(F2 要求的治理內容)
+    const h = adrHeadings();
+    for (const need of [
+      '決策',
+      '政策邊界:source-term 掃描 vs gitleaks 秘密掃描',
+      '掃描範圍與三種 repo 情境',
+      'baseline 變更授權',
+      '導入步驟(下游採用者)',
+      '效能與 scale 契約',
+      '已知限制',
+      'Provenance',
+    ]) {
+      expect(h, `ADR 缺必要段落「${need}」`).toContain(need);
+    }
+  });
+
+  it('🔴 G1b:ADR 記錄 provenance(PR 引用 + 首次 baseline SHA)', () => {
+    const text = readTracked(ADR_PATH);
+    expect(text).toMatch(/PR #\d+/);
+    expect(text).toContain('641065227924184b058b3f64c1c9f9971a3a17b4');
+  });
+
+  it('🔴 G2:canonical 引用的位置與數量固定,且每處都指到穩定標題', () => {
+    const hits = countInTracked(ADR_PATH);
+    // 位置 + 數量
+    for (const [rel, n] of EXPECTED_ADR_REFS) {
+      expect(hits.get(rel) ?? 0, `${rel} 的 ADR 引用數`).toBe(n);
+    }
+    const total = [...hits.values()].reduce((a, b) => a + b, 0);
+    expect(total, 'ADR 引用總數(新增引用要同步更新 EXPECTED_ADR_REFS)').toBe(
+      EXPECTED_ADR_REF_TOTAL
+    );
+    expect([...hits.keys()].sort()).toEqual(
+      EXPECTED_ADR_REFS.map(([r]) => r).sort()
+    );
+
+    // 每一處引用附近(同行或前後 2 行)要出現 ADR 的某個穩定 H2 標題,
+    // 而不是只丟一個裸路徑。標題可能因換行落在鄰行,故取視窗。
+    const headings = adrHeadings();
+    for (const [rel] of EXPECTED_ADR_REFS) {
+      const lines = readTracked(rel).split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        if (!lines[i]!.includes(ADR_PATH)) continue;
+        const win = lines.slice(Math.max(0, i - 2), i + 3).join('\n');
+        expect(
+          headings.some((h) => win.includes(h)),
+          `${rel}:${i + 1} 的 ADR 引用未指到穩定標題`
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('🔴 G3:tracked files 已無外部私人 plan 的檔名 / 路徑引用(0 hit)', () => {
+    expect([...countInTracked(EXT_PLAN_FILE).keys()]).toEqual([]);
+    expect([...countInTracked(EXT_PLAN_DIR).keys()]).toEqual([]);
+  });
+
+  it('🔴 G4:progress.md 不含個人絕對路徑(0 hit)', () => {
+    const text = readTracked('.claude/memory/progress.md');
+    expect(text).not.toContain('/Users/');
+    expect(text).not.toContain('~/Documents');
+  });
+
+  it('🔴 G5:docs/architecture 已納入 doc-ref 掃描範圍,且 checker 對本 repo 綠', () => {
+    const src = readTracked('scripts/check-doc-refs.ts');
+    expect(src).toContain("'docs/architecture'");
+    const r = execFileSync(
+      path.join(REPO, 'node_modules/.bin/tsx'),
+      [path.join(REPO, 'scripts/check-doc-refs.ts')],
+      { cwd: REPO, encoding: 'utf-8' }
+    );
+    expect(r).toContain('0');
   });
 });

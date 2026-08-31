@@ -1040,7 +1040,8 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
 
 // ────────────────── PR A1:history baseline cutover 契約 ──────────────────
 //
-// 動機:HARNESS_OPTIMIZATION_IMPLEMENTATION_PLAN.md §5——main history 舊 blob 含
+// 動機(設計正本:docs/architecture/source-term-history-baseline.md「決策」)——
+// main history 舊 blob 含
 // 來源專案識別詞(不能 rewrite 主線歷史),但要讓 gate 綠。做法:machine-readable
 // `scripts/source-term-baseline.json` 記錄 baseline SHA,checker history scan 只掃
 // `baseline..HEAD`;baseline 本身損壞一律 fail-closed。
@@ -1610,7 +1611,9 @@ describe("check-no-source-terms — history baseline(PR A1)", () => {
 
 // ══════════════════ PR A1.1 F1:diff-scan 效能重構的守門契約 ══════════════════
 //
-// 設計正本:docs/architecture/source-term-history-baseline.md「效能與 scale 契約」。
+// 設計正本:repo 內 ADR「去識別化掃描的 history baseline cutover」的
+// 〈效能與 scale 契約〉一節(canonical path 引用集中在 4 個 consumer,見
+// tests/check-doc-refs.test.ts 的 G2 位置+數量契約)。
 //
 // 政策不變量(**與實作無關**,四條):
 //   INV-1 baseline..HEAD 的每個 rev,其 patch 全域最多被提取一次(不分 view / policy)

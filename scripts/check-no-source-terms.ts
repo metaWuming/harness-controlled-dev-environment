@@ -1132,8 +1132,8 @@ function grepRevDir(
  *   baseline 之後新加的 forbidden 即使後來又刪掉,per-commit 仍抓得到(洗白防線)。
  *
  * ⚠️ file:line attribution:hit 只帶 rev 前 8 碼 + 內容片段,沒有檔名與行號。
- *    這是 diff-scan 語意的已知限制(A1 就有,A1.1 未改),追蹤見 ADR
- *    docs/architecture/source-term-history-baseline.md「已知限制」。
+ *    這是 diff-scan 語意的已知限制(A1 就有,A1.1 未改),追蹤見 repo 內 ADR
+ *    「去識別化掃描的 history baseline cutover」的〈已知限制〉一節。
  */
 export function scanBaselineToHeadDiffs(
   root: string,
