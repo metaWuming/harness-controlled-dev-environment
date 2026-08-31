@@ -54,6 +54,9 @@ import {
   splitPatchStream,
   scanBaselineToHeadDiffs,
   processScan,
+  // Codex round 1 P1
+  DIFF_HIT_MARK,
+  hitContent,
 } from "../scripts/check-no-source-terms";
 
 const REPO_ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], {
@@ -244,9 +247,16 @@ describe("isSelfPrReferenceLine — CA-scan hit 的 self-PR 判定", () => {
   });
 });
 
-describe("parseGrepZLine — 解 git grep -z NUL 分隔輸出(round 6 P2-3)", () => {
-  it("working tree 掃:path NUL line:content → 拆對", () => {
-    const raw = "docs/note.md\x005:see " + PREF_PR + "7";
+describe("parseGrepZLine — 解 git grep -z NUL 分隔輸出(round 6 P2-3;R1 延伸修正)", () => {
+  // 🔴 **格式更正**:實測 git 2.50.1 的 `git grep -z -n` 輸出是**兩個 NUL**——
+  //    `path<NUL>行號<NUL>內容`(history 掃是 `rev:path<NUL>行號<NUL>內容`)。
+  //    原本這幾條 fixture 寫成 `path<NUL>行號:內容`、parser 也用**第一個冒號**切,
+  //    那個假設在真實輸出下會把「內容裡第一個冒號之前的部分」整段丟掉 → 未知 PR
+  //    引用消失 → 假放行。fixture 一起改成真實格式(見下方 R1P1-e 的可達負對照)。
+  const NUL1 = String.fromCharCode(0);
+
+  it("working tree 掃:path NUL 行號 NUL 內容 → 拆對", () => {
+    const raw = "docs/note.md" + NUL1 + "5" + NUL1 + "see " + PREF_PR + "7";
     expect(parseGrepZLine(raw)).toEqual({
       path: "docs/note.md",
       line: "5",
@@ -254,9 +264,8 @@ describe("parseGrepZLine — 解 git grep -z NUL 分隔輸出(round 6 P2-3)", ()
     });
   });
 
-  it("history 掃:rev:path NUL line:content → 拆對", () => {
-    // git grep -z 對 rev 掃時,rev 用 `:` 與 path 分隔,path 與 line 用 NUL
-    const raw = "abc1234:docs/note.md\x005:some content";
+  it("history 掃:rev:path NUL 行號 NUL 內容 → 拆對", () => {
+    const raw = "abc1234:docs/note.md" + NUL1 + "5" + NUL1 + "some content";
     expect(parseGrepZLine(raw)).toEqual({
       path: "abc1234:docs/note.md",
       line: "5",
@@ -265,11 +274,9 @@ describe("parseGrepZLine — 解 git grep -z NUL 分隔輸出(round 6 P2-3)", ()
   });
 
   it("🔴 round 6 P2-3 反例:filename 含 `:數字:` sub-path → 正確拆到 NUL", () => {
-    // 舊 stripGitGrepPrefix 用 regex `/:數字:/` 找 line number 邊界,若真實
-    // filename 含「:12:」sub-path 會被誤切 → content 錯抽 filename 部分。
-    // 用 NUL 分隔就沒這問題
     const raw =
-      "docs/meta:12:" + PREF_PR + "999 notes.md\x005:see " + PREF_PR + "7 legit";
+      "docs/meta:12:" + PREF_PR + "999 notes.md" + NUL1 + "5" + NUL1 +
+      "see " + PREF_PR + "7 legit";
     const parsed = parseGrepZLine(raw);
     expect(parsed).not.toBeNull();
     expect(parsed!.path).toBe("docs/meta:12:" + PREF_PR + "999 notes.md");
@@ -277,12 +284,33 @@ describe("parseGrepZLine — 解 git grep -z NUL 分隔輸出(round 6 P2-3)", ()
     expect(extractPrRefsFromLine(parsed!.content)).toEqual([7]);
   });
 
+  it("🔴 R1 延伸:內容含冒號時,冒號前的未知引用不得被丟掉", () => {
+    const raw =
+      "docs/note.md" + NUL1 + "5" + NUL1 +
+      PREF_PR + "999 ref: also " + PREF_PR + "40";
+    const parsed = parseGrepZLine(raw);
+    expect(parsed).not.toBeNull();
+    expect(
+      extractPrRefsFromLine(parsed!.content),
+      "用第一個冒號切會只剩 40,未知的 999 消失 → 假放行"
+    ).toEqual([999, 40]);
+    expect(isSelfPrReferenceLine(parsed!.content, new Set([40]))).toBe(false);
+  });
+
+  it("🔴 R1 延伸:只有一個 NUL(格式與預期不符)→ 保守保留整段內容,不猜行號邊界", () => {
+    const raw = "docs/note.md" + NUL1 + "5:" + PREF_PR + "999 and " + PREF_PR + "40";
+    const parsed = parseGrepZLine(raw);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.content).toContain("999");
+    expect(isSelfPrReferenceLine(parsed!.content, new Set([40]))).toBe(false);
+  });
+
   it("格式異常(無 NUL)→ 回 null", () => {
     expect(parseGrepZLine("no null here")).toBeNull();
   });
 
   it("displayGrepHit:parseable 轉 human-readable path:line:content", () => {
-    const raw = "docs/note.md\x005:see " + PREF_PR + "7";
+    const raw = "docs/note.md" + NUL1 + "5" + NUL1 + "see " + PREF_PR + "7";
     expect(displayGrepHit(raw)).toBe("docs/note.md:5:see " + PREF_PR + "7");
   });
 
@@ -1637,6 +1665,8 @@ interface ShimCall {
   stdoutFile: string;
   /** 呼叫當下 `-f <file>` 指到的 pattern 檔快照(無則 "-")。 */
   patternFile: string;
+  /** 呼叫當下 Node 給的 fd 1 型別:`file`(串流到檔案)或 `pipe`(記憶體捕捉)。 */
+  fd1: string;
   argv: string[];
 }
 
@@ -1665,6 +1695,9 @@ function makeShim(): Shim {
     }).trim();
     const script = [
       "#!/bin/sh",
+      // R1 P2 契約:先記下 Node 給的 fd 1 型別(檔案 vs pipe),再做任何重導。
+      // 有上限的記憶體 buffer 實作會給 pipe;串流到檔案的實作會給檔案。
+      'if [ -f /dev/fd/1 ]; then _fd1=file; else _fd1=pipe; fi',
       `_in=$(mktemp "${dataDir}/stdin.XXXXXX")`,
       `_out=$(mktemp "${dataDir}/stdout.XXXXXX")`,
       // 呼叫當下快照 `-f <file>`:checker 結束時會清掉 pattern 暫存目錄,
@@ -1681,7 +1714,7 @@ function makeShim(): Shim {
       `"${real}" "$@" < "$_in" > "$_out"`,
       "_rc=$?",
       "{",
-      `  printf '%s\\t%s\\t%s\\t%s\\t%s\\t' '${name}' "$_rc" "$_in" "$_out" "$_pat"`,
+      `  printf '%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t' '${name}' "$_rc" "$_in" "$_out" "$_pat" "$_fd1"`,
       '  for _a in "$@"; do printf \'%s\\037\' "$_a"; done',
       "  printf '\\n'",
       `} >> "${logFile}"`,
@@ -1705,8 +1738,8 @@ function readShimCalls(shim: Shim): ShimCall[] {
   for (const line of raw.split("\n")) {
     if (!line) continue;
     const parts = line.split("\t");
-    if (parts.length < 6) continue;
-    const [bin, rc, stdinFile, stdoutFile, patternFile, ...argvRest] = parts;
+    if (parts.length < 7) continue;
+    const [bin, rc, stdinFile, stdoutFile, patternFile, fd1, ...argvRest] = parts;
     const argv = argvRest
       .join("\t")
       .split(ARGV_SEP)
@@ -1717,6 +1750,7 @@ function readShimCalls(shim: Shim): ShimCall[] {
       stdinFile: stdinFile!,
       stdoutFile: stdoutFile!,
       patternFile: patternFile!,
+      fd1: fd1!,
       argv,
     });
   }
@@ -2011,20 +2045,31 @@ describe("PR A1.1 — patch 解析與分桶的 e2e 契約(disposable repo)", () 
       "src/nl\nname.md",
     ];
     for (const name of names) {
+      // 🔴 加了再刪:工作樹乾淨 → 命中只能來自 history diff scan。
+      //    留在工作樹的話 working-tree 掃描會先抓到,這條就證明不了 patch 路徑解析。
       const dir = makeRepo({
         deny: [FORBIDDEN],
         commits: [
           { message: "clean init", files: { "src/init.md": "hello\n" } },
           { message: "add polluted", files: { [name]: `${FORBIDDEN}\n` } },
+          { message: "remove polluted", deletions: [name] },
         ],
       });
       writeBaselineConfig(dir, {
         schemaVersion: 1,
-        sourceTermHistoryBaseline: shaAt(dir, "HEAD~1"),
+        sourceTermHistoryBaseline: shaAt(dir, "HEAD~2"),
       });
       const { code, out } = runChecker(dir);
+      // 同 R1P2-c:斷言實際命中內容,不用會被 scanner error 誤中的那句
+      expect(
+        out,
+        `檔名 ${JSON.stringify(name)}:必須印出實際命中的那一行`
+      ).toContain(FORBIDDEN);
+      expect(
+        out,
+        `檔名 ${JSON.stringify(name)}:解析失敗會變成掃描器錯誤,不算抓到`
+      ).not.toContain("掃描器錯誤");
       expect(code, `檔名 ${JSON.stringify(name)} 內的 forbidden 應被抓到`).toBe(1);
-      expect(out).toContain("含來源專案識別詞");
     }
   });
 
@@ -2680,12 +2725,9 @@ describe("PR A1.1 — 注入式 fail-closed 與批次邊界(真 repo)", () => {
   });
 
   it("🔴 N8d:呼叫點守門——scanner error(rc=2)一律判失敗;rc=1 才是乾淨", () => {
-    expect(processScan({ label: "x", mode: "strict", hits: [], rc: 2 }, new Set())).toBe(
-      false
-    );
-    expect(processScan({ label: "x", mode: "strict", hits: [], rc: 1 }, new Set())).toBe(
-      true
-    );
+    const base = { label: "x", mode: "strict" as const, hits: [], framing: "diff-prefixed" as const };
+    expect(processScan({ ...base, rc: 2 }, new Set())).toBe(false);
+    expect(processScan({ ...base, rc: 1 }, new Set())).toBe(true);
   });
 
   it("🔴 含 NUL byte 的新增行仍走 grep -a(不因 binary detection 短路)", () => {
@@ -2701,5 +2743,187 @@ describe("PR A1.1 — 注入式 fail-closed 與批次邊界(真 repo)", () => {
     });
     const scans = runDiffScan(dir, [FORB], shaAt(dir, "HEAD~1"), {});
     expect(scans.some((s) => s.rc === 0 && s.hits.length > 0)).toBe(true);
+  });
+});
+
+// ══════════ Codex round 1 findings — 回歸契約 ══════════
+
+describe("R1 P1 — aggregate diff hit 的 framing(未知 PR 引用不得被丟掉)", () => {
+  const NUL0 = String.fromCharCode(0);
+  // Codex 復現用的那一行:NUL 前是未知號、冒號後是合法 self-PR 號
+  const EVIL_CONTENT = `${PREF_PR}999${NUL0}x:${PREF_PR}40`;
+
+  it("🔴 R1P1-a:diff-prefixed framing 只剝我們自己加的前綴,content 內的 NUL 是資料", () => {
+    const raw = `deadbeef${DIFF_HIT_MARK}${EVIL_CONTENT}`;
+    expect(hitContent(raw, "diff-prefixed")).toBe(EVIL_CONTENT);
+    // 未知號必須留在 content 內,否則 self-PR 判定看不到它
+    expect(hitContent(raw, "diff-prefixed")).toContain("999");
+  });
+
+  it("🔴 R1P1-b:consumer 契約——未知引用不得被丟掉(processScan 必須判失敗)", () => {
+    const raw = `deadbeef${DIFF_HIT_MARK}${EVIL_CONTENT}`;
+    expect(
+      processScan(
+        { label: "史", mode: "self-pr", hits: [raw], rc: 0, framing: "diff-prefixed" },
+        new Set([40])
+      ),
+      "NUL 前的未知 PR 號被當成 grep -Z 檔名丟掉 → 假放行"
+    ).toBe(false);
+  });
+
+  it("🔴 R1P1-c:真正 NUL-framed 的 hit(grep -z)仍照舊正確解析", () => {
+    // `path\0line:content` —— 第一個 NUL 是 grep 的框架,不是資料
+    const raw = `docs/a.md${NUL0}12:${PREF_PR}40 ref`;
+    expect(hitContent(raw, "grep-z")).toBe(`${PREF_PR}40 ref`);
+    expect(
+      processScan(
+        { label: "工作樹", mode: "self-pr", hits: [raw], rc: 0, framing: "grep-z" },
+        new Set([40])
+      )
+    ).toBe(true);
+  });
+
+  it("🔴 R1P1-d:e2e 洗白負對照——A 加「未知號 + NUL + 合法號」、B 刪除 → 必須擋且揭露未知號", () => {
+    const dir = makeRepo({
+      deny: ["forbidden_r1p1_term"],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        // 讓 allowedPrs 含 40(canonical squash 尾綴)
+        { message: "merged work (#40)", files: { "src/m.md": "merged\n" } },
+        {
+          message: "A adds mixed reference",
+          files: { "src/w.md": `${EVIL_CONTENT}\n` },
+        },
+        { message: "B removes it", files: { "src/w.md": "clean now\n" } },
+      ],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD~2"),
+    });
+    const { code, out } = runChecker(dir);
+    // current tree 乾淨、commit 訊息乾淨 —— 只有 history diff scan 抓得到
+    expect(out).toContain("history scan range: baseline..HEAD");
+    expect(out, "未知 PR 引用必須被揭露").toContain("999");
+    expect(out).toContain("含未知 PR/pull 引用");
+    expect(code, "A→B 洗白必須擋下").toBe(1);
+  });
+});
+
+describe("R1 延伸 — working-tree / history-tree CA 掃描的冒號截斷假放行", () => {
+  it("🔴 R1P1-e:工作樹一行「未知號 + 冒號 + 合法號」→ 必須擋(可達的 e2e 負對照)", () => {
+    const dir = makeRepo({
+      deny: ["forbidden_r1e_term"],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        { message: "merged work (#40)", files: { "src/m.md": "merged\n" } },
+      ],
+      workingTree: {
+        // 內容的第一個冒號在未知號之後:用冒號切內容會只剩「also PR 井號 40」
+        "src/note.md": `${PREF_PR}999 ref: also ${PREF_PR}40\n`,
+      },
+    });
+    const { code, out } = runChecker(dir);
+    expect(out, "未知 PR 引用必須被揭露").toContain("999");
+    expect(out).toContain("含未知 PR/pull 引用");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 R1P1-f:同一行在 history blob(HEAD 已清乾淨)也要擋", () => {
+    const dir = makeRepo({
+      deny: ["forbidden_r1f_term"],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        { message: "merged work (#40)", files: { "src/m.md": "merged\n" } },
+        {
+          message: "A adds",
+          files: { "src/w.md": `${PREF_PR}999 ref: also ${PREF_PR}40\n` },
+        },
+        { message: "B cleans", files: { "src/w.md": "clean\n" } },
+      ],
+    });
+    // 不設 baseline → 走全史 tree scan(git grep -z 路徑)
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("999");
+    expect(out).toContain("含未知 PR/pull 引用");
+    expect(code).toBe(1);
+  });
+});
+
+describe("R1 P2 — producer 不得走有上限的記憶體 buffer(排除路徑不得變成 false-red)", () => {
+  it("🔴 R1P2-a:只動 FULL_EXCLUDES 路徑的大 patch → 仍判乾淨(政策豁免不得被判紅)", () => {
+    // ⚠️ 本條是 CI-practical 的回歸 fixture(3 MiB,秒級)。它證明「豁免路徑的大
+    //    改動判乾淨」,但**不足以單獨證明沒有記憶體上限**——那由 R1P2-b 的
+    //    fd 型別契約守(有上限的實作會把 stdout 收進 pipe)。兩條合起來才完整。
+    const big = "x".repeat(3 * 1024 * 1024);
+    const dir = makeRepo({
+      deny: ["forbidden_r1p2_term"],
+      commits: [{ message: "clean init", files: { "src/init.md": "hello\n" } }],
+    });
+    const baseline = shaAt(dir, "HEAD");
+    writeFileSync(join(dir, "package-lock.json"), `{"x":"${big}"}\n`, "utf-8");
+    execFileSync("git", ["-C", dir, "add", "-A"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "huge excluded churn"], {
+      stdio: "ignore",
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: baseline,
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("history scan range: baseline..HEAD");
+    expect(code, "只動豁免路徑的 commit 不得讓 gate 轉紅").toBe(0);
+  });
+
+  it("🔴 R1P2-b:patch producer 的 stdout 必須接檔案 fd,不得是 pipe(無上限記憶體 buffer)", () => {
+    const { dir } = makeScaleRepo(3);
+    const shim = makeShim();
+    expect(runChecker(dir, shim.env).code).toBe(0);
+    const p = profile(shim);
+    expect(p.patchProducing.length).toBeGreaterThan(0);
+    for (const c of p.patchProducing) {
+      expect(
+        c.fd1,
+        `patch producer 的 stdout 型別=${c.fd1};pipe 代表回到有上限的記憶體 buffer`
+      ).toBe("file");
+    }
+  });
+
+  it("🔴 R1P2-c:新增行跨越 flush 門檻與讀取 chunk 邊界時,末尾內容仍被掃到", () => {
+    const FORB = "forbidden" + "_r1p2c_term";
+    // 三個邊界一起打:
+    //   ① BUCKET_FLUSH_LINES = 2048 → 40000 行跨多次 flush
+    //   ② 讀取 chunk = 1 MiB → ~2.6 MiB 的 patch 跨多個 chunk(只讀第一塊會截斷)
+    //   ③ 非 ASCII 內容 → chunk 邊界大機率切在多位元組序列中間(StringDecoder 要接住)
+    // forbidden 放最後一行:任何截斷或邊界解碼錯誤都會讓它漏掃。
+    const body = Array.from(
+      { length: 40000 },
+      (_, i) => `第 ${i} 行 padding 中文內容 abcdefghijklmnop`
+    ).join("\n");
+    // 🔴 加了再刪:current tree 與 commit 訊息都乾淨,**只有 history diff scan**
+    //    看得到那一行。若把檔案留在工作樹,working-tree 掃描會先抓到、exit 1,
+    //    這條測試就對「diff scan 有沒有讀完串流」完全不敏感(M14 因此存活過一輪)。
+    const dir = makeRepo({
+      deny: [FORB],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        { message: "huge scanned add", files: { "src/big.md": `${body}\n${FORB}\n` } },
+        { message: "remove it", deletions: ["src/big.md"] },
+      ],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD~2"),
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("history scan range: baseline..HEAD");
+    // ⚠️ 不能斷言「git 歷史 blob 含來源專案識別詞」——那是 main() 那句
+    //    「…或掃描錯誤」的子字串,scanner error 路徑也會命中、無法分辨。
+    //    要斷言**實際命中的內容**,並排除掃描器錯誤。
+    expect(out, "必須印出實際命中的那一行,而不是掃描器錯誤").toContain(FORB);
+    expect(out, "串流被截斷會變成 separator 缺 rev 的掃描器錯誤").not.toContain(
+      "掃描器錯誤"
+    );
+    expect(code, "跨 flush 門檻與 chunk 邊界的最後一行必須仍被掃到").toBe(1);
   });
 });

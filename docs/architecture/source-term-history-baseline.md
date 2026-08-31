@@ -93,9 +93,32 @@ history diff 掃描的成本會隨 `baseline..HEAD` 的 commit 數成長,而 bas
   extraction 分桶**,不得為任何一組另產 patch。
 - **INV-4** subprocess 不得回退成每 rev 多倍乘法。
 
+patch producer 的 stdout **接檔案 fd、不經有上限的記憶體 buffer**,消費端逐行串流,
+記憶體不隨單一 patch 或整批的大小成長。這一點是必要的:pathspec 過濾在 JS 端做,
+所以串流會包含後來才被排除的路徑(例如 lockfile 的大量 churn);若走有上限的
+記憶體 buffer,一個**只動豁免路徑**的大 commit 就會讓 gate 轉紅——政策豁免的改動
+被判紅是 false-red。代價是暫存檔佔用磁碟(而非記憶體),用完即刪。
+
 守門測試在 `tests/check-no-source-terms.test.ts`(PATH shim 觀測實際 subprocess:
 呼叫預算、rev multiset 覆蓋、批次互斥、三類斜率、POSIX ERE 未被換掉)。
 測試中標為 *implementation test* 的條目綁當前實作,**不是政策**。
+
+## hit framing:未知引用不得被丟掉
+
+CA(context-aware)判定只對「hit 的內容」做 self-PR 放行,所以**內容怎麼從 hit 取出來
+是安全相關的**。三種掃描產出的 hit 框架不同:
+
+| 掃描 | 框架 | 取內容的方式 |
+|---|---|---|
+| working tree / 全史 tree | `git grep -z` 的 `path<NUL>line:content` | 第一個 NUL 是**框架**,之後的冒號切出內容 |
+| `baseline..HEAD` diff | `<rev8> [+diff] <content>` | 只剝掉前綴;content 內的位元組(含 NUL)**全部是資料** |
+| commit 訊息 | `<行號>:<內容>` | 整行即內容(strict 模式不解析) |
+
+**不變量**:框架由產生 hit 的那一端宣告,消費端**不得從內容推斷**。
+
+理由是一條可達的假放行:diff hit 的內容若含 NUL,把它當成 grep 的檔名分隔符會讓
+NUL 之前的部分被丟掉。一行同時含未知號與合法 self-PR 號時(未知號在前),未知號
+就消失了、只剩合法號送進判定 → 放行 → 「先加後刪」的洗白序列整段變綠。
 
 ## 已知限制
 
@@ -113,16 +136,15 @@ history diff 掃描的成本會隨 `baseline..HEAD` 的 commit 數成長,而 bas
    所以 CI workflow(`.yml`)、baseline config(`.json`)、測試碼(`.ts`)裡指向本檔的
    引用**不被該 checker 驗證**;改由 `tests/check-doc-refs.test.ts` 的位置 + 數量型
    契約守。章節錨點(`#anchor`)不被任何機器驗證,標題穩定性靠人工紀律。
-6. **單批 patch 體積** —— pathspec 過濾在 JS 端做,所以 patch 串流會包含後來才被
-   排除的路徑(例如 lockfile 的大量 churn)。單批過大時 stdout 會撞上限,結果是
-   **fail-closed 紅燈**(不會靜默漏掃),訊息會指出可調小批次。
-7. **非 UTF-8 位元組** —— patch 以 UTF-8 讀取(與改動前相同),`--text` 強制輸出的
+6. **非 UTF-8 位元組** —— patch 以 UTF-8 讀取(與改動前相同),`--text` 強制輸出的
    非 UTF-8 位元組會變成替換字元。這不影響 ASCII 識別詞的比對。
 
 ## Provenance
 
 - baseline cutover 由 PR #40 落地(squash merge 進主線)。
 - 首次 baseline SHA:`641065227924184b058b3f64c1c9f9971a3a17b4`(當時的主線 HEAD)。
-- 掃描實作的效能重構(〈效能與 scale 契約〉四條不變量)由後續的 A1 residual PR 落地,
-  掃描語意與判定結果未改變。
+- 掃描實作的效能重構(〈效能與 scale 契約〉四條不變量)由後續的 A1 residual PR 落地。
+  **diff scan 的語意未改變**(仍是 per-commit 相對 first parent 的新增行)。
+  判定結果有**一處刻意改變**:同一個 PR 內修掉了〈hit framing〉那條可達的假放行——
+  含 NUL 的 diff hit 過去會讓未知 PR 引用被丟掉而放行,現在一律擋。
 - 本 ADR 是 repo-local 正本;原始規劃文件在版控之外,不作為引用目標。

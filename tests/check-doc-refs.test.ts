@@ -198,8 +198,11 @@ const EXPECTED_ADR_REFS: Array<[string, number]> = [
   ['scripts/source-term-baseline.json', 1],
   ['tests/check-no-source-terms.test.ts', 1],
   ['.claude/memory/progress.md', 1],
+  // progress 歸檔是唯讀歷史 snapshot;被搬走的 sprint entry 連同它的引用一起進來。
+  // 這一筆是 archive 動作造成的、有意識登錄的位置(G2 原本就擋下了這個搬移)。
+  ['.claude/memory/progress-archive/progress-2026-08.md', 1],
 ];
-const EXPECTED_ADR_REF_TOTAL = 5;
+const EXPECTED_ADR_REF_TOTAL = 6;
 
 function trackedFiles(): string[] {
   return execFileSync('git', ['-C', REPO, 'ls-files', '-z'], { encoding: 'utf-8' })

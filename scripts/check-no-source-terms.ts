@@ -56,7 +56,19 @@
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  closeSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  readSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { StringDecoder } from "node:string_decoder";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -251,13 +263,16 @@ export function partitionPatterns(patterns: string[]): {
  *    regex 從 filename 中的 `:12:` 切割 → content 錯,把 filename 的其餘部分
  *    當成 content → extractor 從錯 content 抽未知號 → 合法引用誤擋。
  *
- *    改用 `git grep -z / --null` 讓 grep 用 NUL 字元 (`\0`) 分隔 filename 與
- *    line number(replaces the `:` between them),結構化明確不需猜邊界。
- *    格式:
- *      working tree:`filename\0line:content`
- *      history 掃 :`rev:filename\0line:content`
+ *    改用 `git grep -z / --null`,讓 NUL 取代分隔用的 `:`。
  *
- *    解析失敗 → 回 null,呼叫端 fail-safe 用原 raw 判定。
+ * 🔴 **Codex R1 延伸修法**:實測(git 2.50.1)輸出是**兩個 NUL**——
+ *      working tree:`filename\0line\0content`
+ *      history 掃 :`rev:filename\0line\0content`
+ *    舊版註解寫成 `filename\0line:content`、並用**第一個冒號**切內容。那個假設
+ *    在真實輸出下會把「內容裡第一個冒號之前的部分」整段丟掉,於是
+ *    `PR-井號-999 ref: also PR-井號-40` 這種行只剩後半 → self-PR 判定看不到未知號
+ *    → **假放行**(A1 起就存在的可達缺陷,非 A1.1 引入)。
+ *    現在改用第二個 NUL 切;沒有第二個 NUL 時**保守保留整段**當內容。
  */
 export function parseGrepZLine(
   raw: string
@@ -266,13 +281,18 @@ export function parseGrepZLine(
   if (nul === -1) return null;
   const path = raw.slice(0, nul);
   const rest = raw.slice(nul + 1);
-  const colon = rest.indexOf(":");
-  if (colon === -1) return null;
-  return {
-    path,
-    line: rest.slice(0, colon),
-    content: rest.slice(colon + 1),
-  };
+  const nul2 = rest.indexOf("\0");
+  if (nul2 !== -1) {
+    return {
+      path,
+      line: rest.slice(0, nul2),
+      content: rest.slice(nul2 + 1),
+    };
+  }
+  // 沒有第二個 NUL(格式與預期不符)→ **保守保留整段**當內容,不猜行號邊界。
+  // 方向刻意選「多保留」:內容留太多最多造成誤擋(可查證),切太少會讓
+  // 未知引用消失 → 假放行(查不出來)。
+  return { path, line: "", content: rest };
 }
 
 /** 把 raw hit(含 NUL)轉成 human-readable「path:line:content」顯示。 */
@@ -280,6 +300,64 @@ export function displayGrepHit(raw: string): string {
   const parsed = parseGrepZLine(raw);
   if (!parsed) return raw;
   return `${parsed.path}:${parsed.line}:${parsed.content}`;
+}
+
+/**
+ * hit 的框架(framing)—— **不可從內容推斷,必須由產生者宣告**。
+ *
+ * 🔴 R1 P1 修法。舊版 `processScan` 對所有 self-PR 模式的 hit 無條件呼叫
+ *    `parseGrepZLine`,那個 parser 假設「第一個 NUL 是 grep -Z 的檔名分隔符」。
+ *    aggregate diff hit 的形狀是 `<rev8> [+diff] <內容>`,內容裡的 NUL **是資料**。
+ *    可達的假放行序列:
+ *      baseline 之後 commit A 加一行 `PR-井號-999<NUL>x:PR-井號-40`(999 未知、40 合法),
+ *      commit B 再刪掉 → current tree 與 commit 訊息都乾淨。
+ *      parseGrepZLine 會把 NUL 前的未知號當成「檔名」丟掉,只把冒號後的
+ *      `PR-井號-40` 交給 self-PR 判定 → 放行 → A→B 洗白假綠。
+ *
+ *    修法:framing 由產生 Scan 的那一端宣告,消費端依 framing 選 parser,
+ *    不再從內容猜。真正 NUL-framed 的 hit(git grep -z)維持原本正確解析。
+ */
+export type HitFraming =
+  /** `git grep -z` 產出:`path\0line:content`(history tree 掃描是 `rev:path\0line:content`)。 */
+  | "grep-z"
+  /** aggregate diff 掃描產出:`<rev8> [+diff] <content>`;content 可含任意位元組(含 NUL)。 */
+  | "diff-prefixed"
+  /** 無結構前綴,整行即內容(commit 訊息掃描)。 */
+  | "plain";
+
+/** aggregate diff hit 的固定分隔標記(由本檔產生,不來自被掃內容)。 */
+export const DIFF_HIT_MARK = " [+diff] ";
+
+/**
+ * 從 `<rev8> [+diff] <content>` 取出 content。
+ *
+ * 標記由本檔在**內容前面**加上,所以第一個出現的位置一定是我們加的那個;
+ * content 自己若也含這個字串,不會影響切點。找不到標記 → 回原文(fail-safe:
+ * 寧可把整行交給判定,也不要丟掉可能含未知引用的前半段)。
+ */
+export function extractDiffHitContent(raw: string): string {
+  const i = raw.indexOf(DIFF_HIT_MARK);
+  return i === -1 ? raw : raw.slice(i + DIFF_HIT_MARK.length);
+}
+
+/**
+ * 依 framing 取出「要交給 self-PR 判定的內容」。
+ *
+ * ⚠️ 這是 R1 P1 的核心防線:**未知引用不得被丟掉**。
+ *    - grep-z:第一個 NUL 才是檔名分隔符(真的來自 grep 的框架)
+ *    - diff-prefixed:只剝掉我們自己加的前綴,content 原樣保留(NUL 是資料)
+ *    - plain:整行即內容
+ */
+export function hitContent(raw: string, framing: HitFraming): string {
+  if (framing === "grep-z") return parseGrepZLine(raw)?.content ?? raw;
+  if (framing === "diff-prefixed") return extractDiffHitContent(raw);
+  return raw;
+}
+
+/** 依 framing 產生 human-readable 顯示字串。 */
+export function displayHit(raw: string, framing: HitFraming): string {
+  if (framing === "grep-z") return displayGrepHit(raw);
+  return raw;
 }
 
 // ───────────────────────────────────────── I/O helpers
@@ -613,6 +691,11 @@ export interface Scan {
   mode: Mode;
   hits: string[];
   rc: number;
+  /**
+   * hit 的框架。**必填**——讓每個產生點都被編譯器逼著宣告,
+   * 消費端不再從內容猜(R1 P1:猜錯會把未知 PR 引用當檔名丟掉)。
+   */
+  framing: HitFraming;
 }
 
 function scanWorkingTree(
@@ -626,6 +709,7 @@ function scanWorkingTree(
     scans.push({
       label: "working tree(non-CA,全域)",
       mode: "strict",
+      framing: "grep-z" as const,
       ...gitGrep(root, [
         "-nIiE",
         "-f",
@@ -640,6 +724,7 @@ function scanWorkingTree(
     scans.push({
       label: "working tree(CA,全域,走 self-PR 判定)",
       mode: "self-pr",
+      framing: "grep-z" as const,
       ...gitGrep(root, [
         "-nIiE",
         "-f",
@@ -654,6 +739,7 @@ function scanWorkingTree(
     scans.push({
       label: "working tree(SYNTAX 例外檔,只掃 non-CA)",
       mode: "strict",
+      framing: "grep-z" as const,
       ...gitGrep(root, [
         "-nIiE",
         "-f",
@@ -881,63 +967,97 @@ export function parsePatchDstPath(line: string): PatchDst {
 }
 
 /**
- * 從一份 rev 的 patch 取出「每個檔的新增行內容」(strip 一個 `+` 標記)。
+ * patch 行狀態機的**單一實作**(SSOT)。
  *
- * 狀態機沿用 `extractAddedLinesFromPatch` 的 hunk 分界規則(round 2 P1b 加固),
- * 只多一件事:非 hunk 狀態下的 `+++ ` 行更新當前檔案路徑。
+ * `extractAddedLinesByPath`(純函式、給單元測試)與 production 的串流消費者
+ * 都走這一支,兩邊不會漂移。
+ *
+ * 狀態轉移:
  *   `diff --git ` → 離開 hunk、清空當前路徑
  *   非 hunk 的 `+++ ` → parsePatchDstPath
  *   `@@` → 進入 hunk
- *   hunk 內 `+` 開頭 → 新增內容,strip 一個 `+`,歸給當前路徑
+ *   hunk 內 `+` 開頭 → 新增內容(strip 一個 `+`),歸給當前路徑
  *
  * ⚠️ hunk 內出現新增行但當前路徑不明(null 或 deleted)→ **throw**。
- *    這種 patch 結構異常代表檔頭解析失敗或 patch 被截斷;吞掉它 = 漏掃。
+ *    patch 結構異常代表檔頭解析失敗或串流被截斷;吞掉它 = 漏掃。
  * ⚠️ hunk 內容行長得像檔頭(`+++ b/x` / `diff --git ...` / `@@ ...`)不被當成檔頭:
  *    它們在 patch 內帶了額外的 `+` 前綴,不符合各分支的字面條件(U10 守這條)。
  */
+export interface PatchLineState {
+  inHunk: boolean;
+  current: PatchDst | null;
+}
+
+export function newPatchLineState(): PatchLineState {
+  return { inHunk: false, current: null };
+}
+
+/** 回傳這一行貢獻的新增內容(附所屬路徑);非內容行回 null。 */
+export function stepPatchLine(
+  state: PatchLineState,
+  line: string
+): { path: string; added: string } | null {
+  if (line.startsWith("diff --git ")) {
+    state.inHunk = false;
+    state.current = null;
+    return null;
+  }
+  if (!state.inHunk && line.startsWith("+++ ")) {
+    state.current = parsePatchDstPath(line);
+    return null;
+  }
+  if (line.startsWith("@@")) {
+    state.inHunk = true;
+    return null;
+  }
+  if (!state.inHunk) return null;
+  if (!line.startsWith("+")) return null;
+  if (state.current === null || state.current.kind === "deleted") {
+    throw new Error(
+      `patch hunk 的新增行無法歸屬到檔案路徑(patch 結構異常):${line.slice(0, 120)}`
+    );
+  }
+  return { path: state.current.path, added: line.slice(1) };
+}
+
+/**
+ * 從一份 rev 的 patch 取出「每個檔的新增行內容」。
+ * 純函式包裝 `stepPatchLine`,供單元測試與差分對照用。
+ */
 export function extractAddedLinesByPath(patch: string): Map<string, string[]> {
   const out = new Map<string, string[]>();
-  let inHunk = false;
-  let current: PatchDst | null = null;
+  const state = newPatchLineState();
   for (const line of patch.split("\n")) {
-    if (line.startsWith("diff --git ")) {
-      inHunk = false;
-      current = null;
-      continue;
-    }
-    if (!inHunk && line.startsWith("+++ ")) {
-      current = parsePatchDstPath(line);
-      continue;
-    }
-    if (line.startsWith("@@")) {
-      inHunk = true;
-      continue;
-    }
-    if (!inHunk) continue;
-    if (!line.startsWith("+")) continue;
-    if (current === null || current.kind === "deleted") {
-      throw new Error(
-        `patch hunk 的新增行無法歸屬到檔案路徑(patch 結構異常):${line.slice(0, 120)}`
-      );
-    }
-    const arr = out.get(current.path);
-    if (arr) arr.push(line.slice(1));
-    else out.set(current.path, [line.slice(1)]);
+    const hit = stepPatchLine(state, line);
+    if (!hit) continue;
+    const arr = out.get(hit.path);
+    if (arr) arr.push(hit.added);
+    else out.set(hit.path, [hit.added]);
   }
   return out;
 }
 
+export type BucketName = "main" | "syntax";
+
 /**
- * 把**同一份** extraction 分成兩桶,供三組 policy 共用(INV-3):
- *   main 桶   → main×non-CA 與 main×CA 兩組 policy
- *   syntax 桶 → syntax×non-CA 一組 policy
- *
- * 語意逐條對齊舊版的兩種 pathspec:
+ * 一個路徑屬於哪些桶(**單一實作**,純函式包裝與串流路由共用)。
+ * 語意逐條對齊舊版兩種 pathspec:
  *   main   = `. :!<FULL_EXCLUDES>`  → 路徑 ∉ 正規化後的 FULL_EXCLUDES
  *   syntax = `<SYNTAX_EXEMPT_FILES>` → 路徑 ∈ SYNTAX_EXEMPT_FILES
- * `SYNTAX_EXEMPT_FILES` 全部也在 `FULL_EXCLUDES` 內,所以這兩桶互斥
- * (漂移守門見 tests 的 S-2)。
+ * `SYNTAX_EXEMPT_FILES` 全部也在 `FULL_EXCLUDES` 內,所以兩桶互斥(S-2 守這條)。
  */
+export function bucketsOfPath(
+  path: string,
+  normalizedExcludes: Set<string>,
+  syntaxFiles: Set<string>
+): BucketName[] {
+  const out: BucketName[] = [];
+  if (!normalizedExcludes.has(path)) out.push("main");
+  if (syntaxFiles.has(path)) out.push("syntax");
+  return out;
+}
+
+/** 把**同一份** extraction 分成兩桶,供三組 policy 共用(INV-3)。 */
 export function bucketAddedLines(
   byPath: Map<string, string[]>,
   normalizedExcludes: string[],
@@ -948,8 +1068,10 @@ export function bucketAddedLines(
   const main: string[] = [];
   const syntax: string[] = [];
   for (const [p, lines] of byPath) {
-    if (!ex.has(p)) main.push(...lines);
-    if (syn.has(p)) syntax.push(...lines);
+    for (const b of bucketsOfPath(p, ex, syn)) {
+      if (b === "main") main.push(...lines);
+      else syntax.push(...lines);
+    }
   }
   return { main, syntax };
 }
@@ -959,76 +1081,102 @@ function escapeRegExp(s: string): string {
 }
 
 /**
- * 把一批 rev 的 patch 串流切成 `rev → patch`,**逐項 fail-closed 核對**。
+ * batch separator 規則的**單一實作**(SSOT):把串流的每一行歸給某個 rev,
+ * 五條規則逐項 fail-closed。`splitPatchStream`(純函式)與 production 串流
+ * 消費者都走這一支。
  *
- * separator 行格式 `^<marker> <40-hex>$`(由 `--format` 產生)。
- * 任一條不成立 → throw(呼叫端轉成 scanner error → exit 非 0):
+ * separator 行格式 `^<marker> <40-hex>$`。任一條不成立 → throw:
  *   1. 第一個 separator 之前不得有非空內容(未歸屬的 patch bytes)
  *   2. separator 的 rev 必須 ∈ expectedRevs(未知 rev)
  *   3. 每個 rev 的 separator 至多一次(重複)
  *   4. marker 開頭但格式損壞(SHA 非 40-hex / 有尾隨內容)
  *   5. 結束時 producedRevs 必須**恰等於** expectedRevs
- *      (不帶 pathspec 時 git 對空 commit 也會印 format 行 → 可用等號)
+ *      (producer 不帶 pathspec,git 對空 commit 也會印 format 行 → 可用等號)
  *
  * ⚠️ 碰撞時直接 fail-closed,不試圖繼續掃完——寧可紅,不可靜默切錯段。
  */
+export interface SeparatorConsumer {
+  pushLine(line: string): void;
+  finish(): void;
+}
+
+export function makeSeparatorConsumer(opts: {
+  expectedRevs: string[];
+  marker: string;
+  onRevStart(rev: string): void;
+  onLine(rev: string, line: string): void;
+  onRevEnd(rev: string): void;
+}): SeparatorConsumer {
+  const expected = new Set(opts.expectedRevs);
+  if (expected.size !== opts.expectedRevs.length) {
+    throw new Error("expectedRevs 含重複 rev");
+  }
+  const sepRe = new RegExp(`^${escapeRegExp(opts.marker)} ([0-9a-f]{40})$`);
+  const seen = new Set<string>();
+  let cur: string | null = null;
+  return {
+    pushLine(line: string): void {
+      if (line.startsWith(opts.marker)) {
+        const m = sepRe.exec(line);
+        if (!m) {
+          throw new Error(`patch 串流 separator 格式損壞:「${line.slice(0, 120)}」`);
+        }
+        const rev = m[1]!;
+        if (!expected.has(rev)) {
+          throw new Error(`patch 串流含未預期的 rev separator:${rev}`);
+        }
+        if (seen.has(rev)) {
+          throw new Error(`patch 串流的 rev separator 重複:${rev}`);
+        }
+        seen.add(rev);
+        if (cur !== null) opts.onRevEnd(cur);
+        cur = rev;
+        opts.onRevStart(rev);
+        return;
+      }
+      if (cur === null) {
+        if (line.trim() !== "") {
+          throw new Error(
+            `patch 串流在第一個 separator 之前含未歸屬內容:「${line.slice(0, 120)}」`
+          );
+        }
+        return;
+      }
+      opts.onLine(cur, line);
+    },
+    finish(): void {
+      if (cur !== null) opts.onRevEnd(cur);
+      cur = null;
+      if (seen.size !== expected.size) {
+        const missing = opts.expectedRevs.filter((r) => !seen.has(r));
+        throw new Error(
+          `patch 串流缺少 ${missing.length} 個 rev 的 separator(如 ${missing
+            .slice(0, 3)
+            .map((r) => r.slice(0, 8))
+            .join(", ")})`
+        );
+      }
+    },
+  };
+}
+
+/** 純函式包裝:把整段串流切成 `rev → patch`(給單元測試與差分對照用)。 */
 export function splitPatchStream(
   stream: string,
   expectedRevs: string[],
   marker: string
 ): Map<string, string> {
-  const expected = new Set(expectedRevs);
-  if (expected.size !== expectedRevs.length) {
-    throw new Error("splitPatchStream:expectedRevs 含重複 rev");
-  }
-  const sepRe = new RegExp(`^${escapeRegExp(marker)} ([0-9a-f]{40})$`);
   const out = new Map<string, string>();
-  const seen = new Set<string>();
-  let cur: string | null = null;
-  let buf: string[] = [];
-  const flush = (): void => {
-    if (cur !== null) out.set(cur, buf.join("\n"));
-    cur = null;
-    buf = [];
-  };
-  for (const line of stream.split("\n")) {
-    if (line.startsWith(marker)) {
-      const m = sepRe.exec(line);
-      if (!m) {
-        throw new Error(`patch 串流 separator 格式損壞:「${line.slice(0, 120)}」`);
-      }
-      const rev = m[1]!;
-      if (!expected.has(rev)) {
-        throw new Error(`patch 串流含未預期的 rev separator:${rev}`);
-      }
-      if (seen.has(rev)) {
-        throw new Error(`patch 串流的 rev separator 重複:${rev}`);
-      }
-      seen.add(rev);
-      flush();
-      cur = rev;
-      continue;
-    }
-    if (cur === null) {
-      if (line.trim() !== "") {
-        throw new Error(
-          `patch 串流在第一個 separator 之前含未歸屬內容:「${line.slice(0, 120)}」`
-        );
-      }
-      continue;
-    }
-    buf.push(line);
-  }
-  flush();
-  if (out.size !== expected.size) {
-    const missing = expectedRevs.filter((r) => !out.has(r));
-    throw new Error(
-      `patch 串流缺少 ${missing.length} 個 rev 的 separator(如 ${missing
-        .slice(0, 3)
-        .map((r) => r.slice(0, 8))
-        .join(", ")})`
-    );
-  }
+  const buf = new Map<string, string[]>();
+  const c = makeSeparatorConsumer({
+    expectedRevs,
+    marker,
+    onRevStart: (rev) => buf.set(rev, []),
+    onLine: (rev, line) => buf.get(rev)!.push(line),
+    onRevEnd: (rev) => out.set(rev, buf.get(rev)!.join("\n")),
+  });
+  for (const line of stream.split("\n")) c.pushLine(line);
+  c.finish();
   return out;
 }
 
@@ -1053,66 +1201,150 @@ function chunkRevs(revs: string[], size: number): string[][] {
 }
 
 /**
- * 一次取回一批 rev 的 patch。**不帶 pathspec**——pathspec 會讓 git 丟掉「該
- * pathspec 下 diff 為空」的 rev(實測),rev 覆蓋就無法用等號驗;而且每個
- * pathspec view 各跑一次 = 同一個 commit 的 patch 被提取多次(違反 INV-1)。
+ * 跑一批 rev 的 patch producer,**stdout 直接寫進檔案**。
+ *
+ * 🔴 R1 P2 修法。舊版用 `spawnSync` 的 pipe + `maxBuffer: 256 MiB` 把整批 patch
+ *    收進記憶體。pathspec 過濾已移到 JS,所以**被排除的路徑也會流進那個 buffer**:
+ *    一個只動 `package-lock.json`(FULL_EXCLUDES 路徑)、patch 超過上限的 commit,
+ *    在 A1.1 之前由 git pathspec 在來源端就被擋掉、判定為乾淨;在 buffer 版本
+ *    卻會讓 gate exit 非 0 —— 政策豁免的改動被判紅,是新引入的 false-red。
+ *
+ *    修法:stdout 接到檔案 fd,**完全不經過有上限的記憶體 buffer**;下游改成
+ *    逐行串流消費(見 `consumeProducerFile`),記憶體不隨 patch 大小成長。
+ *    contract:X3 由 shim 觀測 producer 的 fd 1 必須是檔案而非 pipe。
  */
-function runPatchProducer(
+function runPatchProducerToFile(
   root: string,
   revs: string[],
   marker: string,
   srcPrefix: string,
-  dstPrefix: string
-): string {
-  const res = spawnSync(
-    "git",
-    [
-      "-C",
-      root,
-      "-c",
-      "core.quotePath=false",
-      "-c",
-      "diff.noprefix=false",
-      "-c",
-      "diff.mnemonicPrefix=false",
-      "log",
-      "--no-walk=unsorted",
-      "--stdin",
-      // 以下旗標與 A1 的 per-rev `git show` 逐字對齊(輸出實測逐字節相同):
-      // -m/--first-parent(merge 只看 first parent)、--no-renames(rename dance)、
-      // --text/--no-textconv(.gitattributes -diff)、--unified=0、--no-color
-      "-m",
-      "--first-parent",
-      "--no-renames",
-      "--text",
-      "--no-textconv",
-      "--unified=0",
-      "--no-color",
-      `--src-prefix=${srcPrefix}`,
-      `--dst-prefix=${dstPrefix}`,
-      `--format=${marker} %H`,
-    ],
-    {
-      input: revs.join("\n") + "\n",
-      encoding: "utf-8",
-      maxBuffer: 256 * 1024 * 1024,
+  dstPrefix: string,
+  outPath: string
+): void {
+  const fd = openSync(outPath, "w");
+  try {
+    const res = spawnSync(
+      "git",
+      [
+        "-C",
+        root,
+        "-c",
+        "core.quotePath=false",
+        "-c",
+        "diff.noprefix=false",
+        "-c",
+        "diff.mnemonicPrefix=false",
+        "log",
+        "--no-walk=unsorted",
+        "--stdin",
+        // 以下旗標與 A1 的 per-rev `git show` 逐字對齊(輸出實測逐字節相同):
+        // -m/--first-parent(merge 只看 first parent)、--no-renames(rename dance)、
+        // --text/--no-textconv(.gitattributes -diff)、--unified=0、--no-color
+        "-m",
+        "--first-parent",
+        "--no-renames",
+        "--text",
+        "--no-textconv",
+        "--unified=0",
+        "--no-color",
+        `--src-prefix=${srcPrefix}`,
+        `--dst-prefix=${dstPrefix}`,
+        `--format=${marker} %H`,
+      ],
+      {
+        input: revs.join("\n") + "\n",
+        // stdout → 檔案 fd(不是 pipe):不設 maxBuffer,不受記憶體上限。
+        stdio: ["pipe", fd, "pipe"],
+        encoding: "utf-8",
+      }
+    );
+    if (res.error) {
+      throw new Error(`patch producer 無法完成(${res.error.message})`);
     }
-  );
-  if (res.error) {
-    // maxBuffer 超限也走這裡(spawnSync 設 error、status 為 null)。
-    // 訊息要可操作:採用者能自己調小批次,而不是只看到一個裸 ENOBUFS。
-    throw new Error(
-      `patch producer 無法完成(${res.error.message})——` +
-        `單批 ${revs.length} 個 commit 的 patch 可能超出 stdout 上限;` +
-        `調小 PATCH_BATCH_SIZE(目前 ${PATCH_BATCH_SIZE})再試`
-    );
+    if (res.status !== 0) {
+      throw new Error(
+        `patch producer 失敗(exit ${res.status}):${(res.stderr || "").slice(0, 300)}`
+      );
+    }
+  } finally {
+    closeSync(fd);
   }
-  if (res.status !== 0) {
-    throw new Error(
-      `patch producer 失敗(exit ${res.status}):${(res.stderr || "").slice(0, 300)}`
-    );
+}
+
+/** 每累積這麼多行就 flush 到桶檔,讓記憶體不隨單一 rev 的 patch 大小成長。 */
+const BUCKET_FLUSH_LINES = 2048;
+
+/**
+ * 逐行消費 producer 產出的檔案,把新增行直接路由進「每 rev 每桶」的暫存檔。
+ *
+ * 記憶體只held 一行 + 一個小 flush buffer,不隨 patch / batch 大小成長。
+ * separator 規則與 patch 狀態機都走 SSOT(`makeSeparatorConsumer` / `stepPatchLine`)。
+ */
+function consumeProducerFile(
+  filePath: string,
+  expectedRevs: string[],
+  marker: string,
+  ex: Set<string>,
+  syn: Set<string>,
+  dirs: Record<BucketName, string>,
+  touched: Record<BucketName, Set<string>>
+): void {
+  let state = newPatchLineState();
+  const pending: Record<BucketName, string[]> = { main: [], syntax: [] };
+  let curRev: string | null = null;
+
+  const flush = (bucket: BucketName): void => {
+    const lines = pending[bucket];
+    if (lines.length === 0 || curRev === null) return;
+    appendFileSync(path.join(dirs[bucket], curRev), lines.join("\n") + "\n", "utf-8");
+    touched[bucket].add(curRev);
+    lines.length = 0;
+  };
+
+  const consumer = makeSeparatorConsumer({
+    expectedRevs,
+    marker,
+    onRevStart: (rev) => {
+      curRev = rev;
+      state = newPatchLineState();
+    },
+    onLine: (_rev, line) => {
+      const hit = stepPatchLine(state, line);
+      if (!hit) return;
+      for (const b of bucketsOfPath(hit.path, ex, syn)) {
+        pending[b].push(hit.added);
+        if (pending[b].length >= BUCKET_FLUSH_LINES) flush(b);
+      }
+    },
+    onRevEnd: () => {
+      flush("main");
+      flush("syntax");
+      curRev = null;
+    },
+  });
+
+  const fd = openSync(filePath, "r");
+  try {
+    const decoder = new StringDecoder("utf8");
+    const buf = Buffer.allocUnsafe(1 << 20);
+    let pendingText = "";
+    for (;;) {
+      const n = readSync(fd, buf, 0, buf.length, null);
+      if (n === 0) break;
+      pendingText += decoder.write(buf.subarray(0, n));
+      let i = pendingText.indexOf("\n");
+      while (i !== -1) {
+        consumer.pushLine(pendingText.slice(0, i));
+        pendingText = pendingText.slice(i + 1);
+        i = pendingText.indexOf("\n");
+      }
+    }
+    pendingText += decoder.end();
+    if (pendingText.length > 0) consumer.pushLine(pendingText);
+  } finally {
+    closeSync(fd);
   }
-  return res.stdout || "";
+  consumer.finish();
 }
 
 /** 對一個目錄批掃(每檔一個 rev);hit 由 basename 還原 rev。 */
@@ -1123,10 +1355,11 @@ function grepRevDir(
   label: string,
   mode: Mode
 ): Scan {
-  if (fileCount === 0) return { label, mode, hits: [], rc: 1 }; // clean
+  if (fileCount === 0) {
+    return { label, mode, hits: [], rc: 1, framing: "diff-prefixed" }; // clean
+  }
   // `-a` 覆蓋 binary detection(round 6 P1:NUL byte 洗白);`-H` 明確要求印檔名
-  // (不倚賴 `-r` 的隱含行為);
-  // `-E` POSIX ERE(不用 JS regex 反查 deny-terms);`-i` 對齊既有大小寫語意。
+  // (不倚賴 `-r` 的隱含行為);`-E` POSIX ERE;`-i` 對齊既有大小寫語意。
   const r = spawnSync("grep", ["-aiEH", "-r", "-f", patternFile, dir], {
     encoding: "utf-8",
     maxBuffer: 256 * 1024 * 1024,
@@ -1138,10 +1371,10 @@ function grepRevDir(
     .map((l) => {
       const rest = l.startsWith(prefix) ? l.slice(prefix.length) : l;
       const c = rest.indexOf(":");
-      if (c === -1) return `?? [+diff] ${rest}`;
-      return `${rest.slice(0, c).slice(0, 8)} [+diff] ${rest.slice(c + 1)}`;
+      if (c === -1) return `????????${DIFF_HIT_MARK}${rest}`;
+      return `${rest.slice(0, c).slice(0, 8)}${DIFF_HIT_MARK}${rest.slice(c + 1)}`;
     });
-  return { label, mode, hits, rc: r.status ?? 2 };
+  return { label, mode, hits, rc: r.status ?? 2, framing: "diff-prefixed" };
 }
 
 /**
@@ -1179,45 +1412,42 @@ export function scanBaselineToHeadDiffs(
   if (revs.length === 0) return [];
 
   const workDir = mkdtempSync(path.join(tmpdir(), "cnst-diff-"));
-  const mainDir = path.join(workDir, "main");
-  const synDir = path.join(workDir, "syntax");
-  mkdirSync(mainDir, { recursive: true });
-  mkdirSync(synDir, { recursive: true });
-  let mainCount = 0;
-  let synCount = 0;
+  const dirs: Record<BucketName, string> = {
+    main: path.join(workDir, "main"),
+    syntax: path.join(workDir, "syntax"),
+  };
+  mkdirSync(dirs.main, { recursive: true });
+  mkdirSync(dirs.syntax, { recursive: true });
+  const touched: Record<BucketName, Set<string>> = {
+    main: new Set(),
+    syntax: new Set(),
+  };
   try {
-    const excludes = FULL_EXCLUDES.map(stripExcludeMagic);
+    const ex = new Set(FULL_EXCLUDES.map(stripExcludeMagic));
+    const syn = new Set(SYNTAX_EXEMPT_FILES);
+    const streamPath = path.join(workDir, "stream");
     for (const batch of chunkRevs(revs, batchSize)) {
-      const stream = runPatchProducer(root, batch, marker, srcPrefix, dstPrefix);
-      const perRev = splitPatchStream(stream, batch, marker);
-      for (const rev of batch) {
-        const byPath = extractAddedLinesByPath(perRev.get(rev) ?? "");
-        const { main, syntax } = bucketAddedLines(
-          byPath,
-          excludes,
-          SYNTAX_EXEMPT_FILES
-        );
-        if (main.length > 0) {
-          writeFileSync(path.join(mainDir, rev), main.join("\n") + "\n", "utf-8");
-          mainCount++;
-        }
-        if (syntax.length > 0) {
-          writeFileSync(path.join(synDir, rev), syntax.join("\n") + "\n", "utf-8");
-          synCount++;
-        }
-      }
+      runPatchProducerToFile(root, batch, marker, srcPrefix, dstPrefix, streamPath);
+      consumeProducerFile(streamPath, batch, marker, ex, syn, dirs, touched);
+      rmSync(streamPath, { force: true });
     }
     const scans: Scan[] = [];
     if (nonCaFile) {
       scans.push(
-        grepRevDir(mainDir, mainCount, nonCaFile, "史 baseline..HEAD(non-CA diff)", "strict")
+        grepRevDir(
+          dirs.main,
+          touched.main.size,
+          nonCaFile,
+          "史 baseline..HEAD(non-CA diff)",
+          "strict"
+        )
       );
     }
     if (caFile) {
       scans.push(
         grepRevDir(
-          mainDir,
-          mainCount,
+          dirs.main,
+          touched.main.size,
           caFile,
           "史 baseline..HEAD(CA diff,self-PR 判定)",
           "self-pr"
@@ -1227,8 +1457,8 @@ export function scanBaselineToHeadDiffs(
     if (syntaxNonCaFile) {
       scans.push(
         grepRevDir(
-          synDir,
-          synCount,
+          dirs.syntax,
+          touched.syntax.size,
           syntaxNonCaFile,
           "史 baseline..HEAD(SYNTAX 例外檔 non-CA diff)",
           "strict"
@@ -1248,6 +1478,7 @@ export function scanBaselineToHeadDiffs(
         mode: "strict",
         hits: [],
         rc: 2,
+        framing: "diff-prefixed",
       },
     ];
   } finally {
@@ -1280,6 +1511,7 @@ function scanGitHistoryBlobs(
       scans.push({
         label: `史 ${rev.slice(0, 8)}(non-CA)`,
         mode: "strict",
+        framing: "grep-z" as const,
         ...gitGrep(root, [
           "-nIiE",
           "-f",
@@ -1295,6 +1527,7 @@ function scanGitHistoryBlobs(
       scans.push({
         label: `史 ${rev.slice(0, 8)}(CA,self-PR 判定)`,
         mode: "self-pr",
+        framing: "grep-z" as const,
         ...gitGrep(root, [
           "-nIiE",
           "-f",
@@ -1322,6 +1555,7 @@ function scanGitHistoryBlobs(
         scans.push({
           label: `史 ${rev.slice(0, 8)}(SYNTAX 例外檔 non-CA)`,
           mode: "strict",
+          framing: "grep-z" as const,
           ...gitGrep(root, [
             "-nIiE",
             "-f",
@@ -1361,6 +1595,9 @@ function scanCommitMessages(root: string, allPatternFile: string): Scan {
     mode: "strict",
     hits,
     rc: r.status ?? 2,
+    // `grep -n` 產出 `<行號>:<內容>`,不是 NUL-framed;strict 模式不解析內容,
+    // 顯示也維持原樣(R1 P1:framing 一律由產生端宣告,不從內容猜)。
+    framing: "plain",
   };
 }
 
@@ -1378,7 +1615,7 @@ export function processScan(scan: Scan, allowedPrs: Set<number>): boolean {
   // rc === 0:有命中
   if (scan.mode === "strict") {
     console.error(`❌ ${scan.label}:含來源專案識別詞`);
-    for (const h of scan.hits) console.error(`  ${displayGrepHit(h)}`);
+    for (const h of scan.hits) console.error(`  ${displayHit(h, scan.framing)}`);
     return false;
   }
   // mode === "self-pr":逐行走 self-PR 判定
@@ -1388,8 +1625,9 @@ export function processScan(scan: Scan, allowedPrs: Set<number>): boolean {
   const real: string[] = [];
   const allowed: string[] = [];
   for (const raw of scan.hits) {
-    const parsed = parseGrepZLine(raw);
-    const content = parsed?.content ?? raw;
+    // 🔴 R1 P1:content 依 **framing** 取,不從內容猜。diff hit 的 NUL 是資料,
+    //    當成 grep -Z 檔名分隔符會把 NUL 前的未知 PR 引用整段丟掉 → 假放行。
+    const content = hitContent(raw, scan.framing);
     if (isSelfPrReferenceLine(content, allowedPrs)) allowed.push(raw);
     else real.push(raw);
   }
@@ -1398,7 +1636,7 @@ export function processScan(scan: Scan, allowedPrs: Set<number>): boolean {
   }
   if (real.length > 0) {
     console.error(`❌ ${scan.label}:含未知 PR/pull 引用(非本 repo 已 merge)`);
-    for (const h of real) console.error(`  ${displayGrepHit(h)}`);
+    for (const h of real) console.error(`  ${displayHit(h, scan.framing)}`);
     return false;
   }
   return true;
