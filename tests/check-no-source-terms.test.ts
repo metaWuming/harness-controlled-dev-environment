@@ -2195,6 +2195,36 @@ describe("PR A1.1 — patch 解析與分桶的 e2e 契約(disposable repo)", () 
     expect(runChecker(dir).code).toBe(1);
   });
 
+  it("🔴 E7b:NUL byte 檔的命中必須印出**實際內容**(釘住 grep -a)", () => {
+    // ⚠️ 這條補 M7 的覆蓋缺口。只斷言 exit 1 不夠:拿掉 `-a` 之後 grep 仍會
+    //    回報命中(印「Binary file ... matches」、exit 0),所以 exit code 不變、
+    //    mutation 存活。真正退化的是**診斷能力**——操作者看不到命中的是什麼。
+    //    因此改斷言輸出含命中內容本身。
+    const dir = makeRepo({
+      deny: [FORBIDDEN],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        {
+          message: "add nul + forbidden",
+          files: {
+            "src/nul.bin": `head${String.fromCharCode(0)}binary\n${FORBIDDEN}\n`,
+          },
+        },
+      ],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD~1"),
+    });
+    const { code, out } = runChecker(dir);
+    expect(code).toBe(1);
+    expect(out).toContain("含來源專案識別詞");
+    expect(
+      out,
+      "拿掉 grep -a 會退化成「Binary file ... matches」、印不出命中內容"
+    ).toContain(FORBIDDEN);
+  });
+
   it("🔴 N1:同 PR 洗白(A 加 forbidden、B 刪)→ per-commit diff scan 仍抓 commit A", () => {
     const dir = makeRepo({
       deny: [FORBIDDEN],
