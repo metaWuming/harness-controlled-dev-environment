@@ -113,7 +113,10 @@ history diff 掃描的成本會隨 `baseline..HEAD` 的 commit 數成長,而 bas
    所以 CI workflow(`.yml`)、baseline config(`.json`)、測試碼(`.ts`)裡指向本檔的
    引用**不被該 checker 驗證**;改由 `tests/check-doc-refs.test.ts` 的位置 + 數量型
    契約守。章節錨點(`#anchor`)不被任何機器驗證,標題穩定性靠人工紀律。
-6. **非 UTF-8 位元組** —— patch 以 UTF-8 讀取(與改動前相同),`--text` 強制輸出的
+6. **單批 patch 體積** —— pathspec 過濾在 JS 端做,所以 patch 串流會包含後來才被
+   排除的路徑(例如 lockfile 的大量 churn)。單批過大時 stdout 會撞上限,結果是
+   **fail-closed 紅燈**(不會靜默漏掃),訊息會指出可調小批次。
+7. **非 UTF-8 位元組** —— patch 以 UTF-8 讀取(與改動前相同),`--text` 強制輸出的
    非 UTF-8 位元組會變成替換字元。這不影響 ASCII 識別詞的比對。
 
 ## Provenance

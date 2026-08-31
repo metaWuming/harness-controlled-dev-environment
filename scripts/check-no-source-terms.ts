@@ -729,8 +729,13 @@ export function extractAddedLinesFromPatch(patch: string): string {
  * 一次 patch producer 呼叫最多處理幾個 rev。
  * 目的是限制單一串流的 stdout 尺寸(maxBuffer),不是限制 subprocess 數量。
  * 批次之間**互斥且完全覆蓋** rev-list(契約 C2b)。
+ *
+ * ⚠️ 為什麼不設更大:pathspec 過濾已移到 JS,所以**串流會包含 FULL_EXCLUDES 的
+ *    路徑**(例如 lockfile 的大量 churn)——舊版由 git pathspec 在來源端就排除掉。
+ *    單批太大時 stdout 會撞 maxBuffer;那是 fail-closed(不會靜默漏掃),但對
+ *    採用者是沒必要的紅燈。50 讓單批體積約為 200 的四分之一。
  */
-const PATCH_BATCH_SIZE = 200;
+const PATCH_BATCH_SIZE = 50;
 /**
  * patch producer 的 prefix / quoting 釘法。
  *
@@ -1037,6 +1042,9 @@ export interface DiffScanOptions {
 }
 
 function chunkRevs(revs: string[], size: number): string[][] {
+  if (!Number.isInteger(size) || size < 1) {
+    throw new Error(`batchSize 必須是 ≥ 1 的整數(收到 ${String(size)})`);
+  }
   const out: string[][] = [];
   for (let i = 0; i < revs.length; i += size) out.push(revs.slice(i, i + size));
   return out;
@@ -1088,6 +1096,15 @@ function runPatchProducer(
       maxBuffer: 256 * 1024 * 1024,
     }
   );
+  if (res.error) {
+    // maxBuffer 超限也走這裡(spawnSync 設 error、status 為 null)。
+    // 訊息要可操作:採用者能自己調小批次,而不是只看到一個裸 ENOBUFS。
+    throw new Error(
+      `patch producer 無法完成(${res.error.message})——` +
+        `單批 ${revs.length} 個 commit 的 patch 可能超出 stdout 上限;` +
+        `調小 PATCH_BATCH_SIZE(目前 ${PATCH_BATCH_SIZE})再試`
+    );
+  }
   if (res.status !== 0) {
     throw new Error(
       `patch producer 失敗(exit ${res.status}):${(res.stderr || "").slice(0, 300)}`
