@@ -4,6 +4,17 @@ name: CI
 #   secret scan(gitleaks 全史)→ typecheck → lint → audit → 文件引用自檢 →
 #   TODOS marker 治理 → 去識別化掃描 → vitest
 #
+# 🔴 兩條「歷史掃描」政策獨立、不可混淆:
+#   ① Secret scan(gitleaks):**全史**掃 secrets(commit/blob/msg 一律嚴格)——
+#      密鑰洩露隨時是 blocker、沒有 grandfather 空間。
+#   ② Source-term scan(去識別化):**baseline..HEAD** 掃 blob(current tree 仍
+#      永遠嚴格;baseline 及更早的去識別化 debt 用 machine-readable baseline
+#      grandfather,不重寫公開歷史)。baseline 由 scripts/source-term-baseline.json
+#      落地(schemaVersion + SHA);loader 與 validator 在 scripts/check-no-source-terms.ts
+#      (fail-closed on 40-hex / rev-parse / ancestor 三檢查)。
+#   兩者共用 gitleaks binary/CI step 是**巧合**、不是政策合流;文件敘述、修法規範
+#   都要分開對待(見 HARNESS_OPTIMIZATION_IMPLEMENTATION_PLAN.md §5)。
+#
 # 本模板無 DB / 無框架 build;若你採 Next.js+Prisma 堆疊,把
 # stack/nextjs-prisma/ci-snippets/prisma-ci-steps.yml 的步驟插進來
 # (postgres service + prisma generate + migrate/seed + schema refs check)。
@@ -172,7 +183,23 @@ jobs:
 
       - name: Source-term scan (de-identification gate)
         # 去識別化常駐 gate:本模板抽取自私有專案,掃「來源專案識別詞」殘留
-        # (working tree + git 全史)。導入者不需要時可連同 scripts/deny-terms.txt 移除。
+        # (working tree + git history)。導入者不需要時可連同 scripts/deny-terms.txt 移除。
+        #
+        # 🔴 PR A1(HARNESS_OPTIMIZATION_IMPLEMENTATION_PLAN.md §5):history 掃描
+        # 走 **baseline cutover** 語意——scripts/source-term-baseline.json 記錄
+        # 主線當下 HEAD SHA,checker 用 `rev-list baseline..HEAD` 只掃 baseline
+        # **之後**的歷史;baseline 及更早的去識別化 debt 一律 grandfather(不重寫
+        # 公開歷史)。current tree scan 永遠嚴格、baseline 影響不到。
+        #
+        # baseline 更新是**治理決策**,不是隨手翻的常數:改 scripts/source-term-baseline.json
+        # 要走 PR + Owner 拍板;downstream fork 未建 config 檔 → checker 沿用舊
+        # 全史掃描(D3/D4 向下相容,見 scripts/check-no-source-terms.ts
+        # loadBaselineConfig docstring)。
+        #
+        # 🔴 與 Secret scan (gitleaks) 是**兩條獨立政策**(見檔頭註解):gitleaks
+        # 掃 secrets 全史嚴格、沒有 grandfather;source-term 掃去識別化名詞用
+        # baseline cutover 讓主線可自證。兩者共用 CI 步驟純巧合,別在文件裡合稱
+        # 「全史 no leaks」——那會把兩個 policy 語意合流誤導讀者。
         #
         # 🔴 批 7 R3-4 → 批 10 收:step-level env 不會跨 step 傳遞(pre-existing 事實),
         # 但 workflow-level env 會自動繼承——批 10 把 DELIVERY_REFS 提到 workflow-level

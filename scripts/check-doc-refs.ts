@@ -238,7 +238,7 @@ export function checkRefs(
 
 /**
  * 列出要掃的 doc 檔(相對 repo root)。
- * 🔴 雙審 findings(兩邊都抓到、Activa 端已實證):
+ * 🔴 雙審 findings(兩邊都抓到、下游採用者專案已實證):
  *   ① 舊版對 `ROOT_DOCS` 缺檔**靜默略過** → 把某個 root doc 改名就讓 gate 少驗一份、
  *      而且照樣印 ✅。改成回報缺檔,由 main() 判成 violation(要移除就明確從清單刪)。
  *   ② 舊版對 SCAN_DIRS/SCAN_DIRS_RECURSIVE 做 fs walk → gitignored 的本機草稿也會被

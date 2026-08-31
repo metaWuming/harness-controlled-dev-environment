@@ -40,6 +40,7 @@ import {
   parseGrepZLine,
   displayGrepHit,
   findDriftedCaPatterns,
+  extractAddedLinesFromPatch,
 } from "../scripts/check-no-source-terms";
 
 const REPO_ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], {
@@ -294,6 +295,78 @@ describe("findDriftedCaPatterns — CA 常數 vs denylist 漂移守門(Step 5 F1
     const all = ["forbid_a"];
     const ca = ["PR " + "#[0-9]", PREF_PULL + "[0-9]"];
     expect(findDriftedCaPatterns(all, ca).length).toBe(2);
+  });
+});
+
+describe("extractAddedLinesFromPatch — round 2 P1b hunk 解析(strip 一個 + 標記)", () => {
+  it("hunk 內 `+foo` → 新增內容 `foo`(strip 一個 `+`)", () => {
+    const patch = [
+      "diff --git a/x b/x",
+      "index 111..222 100644",
+      "--- a/x",
+      "+++ b/x",
+      "@@ -1 +1 @@",
+      "+foo",
+    ].join("\n");
+    expect(extractAddedLinesFromPatch(patch)).toBe("foo");
+  });
+
+  it("🔴 P1b:內容真的以 `++` 開頭(patch 行為 `+++foo`)不被誤當檔頭丟", () => {
+    const patch = [
+      "diff --git a/x b/x",
+      "@@ -1 +1 @@",
+      "+++foo", // 內容是 `++foo`,strip 一個 `+` → `++foo`
+    ].join("\n");
+    expect(extractAddedLinesFromPatch(patch)).toBe("++foo");
+  });
+
+  it("🔴 P1b:檔頭 `+++ b/path` 出現在 `@@` 之前 → 不採", () => {
+    const patch = [
+      "diff --git a/x b/x",
+      "index 111..222 100644",
+      "--- a/x",
+      "+++ b/x", // 檔頭,不採
+      "@@ -1 +1 @@",
+      "+real content",
+    ].join("\n");
+    expect(extractAddedLinesFromPatch(patch)).toBe("real content");
+  });
+
+  it("🔴 P1b:hunk 間切換(第二 hunk 的 `+++ b/y` 檔頭仍不採)", () => {
+    const patch = [
+      "diff --git a/x b/x",
+      "@@ -1 +1 @@",
+      "+first",
+      "diff --git a/y b/y",
+      "--- a/y",
+      "+++ b/y",
+      "@@ -1 +1 @@",
+      "+second",
+    ].join("\n");
+    expect(extractAddedLinesFromPatch(patch)).toBe("first\nsecond");
+  });
+
+  it("🔴 P1b:hunk 內 `-line`(刪除)+ context 行不採,只採 `+`", () => {
+    const patch = [
+      "diff --git a/x b/x",
+      "@@ -1,3 +1,2 @@",
+      " context",
+      "-deleted",
+      "+added",
+    ].join("\n");
+    expect(extractAddedLinesFromPatch(patch)).toBe("added");
+  });
+
+  it("🔴 P1b:pattern `^foo` 對 strip 後內容命中(對照 grep POSIX ERE 錨點語意)", () => {
+    // 修法前:patch 行為 `+foo`,pattern `^foo` 因為 `^` 錨點對 `+foo` 不 match
+    // → false negative。修法後 strip 一個 `+` → 內容 `foo` → `^foo` 命中
+    const patch = [
+      "diff --git a/x b/x",
+      "@@ -1 +1 @@",
+      "+foo",
+    ].join("\n");
+    const added = extractAddedLinesFromPatch(patch);
+    expect(new RegExp("^foo", "m").test(added)).toBe(true);
   });
 });
 
@@ -942,5 +1015,575 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
       expect(out, `MARKER_SELF_PR=${badVal} self-PR 分項應 0`).toContain("self-PR 0");
       expect(code, `MARKER_SELF_PR=${badVal} 應 exit 1`).toBe(1);
     }
+  });
+});
+
+// ────────────────── PR A1:history baseline cutover 契約 ──────────────────
+//
+// 動機:HARNESS_OPTIMIZATION_IMPLEMENTATION_PLAN.md §5——main history 舊 blob 含
+// 來源專案識別詞(不能 rewrite 主線歷史),但要讓 gate 綠。做法:machine-readable
+// `scripts/source-term-baseline.json` 記錄 baseline SHA,checker history scan 只掃
+// `baseline..HEAD`;baseline 本身損壞一律 fail-closed。
+//
+// 契約(逐條對應 plan file Phase 1 P1a-P1i):
+//   - Current tree 永遠嚴格,baseline 只影響 history scan
+//   - baseline..HEAD 內的 blob:嚴格擋
+//   - baseline 及更早的 blob:grandfather 通過
+//   - baseline malformed / 非祖先 / rev-parse 失敗 / schemaVersion 未知 / JSON malformed
+//     → fail-closed exit 1(不降級到全史掃)
+//   - config 檔不存在 / baseline null → 舊行為(全史掃)——向下相容
+// Mutation probe:拿掉 validateBaseline 的 ancestor 檢查 → P1e 立刻轉綠 → 手動探針
+// 在 Step 4.5 執行(乾淨工作樹 + 明確步驟見 plan file)。
+
+function shaAt(dir: string, ref: string): string {
+  return execFileSync("git", ["-C", dir, "rev-parse", ref], {
+    encoding: "utf-8",
+  }).trim();
+}
+
+function writeBaselineConfig(dir: string, body: unknown | string): void {
+  const text = typeof body === "string" ? body : JSON.stringify(body);
+  writeFileSync(join(dir, "scripts/source-term-baseline.json"), text, "utf-8");
+}
+
+describe("check-no-source-terms — history baseline(PR A1)", () => {
+  it("🔴 P1a:current tree 含 non-CA term(即使 baseline 已 grandfather 歷史)→ 嚴格擋", () => {
+    const dir = makeRepo({
+      deny: ["forbidden_cur_term"],
+      commits: [
+        { message: "init clean", files: { "src/init.md": "hello\n" } },
+      ],
+      workingTree: {
+        "docs/note.md": "contains forbidden_cur_term inline\n",
+      },
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD"),
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1b:baseline 前 historical blob hit、current tree 乾淨 → grandfather 通過", () => {
+    const dir = makeRepo({
+      deny: ["forbidden_hist_term"],
+      commits: [
+        {
+          message: "add polluted",
+          files: { "src/polluted.md": "contains forbidden_hist_term\n" },
+        },
+        { message: "remove polluted", deletions: ["src/polluted.md"] },
+      ],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD"),
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("history scan range: baseline..HEAD");
+    expect(out).toContain("✅ 去識別化掃描全數通過");
+    expect(code).toBe(0);
+  });
+
+  it("🔴 P1c:baseline 之後新引入的 historical blob hit → 嚴格擋", () => {
+    const dir = makeRepo({
+      deny: ["forbidden_new_hist"],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        {
+          message: "add polluted after baseline",
+          files: { "src/polluted.md": "contains forbidden_new_hist\n" },
+        },
+        { message: "remove polluted", deletions: ["src/polluted.md"] },
+      ],
+    });
+    // baseline = clean init(HEAD~2);後續兩個 commit 進入 baseline..HEAD 範圍
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD~2"),
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("git 歷史 blob 含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1d:config 檔不存在 → 舊行為(全史掃),baseline 前歷史 hit 也擋", () => {
+    // 向下相容釘子:未來 refactor 若把 default 改成 grandfather-all,此條轉紅
+    const dir = makeRepo({
+      deny: ["forbidden_default_term"],
+      commits: [
+        {
+          message: "add polluted",
+          files: { "src/polluted.md": "contains forbidden_default_term\n" },
+        },
+        { message: "remove polluted", deletions: ["src/polluted.md"] },
+      ],
+    });
+    // 刻意不寫 scripts/source-term-baseline.json
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("history scan range: --all");
+    expect(out).toContain("git 歷史 blob 含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1e:baseline 非 HEAD 祖先 → fail-closed exit 1(mutation kill 錨點)", () => {
+    // 建孤立 branch 拿一個非祖先 SHA。若拿掉 validateBaseline 的 ancestor 檢查,
+    // 此 case 從紅轉綠 → mutation 未 kill → 探針失效
+    const dir = makeRepo({
+      deny: ["forbidden_term_e"],
+      commits: [{ message: "main1", files: { "src/a.md": "clean\n" } }],
+    });
+    execFileSync("git", ["-C", dir, "checkout", "--orphan", "orphan"], {
+      stdio: "ignore",
+    });
+    execFileSync(
+      "git",
+      ["-C", dir, "commit", "--allow-empty", "-qm", "orphan commit"],
+      { stdio: "ignore" }
+    );
+    const orphanSha = shaAt(dir, "HEAD");
+    execFileSync("git", ["-C", dir, "checkout", "-q", "main"], {
+      stdio: "ignore",
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: orphanSha,
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("baseline");
+    expect(out).toContain("ancestor");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1f:baseline 是短 SHA(< 40 hex)→ fail-closed exit 1", () => {
+    const dir = makeRepo({
+      deny: ["forbidden_term_f"],
+      commits: [{ message: "init", files: { "src/a.md": "clean\n" } }],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: "abc1234",
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("baseline");
+    expect(out).toContain("40");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1g:baseline 為 null → 舊行為(全史)", () => {
+    const dir = makeRepo({
+      deny: ["forbidden_term_g"],
+      commits: [
+        {
+          message: "add polluted",
+          files: { "src/polluted.md": "contains forbidden_term_g\n" },
+        },
+        { message: "remove polluted", deletions: ["src/polluted.md"] },
+      ],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: null,
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("history scan range: --all");
+    expect(out).toContain("git 歷史 blob 含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1h:config JSON malformed → fail-closed exit 1", () => {
+    const dir = makeRepo({
+      deny: ["forbidden_term_h"],
+      commits: [{ message: "init", files: { "src/a.md": "clean\n" } }],
+    });
+    writeBaselineConfig(dir, "{ this is not json");
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("source-term-baseline.json");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1i:baseline 是合法 40-hex 但 rev-parse 找不到 → fail-closed exit 1", () => {
+    const dir = makeRepo({
+      deny: ["forbidden_term_i"],
+      commits: [{ message: "init", files: { "src/a.md": "clean\n" } }],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: "0".repeat(40),
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("baseline");
+    // rev-parse 失敗 or 非祖先都收在同一 error 訊息內
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1y(round 1 P2 修法):baseline 之後 commit 未動 forbidden 檔(繼承 baseline 遺留 blob)→ diff scan 不誤觸發", () => {
+    // 場景:baseline 已含 forbidden(去識別化 debt);feature 從 baseline 分岔、
+    // 加一個無關檔的 commit。舊 tree-scan:feature commit 的 tree 仍含 baseline
+    // 遺留 forbidden → 誤紅;新 diff-scan:feature commit 的 diff 沒動 forbidden
+    // 檔 → 通過。此測試把 tree-scan → diff-scan 語意轉換釘住。
+    const dir = makeRepo({
+      deny: ["forbidden_legacy_term"],
+      commits: [
+        // baseline commit:含 forbidden(去識別化 debt)
+        {
+          message: "baseline: legacy debt",
+          files: { "src/legacy.md": "contains forbidden_legacy_term inline\n" },
+        },
+        // baseline 後 commit:動另一無關檔、不動 legacy.md
+        {
+          message: "feat: unrelated change",
+          files: { "src/unrelated.md": "totally clean\n" },
+        },
+      ],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD~1"),
+    });
+    const { code, out } = runChecker(dir);
+    // ⚠️ current tree 仍含 legacy.md 的 forbidden → 會被 working tree scan 抓
+    //    (預期行為:baseline 只影響 history scan)。此測試專注 history scan
+    //    語意,先把 legacy.md 從工作樹刪除、但保留 commit 內容
+    // (以 fs delete 而非 git rm——後者會再新增一個 commit)
+    // → 但這樣 working tree 仍未 stage delete → tracked-but-deleted 狀態
+    //   working tree scan 走 `git grep -- .`,對 tracked-but-deleted 不掃(內容不存在)
+    // 實際上更乾淨:讓 baseline commit 之後再加一個「刪除 legacy.md」的 commit,
+    // 讓 current tree 完全乾淨,但 baseline..HEAD 內的兩個 commit 仍會走 diff scan
+    // → 刪除 commit 的 diff 是 `-` 行(不觸發 grep `+` filter)→ 通過
+    // → 這條測試的 setup 已達成:HEAD~1 有 legacy(baseline)、HEAD 加無關檔
+    //   diff scan 只看 HEAD commit(unrelated.md)的 `+` 行 → 無 forbidden
+    // 但 current tree 仍含 legacy → working tree scan 會抓
+    // 為避免這個干擾,我們宣稱這個測試「檢查 history scan 語意」——
+    // 用 expect 分別檢查 working tree 段和 history 段,不看整體 exit code
+    expect(out).toContain("history scan range: baseline..HEAD");
+    // history scan 段落內不應含「git 歷史 blob 含來源專案識別詞」
+    // (若 tree scan 語意仍在,legacy.md blob 會被抓;diff scan 語意下不會)
+    const hasHistBlobHit = out.includes("git 歷史 blob 含來源專案識別詞");
+    expect(hasHistBlobHit).toBe(false);
+    // current tree 仍含 forbidden → 整體 exit 1(預期行為,不是本測試的重點)
+    expect(code).toBe(1);
+    expect(out).toContain("working tree(non-CA,全域):含來源專案識別詞");
+  });
+
+  it("🔴 P1x:schemaVersion 未知 → fail-closed exit 1(擋 future schema 誤讀)", () => {
+    const dir = makeRepo({
+      deny: ["forbidden_term_x"],
+      commits: [{ message: "init", files: { "src/a.md": "clean\n" } }],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 999,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD"),
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("schemaVersion");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1z(round 1 P1 → round 2 P1a 收):template: prefix + rev-parse 失敗(downstream fork)→ 降級**全史掃**(不 skip)+ warning", () => {
+    // Round 2 P1a 改法:template-fallback 不 skip、改走全史掃(既有 tree scan)
+    // 洗白場景(下條 P1z2)才有機會被抓
+    const dir = makeRepo({
+      deny: ["forbidden_dl_term"],
+      commits: [{ message: "init clean", files: { "src/a.md": "clean\n" } }],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: "template:" + "0".repeat(40),
+    });
+    const { code, out } = runChecker(dir);
+    // ⚠️ template-fallback 的 warning 走 console.warn → stderr;成功 case(exit 0)
+    //    的 runChecker 只回 stdout,故 warning 字面在此不驗;驗 stdout 就好
+    expect(out).toContain("history scan range: --all(template-fallback");
+    expect(out).toContain("✅ 去識別化掃描全數通過");
+    expect(code).toBe(0);
+  });
+
+  it("🔴 P1z2(round 2 P1a 修法):template-fallback 下,洗白場景(A 加 forbidden 後 B 刪)→ 全史掃抓到 → exit 1", () => {
+    // 舊 skip 語意會通過(current tree/msg 乾淨、history 跳過);新全史掃語意
+    // 抓 downstream history 內 blob → 擋。此測試釘住「fallback 不能只 skip」。
+    const dir = makeRepo({
+      deny: ["forbidden_launder_term"],
+      commits: [
+        {
+          message: "add forbidden",
+          files: { "src/tmp.md": "contains forbidden_launder_term\n" },
+        },
+        { message: "remove forbidden", deletions: ["src/tmp.md"] },
+      ],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: "template:" + "0".repeat(40),
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("template baseline");
+    // 全史掃抓到中間 blob → 擋
+    expect(out).toContain("git 歷史 blob 含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1zz3(round 2 P1b 修法 → round 3 P2 test-isolation 加固):POSIX ERE `^pattern` 對 baseline..HEAD 內新增行**歷史 blob** 命中", () => {
+    // Round 3 P2 抓到:舊版把 x.md 留在 HEAD → current tree scan 也會抓 → 即使
+    // history 掃漏,working tree scan 也讓 test 通過(false green)。修法:
+    // 加一個刪除 commit,current tree 乾淨,只有 history 內含 forbidden →
+    // 若 diff scan 漏 anchored pattern,working tree/msg 都乾淨、gate 通過 → test 轉綠
+    const dir = makeRepo({
+      deny: ["^forbidden_start_term"], // POSIX ERE ^ 錨點
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        {
+          message: "add polluted",
+          files: {
+            "src/x.md": "forbidden_start_term at line start\n",
+          },
+        },
+        // Round 3 P2 加:remove polluted → current tree clean、只有 history 有
+        { message: "remove polluted", deletions: ["src/x.md"] },
+      ],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD~2"),
+    });
+    const { code, out } = runChecker(dir);
+    // 專釘 history blob 段(此段紅才代表 diff scan 有抓到 anchored ^pattern)
+    expect(out).toContain("git 歷史 blob 含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1zz8(round 6 P1 修法):post-baseline commit 含 NUL byte + forbidden text → grep 仍抓(不因 binary detection 短路)", () => {
+    // 舊 grep -I → 對含 NUL 的 stdin 判 binary、整份不掃 → 洗白通過。
+    // 新 grep -a → 強制當 text、繼續掃 text 行、抓 forbidden
+    const dir = makeRepo({
+      deny: ["forbidden_nul_term"],
+      commits: [{ message: "baseline", files: { "src/init.md": "hello\n" } }],
+    });
+    const baselineSha = shaAt(dir, "HEAD");
+    // Commit A:同一 commit 加「含 NUL 的檔」與「含 forbidden text 的檔」
+    writeFileSync(join(dir, "src/binaryish.bin"), "prefix\x00suffix\n", "utf-8");
+    writeFileSync(join(dir, "src/textfile.md"), "contains forbidden_nul_term inline\n", "utf-8");
+    execFileSync("git", ["-C", dir, "add", "-A"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "add binary + forbidden"], { stdio: "ignore" });
+    // Commit B:刪除 forbidden(current tree 剩 binary、乾淨)
+    execFileSync("git", ["-C", dir, "rm", "-q", "src/textfile.md"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "remove forbidden"], { stdio: "ignore" });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: baselineSha,
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("git 歷史 blob 含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1zz9(round 6 P2 修法):merge commit 保留 grandfathered 內容(baseline 已有)→ --first-parent 不誤觸發", () => {
+    // baseline commit 已含 forbidden(grandfathered);main branch 保留、side branch
+    // 刪除;merge side into main → merge commit 對 first parent(main)diff 空
+    // → 不誤觸發。舊 -m 對 side parent 的 diff 把 forbidden 標為 add → 誤紅
+    const dir = makeRepo({
+      deny: ["forbidden_gf_term"],
+      commits: [
+        {
+          message: "baseline with grandfathered",
+          files: { "src/legacy.md": "contains forbidden_gf_term inline\n" },
+        },
+      ],
+    });
+    const baselineSha = shaAt(dir, "HEAD");
+    // 分 side branch 刪除 legacy
+    execFileSync("git", ["-C", dir, "checkout", "-q", "-b", "side"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "rm", "-q", "src/legacy.md"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "side: delete legacy"], { stdio: "ignore" });
+    // 回 main 加無關檔
+    execFileSync("git", ["-C", dir, "checkout", "-q", "main"], { stdio: "ignore" });
+    writeFileSync(join(dir, "src/other.md"), "unrelated\n", "utf-8");
+    execFileSync("git", ["-C", dir, "add", "src/other.md"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "main: unrelated"], { stdio: "ignore" });
+    // Merge side into main;side 刪除但 main 保留 → merge 結果:legacy.md 仍在
+    // (conflict? no,一邊刪一邊留 = ours 保留;但 git merge 預設會刪
+    //  除非 recursive resolve;用 -s ours 明確保留 main 版本)
+    execFileSync("git", ["-C", dir, "merge", "--no-ff", "-s", "ours", "-q", "-m", "merge side (keep main)", "side"], { stdio: "ignore" });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: baselineSha,
+    });
+    const { code, out } = runChecker(dir);
+    // baseline..HEAD 內三個 commit(side delete、main unrelated、merge)
+    // - side delete commit 若被歸為 baseline..HEAD 內(orphan side branch 不會被 rev-list 到)
+    //   → 側 branch 未 merge 進主線前 rev-list 掃不到
+    //   → merge 之後,side commit 進入 rev-list baseline..HEAD
+    //   → side commit 對其 parent(baseline)diff:`-forbidden_gf_term`(刪除,不是 add)
+    //   → 不觸發
+    // - main unrelated commit 對 parent diff:`+unrelated`,不含 forbidden
+    // - merge commit 對 first parent(main)diff:legacy.md 未變(both 有)→ 空
+    // 三個 commit 都不出 forbidden add hit → 通過
+    expect(out).toContain("history scan range: baseline..HEAD");
+    // history 段乾淨(此段紅代表 --first-parent 沒生效、誤觸發)
+    const hasHistBlobHit = out.includes("git 歷史 blob 含來源專案識別詞");
+    expect(hasHistBlobHit).toBe(false);
+    // current tree 仍含 legacy(main keep)→ working tree scan 抓 → exit 1
+    // 這是預期,不是本測試的重點
+    expect(code).toBe(1);
+    expect(out).toContain("working tree(non-CA,全域):含來源專案識別詞");
+  });
+
+  it("🔴 P1zz6(round 5 P1 rename 修法):rename dance(rename excluded → scanned + 加內容 + rename 回)→ history scan 抓到", () => {
+    // git show 預設開 rename detection → 舊版兩份 patch 只印 rename metadata、
+    // 無 + hunk → 洗白通過。新版 `--no-renames` → destination 印成完整新增內容
+    const dir = makeRepo({
+      deny: ["forbidden_rename_term"],
+      commits: [
+        // baseline:clean init
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+      ],
+    });
+    // Baseline 之後 3 個 commit 做 rename dance
+    const baselineSha = shaAt(dir, "HEAD");
+    // c1: 新增檔案(路徑 A)含 forbidden
+    writeFileSync(join(dir, "src/laundered.md"), "contains forbidden_rename_term inline\n", "utf-8");
+    execFileSync("git", ["-C", dir, "add", "-A"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "add laundered"], { stdio: "ignore" });
+    // c2: rename 到路徑 B(內容不變)
+    execFileSync("git", ["-C", dir, "mv", "src/laundered.md", "src/renamed.md"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "rename dance"], { stdio: "ignore" });
+    // c3: 刪除,current tree 乾淨
+    execFileSync("git", ["-C", dir, "rm", "-q", "src/renamed.md"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "delete final"], { stdio: "ignore" });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: baselineSha,
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("git 歷史 blob 含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1zz7(round 5 P1 -diff 修法):.gitattributes 標 -diff 讓 git show 印 Binary → history scan 仍抓", () => {
+    // .gitattributes 標 `path -diff` 讓 git show 對純文字檔輸出「Binary files differ」→
+    // 無 hunk → 洗白通過。新版 `--text` 強制 text 輸出、`--no-textconv` 關 filter
+    const dir = makeRepo({
+      deny: ["forbidden_binary_term"],
+      commits: [{ message: "baseline", files: { "src/base.md": "hello\n" } }],
+    });
+    const baselineSha = shaAt(dir, "HEAD");
+    // 加 .gitattributes 標記 src/*.md 為 -diff
+    writeFileSync(join(dir, ".gitattributes"), "src/*.md -diff\n", "utf-8");
+    execFileSync("git", ["-C", dir, "add", ".gitattributes"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "add -diff attr"], { stdio: "ignore" });
+    // 加 forbidden 內容
+    writeFileSync(join(dir, "src/base.md"), "hello\ncontains forbidden_binary_term\n", "utf-8");
+    execFileSync("git", ["-C", dir, "add", "src/base.md"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "add forbidden"], { stdio: "ignore" });
+    // 刪除、current tree 乾淨
+    execFileSync("git", ["-C", dir, "rm", "-q", "src/base.md"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "delete"], { stdio: "ignore" });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: baselineSha,
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("git 歷史 blob 含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1zz5(round 4 P2 修法):shallow clone + template: prefix + rev-parse 失敗 → fail-closed(不誤降級)", () => {
+    // Round 4 P2:template-fallback 在 shallow clone 誤降級 → 全史掃只覆蓋 shallow
+    // suffix、洗白 blob 在 shallow 邊界之前的漏抓、false green。修法:template-
+    // fallback 前先檢查 shallow,shallow + 找不到 SHA 一律 fail-closed
+    const dir = makeRepo({
+      deny: ["forbidden_shallow_term"],
+      commits: [{ message: "init", files: { "src/a.md": "clean\n" } }],
+    });
+    // Touch `.git/shallow`:git 認為此 repo 是 shallow clone
+    writeFileSync(join(dir, ".git/shallow"), shaAt(dir, "HEAD") + "\n", "utf-8");
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: "template:" + "0".repeat(40),
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("shallow clone");
+    expect(out).toContain("拒絕降級");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1zz4(round 3 P2 修法):baseline..HEAD 內 merge commit 引入 forbidden(conflict resolution 加的 `+forbidden`)→ combined-diff 也要抓", () => {
+    // Round 3 P2:git show 對 merge commit 預設輸出 combined diff(`++forbidden`
+    // 前綴),strip 一個 marker 後仍有 `+`、anchored pattern `^forbidden` 不 match。
+    // 修法:git show 加 `-m` → merge commit 拆成每 parent 一份普通 diff、抓得到。
+    const dir = makeRepo({
+      deny: ["^forbidden_merge_term"],
+      commits: [
+        { message: "baseline", files: { "src/base.md": "hello\n" } },
+      ],
+    });
+    // 手動建 side branch → main 有另一 commit → merge with conflict resolution 加 forbidden
+    execFileSync("git", ["-C", dir, "checkout", "-q", "-b", "side"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "--allow-empty", "-qm", "side commit"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "checkout", "-q", "main"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "--allow-empty", "-qm", "main commit"], { stdio: "ignore" });
+    // merge with -s ours strategy 產生 merge commit,然後手動 amend 加 forbidden 到 tree
+    execFileSync("git", ["-C", dir, "merge", "--no-ff", "-q", "-m", "merge side", "side"], { stdio: "ignore" });
+    // 在 merge commit 上直接 amend 加 forbidden(模擬 conflict resolution 加的內容)
+    writeFileSync(join(dir, "src/base.md"), "hello\nforbidden_merge_term added in merge\n", "utf-8");
+    execFileSync("git", ["-C", dir, "add", "src/base.md"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "--amend", "--no-edit", "-q"], { stdio: "ignore" });
+    // 再加一個刪除 commit 讓 current tree 乾淨
+    execFileSync("git", ["-C", dir, "rm", "-q", "src/base.md"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "remove base"], { stdio: "ignore" });
+    // baseline 設在 pre-merge:baseline..HEAD 含 merge commit + remove
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD~3"),
+    });
+    const { code, out } = runChecker(dir);
+    // history blob scan 要抓到 merge commit conflict resolution 加的 forbidden
+    expect(out).toContain("git 歷史 blob 含來源專案識別詞");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1zz(round 1 P1 修法):template: prefix + 40-hex 語法錯 → fail-closed(語法錯不因 prefix 降級)", () => {
+    // Template prefix 只在 rev-parse 失敗時降級;若 SHA 本身語法錯(< 40 hex /
+    // 非 hex),仍 fail-closed——語法錯是打錯字、不是 fork 情境,不該降級
+    const dir = makeRepo({
+      deny: ["forbidden_zz_term"],
+      commits: [{ message: "init", files: { "src/a.md": "clean\n" } }],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: "template:not-a-real-sha",
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("baseline SHA 必須是 40 字元 hex");
+    expect(out).toContain("template: prefix");
+    expect(code).toBe(1);
+  });
+
+  it("🔴 P1yy(round 1 P1 修法):template: prefix + rev-parse OK(template repo 自己)→ 走 baseline..HEAD diff scan", () => {
+    // Template repo 自己跑 checker:template: prefix 值的 SHA 在自己的 history
+    // 內 rev-parse 得到 → 不降級、走 baseline..HEAD 正規 diff scan。此測試釘住
+    // 「template prefix 不代表永遠降級」——rev-parse 通過就正規走
+    const dir = makeRepo({
+      deny: ["forbidden_yy_term"],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        {
+          message: "add polluted after baseline",
+          files: { "src/polluted.md": "contains forbidden_yy_term\n" },
+        },
+      ],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: "template:" + shaAt(dir, "HEAD~1"),
+    });
+    const { code, out } = runChecker(dir);
+    // 不降級 → 走 baseline..HEAD、抓到 baseline 之後的新增 forbidden
+    expect(out).toContain("history scan range: baseline..HEAD");
+    expect(out).not.toContain("history scan range: skipped");
+    expect(out).toContain("含來源專案識別詞");
+    expect(code).toBe(1);
   });
 });

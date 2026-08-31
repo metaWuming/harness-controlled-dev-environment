@@ -56,7 +56,7 @@
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -66,6 +66,18 @@ import { acknowledgeSelfPr } from "./lib/marker-self-pr";
 // ───────────────────────────────────────── constants
 
 const DENY_SRC = "scripts/deny-terms.txt";
+/**
+ * PR A1:history baseline config 路徑。
+ * config 檔內容:{ "schemaVersion": 1, "sourceTermHistoryBaseline": "<40-hex>" | null }
+ * 用途:讓 history blob 掃描只掃 `baseline..HEAD`(grandfather baseline 及更早的
+ * 去識別化 debt),不重寫公開 git 歷史仍能讓 gate 綠。
+ * 完整契約:見 `loadBaselineConfig` docstring。
+ * ⚠️ 只影響 source-term(去識別化)掃描;**gitleaks 秘密掃描仍是全史政策**、
+ *    兩者不相干(見 `.github/workflows/ci.yml` 檔頭註解)。
+ */
+const BASELINE_CONFIG_PATH = "scripts/source-term-baseline.json";
+const BASELINE_SCHEMA_VERSION = 1;
+const BASELINE_SHA_RE = /^[0-9a-f]{40}$/i;
 const FULL_EXCLUDES = [
   ":!scripts/deny-terms.txt",
   ":!package-lock.json",
@@ -280,6 +292,154 @@ function repoRoot(): string {
 function loadDenyTerms(root: string): string[] {
   const p = path.join(root, DENY_SRC);
   return stripCommentsAndBlanks(readFileSync(p, "utf-8"));
+}
+
+/**
+ * PR A1:讀 baseline config,fail-closed 解析。
+ *
+ * 回傳 `{ baseline: string | null }`:
+ *   - baseline = null → 無 baseline(舊行為,history 全史掃)
+ *   - baseline = 字串 → history scan 只掃 `baseline..HEAD`(呼叫端還要 validate)
+ *
+ * fail-closed 情境(throw Error,呼叫端 catch → exit 1):
+ *   - config 檔存在但 JSON malformed
+ *   - `schemaVersion` 缺 / 非數字 / ≠ 支援版本(BASELINE_SCHEMA_VERSION)
+ *
+ * 舊行為 fallback(D3/D4,回 `{ baseline: null }`):
+ *   - config 檔不存在(D4:向下相容,downstream fork 未建 config 檔)
+ *   - `sourceTermHistoryBaseline` 缺 / null / 空字串(D3:讓「未設 baseline」的
+ *     downstream 專案沿用嚴格全史掃、不因為 config 檔存在就變寬鬆)
+ *
+ * ⚠️ 純資料 loader:baseline 值本身的合法性(40-hex / rev-parse / ancestor)
+ *    由 `validateBaseline` 另行檢查——三者任一失敗一律 fail-closed。
+ */
+export function parseBaselineConfig(text: string): { baseline: string | null } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (e) {
+    throw new Error(
+      `${BASELINE_CONFIG_PATH}:JSON 解析失敗 — ${(e as Error).message}`
+    );
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`${BASELINE_CONFIG_PATH}:root 必須是 JSON object`);
+  }
+  const obj = parsed as Record<string, unknown>;
+  if (obj.schemaVersion !== BASELINE_SCHEMA_VERSION) {
+    throw new Error(
+      `${BASELINE_CONFIG_PATH}:schemaVersion 未知(收到 ${JSON.stringify(
+        obj.schemaVersion
+      )},本 checker 只支援 ${BASELINE_SCHEMA_VERSION})`
+    );
+  }
+  const raw = obj.sourceTermHistoryBaseline;
+  if (raw === undefined || raw === null || raw === "") {
+    return { baseline: null };
+  }
+  if (typeof raw !== "string") {
+    throw new Error(
+      `${BASELINE_CONFIG_PATH}:sourceTermHistoryBaseline 必須是字串或 null(收到 ${typeof raw})`
+    );
+  }
+  return { baseline: raw };
+}
+
+function loadBaselineConfig(root: string): { baseline: string | null } {
+  const p = path.join(root, BASELINE_CONFIG_PATH);
+  if (!existsSync(p)) return { baseline: null };
+  return parseBaselineConfig(readFileSync(p, "utf-8"));
+}
+
+/**
+ * PR A1:驗證 baseline 值合法性(fail-closed 前提)。
+ *
+ * baseline 字串支援兩種前綴語法(round 1 P1 修法 → round 2 P1a 收):
+ *   ① 純 hex SHA(嚴格模式):40-hex + rev-parse + ancestor 三檢查,任一失敗
+ *      → { kind: "fail" }(下游 fork 用這種、主線值也必須成立)
+ *   ② `template:<40-hex>` prefix(template 遺產模式):給 template repo 自身用
+ *      的 baseline。若 rev-parse 失敗(下游 fork 走 GitHub Template workflow、
+ *      new history 不含此 SHA)→ 回 { kind: "template-fallback" }
+ *      → main() 印 warning + **降級為全史掃描**(baseline=null,走既有 tree
+ *      scan;round 2 P1a 修法:舊 skip 語意讓洗白 A→B 同 PR 通過,改全史掃擋)。
+ *      40-hex 語法錯 / ancestor 失敗仍 fail(這兩條在 template repo 自己也不能允許)。
+ *
+ * 三條檢查逐條可獨立 kill;移除任一條 → 對應測試轉綠(P1e/P1f/P1i)。
+ * 通過 → { kind: "ok", sha }。呼叫端 main 依 kind 分派:
+ *   ok               → 走 baseline..HEAD diff scan
+ *   template-fallback → 印 warning、跳過 history scan(current tree + commit msg 照跑)
+ *   fail             → exit 1(baseline 是治理決策,壞掉不能靜默降級)
+ */
+export type BaselineDecision =
+  | { kind: "ok"; sha: string }
+  | { kind: "template-fallback"; templateSha: string; reason: string }
+  | { kind: "fail"; reason: string };
+
+/**
+ * PR A1 round 1 P1 修法:template repo 遺產 baseline 前綴。
+ * 值範例:「template:641065227924184b058b3f64c1c9f9971a3a17b4」。
+ */
+const TEMPLATE_BASELINE_PREFIX = "template:";
+
+export function validateBaseline(
+  root: string,
+  rawBaseline: string
+): BaselineDecision {
+  const isTemplate = rawBaseline.startsWith(TEMPLATE_BASELINE_PREFIX);
+  const sha = isTemplate
+    ? rawBaseline.slice(TEMPLATE_BASELINE_PREFIX.length)
+    : rawBaseline;
+  if (!BASELINE_SHA_RE.test(sha)) {
+    return {
+      kind: "fail",
+      reason: `baseline SHA 必須是 40 字元 hex(收到「${sha}」${isTemplate ? "(去掉 template: prefix 後)" : ""})`,
+    };
+  }
+  const rp = spawnSync(
+    "git",
+    ["-C", root, "rev-parse", "--verify", "--quiet", `${sha}^{commit}`],
+    { encoding: "utf-8", stdio: "pipe" }
+  );
+  if (rp.status !== 0) {
+    if (isTemplate) {
+      // Template baseline 在下游 fork 的新 history 內找不到 → 降級,不 fail-closed
+      // Round 4 P2:先擋 shallow clone——rev-parse 失敗可能是 shallow 邊界之外
+      // 的合法 SHA、不是「不在 history」;誤降級成 template-fallback 只掃 shallow
+      // suffix → 洗白 blob 在 shallow 邊界之前的漏抓、false green。
+      const shallow = spawnSync(
+        "git",
+        ["-C", root, "rev-parse", "--is-shallow-repository"],
+        { encoding: "utf-8", stdio: "pipe" }
+      );
+      if (shallow.status === 0 && shallow.stdout.trim() === "true") {
+        return {
+          kind: "fail",
+          reason: `template baseline「${sha.slice(0, 8)}」rev-parse 失敗且當前是 shallow clone — 無法區分「downstream new history」與「合法 SHA 在 shallow 邊界之外」,拒絕降級全史掃(全史掃在 shallow 只覆蓋 shallow suffix、有洗白漏抓風險)。修法:用 fetch-depth: 0 拉全史,或改成本 repo 的 initial commit SHA(去掉 template: prefix)`,
+        };
+      }
+      return {
+        kind: "template-fallback",
+        templateSha: sha,
+        reason: `template baseline「${sha.slice(0, 8)}」在當前 repo history 找不到 — 判定為 downstream fork(GitHub Template workflow 建的 new history 不含 template repo 的 SHA)`,
+      };
+    }
+    return {
+      kind: "fail",
+      reason: `baseline SHA rev-parse 失敗 — 找不到 commit「${sha}」(是否 shallow clone / SHA 打錯?)`,
+    };
+  }
+  const mb = spawnSync(
+    "git",
+    ["-C", root, "merge-base", "--is-ancestor", sha, "HEAD"],
+    { encoding: "utf-8", stdio: "pipe" }
+  );
+  if (mb.status !== 0) {
+    return {
+      kind: "fail",
+      reason: `baseline 不是 HEAD 的 ancestor(baseline ${sha.slice(0, 8)} 與 HEAD 無祖先關係 → baseline..HEAD 語意不成立)`,
+    };
+  }
+  return { kind: "ok", sha };
 }
 
 /**
@@ -504,13 +664,213 @@ function scanWorkingTree(
   return scans;
 }
 
+/**
+ * 從 `git show -p` patch 文字取出新增行的**內容**(strip 一個 `+` 標記)。
+ * PR A1 round 1 P2 修法 → round 2 P1b 加固。
+ *
+ * ⚠️ 兩個坑(round 2 P1b 抓到):
+ *   ① 舊版保留 `+` 前綴給 grep → pattern `^forbidden` 對新增內容 `forbidden`
+ *      不命中(POSIX ERE 錨點 `^` 對「+forbidden」不 match `forbidden`)。
+ *      現在 strip 一個 `+`。
+ *   ② 舊版用 `l.startsWith("+++")` 過濾檔頭 → hunk 內容以 `++foo` 開頭時
+ *      patch 行為 `+++foo`,會被誤當檔頭丟。現在用 hunk state:只在 hunk 內
+ *      (`@@` 之後、下一個 `diff --git` 之前)採 `+` 開頭行,strip 一個 `+`。
+ *      檔頭 `+++ b/path` 因為出現在 `@@` 之前 → inHunk=false → 不採。
+ *
+ * 純函式,供測試直接呼叫(見 tests/check-no-source-terms.test.ts P1b-parser)。
+ */
+export function extractAddedLinesFromPatch(patch: string): string {
+  const out: string[] = [];
+  let inHunk = false;
+  for (const line of patch.split("\n")) {
+    if (line.startsWith("diff --git ")) {
+      inHunk = false;
+      continue;
+    }
+    if (line.startsWith("@@")) {
+      inHunk = true;
+      continue;
+    }
+    if (!inHunk) continue;
+    if (line.startsWith("+")) {
+      out.push(line.slice(1));
+    }
+  }
+  return out.join("\n");
+}
+
+/**
+ * PR A1 round 1 P2 修法:per-commit diff scan(替換 baseline 給時的 tree scan)。
+ *
+ * 舊行為(tree scan)問題:baseline..HEAD 內每個 commit 掃**整 tree**,只要
+ * 未動的既存檔案含 forbidden(baseline 之前就存在的去識別化 debt)也會被抓
+ * → false positive。真實觸發場景:feature branch 從 baseline 分岔、加一個
+ * 無關的 commit,那個 commit 的 tree 繼承所有 baseline 檔(含 baseline 之前
+ * 就存在的來源專案識別詞)→ 誤紅。
+ *
+ * 新語意:baseline..HEAD 每個 commit 相對於 parent 的 **diff 新增行**才掃。
+ * 未動的 blob 不算「新引入」→ 不會誤觸發;真正 baseline 之後新加的 forbidden
+ * (即使後來又刪掉、per-commit 仍抓)照抓。
+ *
+ * ⚠️ file:line attribution:grep 對 patch 純文字掃,hit 為 `+<content>` 行。
+ *    沒有 filename 與 line number(要精確 attribution 需 mini patch parser),
+ *    但錯誤訊息仍能定位到 rev + 內容片段,對本 gate 目的夠用。
+ *
+ * 洗白場景(A 加 forbidden + B 刪 forbidden 在同一 PR)per-commit 仍抓 commit A;
+ * 淨 diff 版本會漏(此設計刻意選 per-commit 而非淨 diff)。
+ */
+function scanRevDiff(
+  root: string,
+  rev: string,
+  patternFile: string,
+  label: string,
+  mode: Mode,
+  pathspec: string[]
+): Scan {
+  // Round 3 P2 修法:`-m` 讓 merge commit 拆成「每 parent 一份普通 diff」,
+  // 避免 git show 對 merge 預設輸出 combined format(`diff --cc`,`++forbidden`
+  // 等雙 marker 前綴)導致 parser strip 一個 marker 後仍有 `+`、anchored pattern
+  // 不 match。`-m` 對 non-merge commit 無作用(仍是普通單 parent diff)。
+  // Round 5 P1 修法(兩條洗白路徑):
+  //   `--no-renames`:git show 預設開 rename detection → rename excluded file
+  //     (如 deny-terms.txt)到 scanned path + 加內容 + 再 rename 回,只印 rename
+  //     metadata、無 + hunk → 漏抓。關掉 rename 讓 destination 印成新增內容。
+  //   `--text` + `--no-textconv`:.gitattributes `-diff` 屬性讓 git show 只印
+  //     「Binary files differ」→ 無 hunk → 漏抓。強制 text 輸出 + 關 textconv
+  //     filter,確保純文字 patch。
+  // Round 6 P2 修法:`--first-parent` 對 merge commit 只產出「側 branch 帶進來
+  //   的新增」diff。舊版 `-m` 對每 parent 各自 diff → merge 保留 grandfathered
+  //   內容(baseline 已有、first parent 保留、另一 parent 刪除)時對另一 parent
+  //   的 diff 會誤把該行標為 add → 誤觸發。--first-parent 只看 first parent、
+  //   避免誤觸發;conflict resolution 加的內容仍在 first-parent-diff 內出現
+  //   (R3 P2 場景仍抓)。
+  const showRes = spawnSync(
+    "git",
+    [
+      "-C",
+      root,
+      "show",
+      "-m",
+      "--first-parent",
+      "--no-renames",
+      "--text",
+      "--no-textconv",
+      "--format=",
+      "--unified=0",
+      "--no-color",
+      rev,
+      "--",
+      ...pathspec,
+    ],
+    { encoding: "utf-8", maxBuffer: 256 * 1024 * 1024 }
+  );
+  if (showRes.status !== 0) {
+    return { label, mode, hits: [], rc: showRes.status ?? 2 };
+  }
+  const added = extractAddedLinesFromPatch(showRes.stdout || "");
+  if (added.length === 0) {
+    return { label, mode, hits: [], rc: 1 }; // clean(等同 git grep 的 rc=1)
+  }
+  // Round 6 P1 修法:`-a`(`--binary-files=text`)覆蓋 `-I` 的 binary detection。
+  // 舊 `-I` 讓 grep 對含 NUL byte 的 stdin 直接判 binary + 不掃、回 clean →
+  // post-baseline commit 含 NUL byte 檔 + 加 forbidden text 行、後刪除 → 洗白。
+  // 加 `-a` 強制當 text 掃(input 已由 git show --text 強制文字產出,不會爆量)。
+  // Step 5 adversarial finding 3 修法:去掉 `-n` — 這裡 grep 對 patch 拼接的
+  //   `added` 字串掃,`-n` 印的 line number 是「拼接後合成序號」、不指向任何
+  //   真檔 patch line,誤導讀者去 <rev> 找「第 N 行」。file:line attribution
+  //   本來就是 diff-scan 語意的已知限制(見 scanBaselineToHeadDiffs docstring),
+  //   不印假數字比印誤導性數字誠實。
+  const grepRes = spawnSync("grep", ["-aiE", "-f", patternFile], {
+    input: added,
+    encoding: "utf-8",
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  const hits = (grepRes.stdout || "")
+    .split("\n")
+    .filter((l) => l.length > 0)
+    .map((h) => `${rev.slice(0, 8)} [+diff] ${h}`);
+  return { label, mode, hits, rc: grepRes.status ?? 2 };
+}
+
+/**
+ * PR A1 round 1 P2 修法:baseline..HEAD per-commit diff scan(替代 baseline
+ * 給時的 tree scan)。實作策略:對每個 rev 開三段 diff scan(non-CA / CA /
+ * SYNTAX 例外),分別對應原 tree scan 的三種模式;pathspec 對齊 tree scan。
+ */
+function scanBaselineToHeadDiffs(
+  root: string,
+  nonCaFile: string | null,
+  caFile: string | null,
+  syntaxNonCaFile: string | null,
+  baseline: string
+): Scan[] {
+  const revs = execFileSync(
+    "git",
+    ["-C", root, "rev-list", `${baseline}..HEAD`],
+    { encoding: "utf-8", maxBuffer: 256 * 1024 * 1024 }
+  )
+    .split("\n")
+    .filter(Boolean);
+  const scans: Scan[] = [];
+  const mainPathspec = [".", ...FULL_EXCLUDES];
+  for (const rev of revs) {
+    if (nonCaFile) {
+      scans.push(
+        scanRevDiff(
+          root,
+          rev,
+          nonCaFile,
+          `史 ${rev.slice(0, 8)}(non-CA diff)`,
+          "strict",
+          mainPathspec
+        )
+      );
+    }
+    if (caFile) {
+      scans.push(
+        scanRevDiff(
+          root,
+          rev,
+          caFile,
+          `史 ${rev.slice(0, 8)}(CA diff,self-PR 判定)`,
+          "self-pr",
+          mainPathspec
+        )
+      );
+    }
+    if (syntaxNonCaFile) {
+      // SYNTAX 例外檔:若該 rev 的 SYNTAX_EXEMPT_FILES 有 diff,用縮減 pattern
+      // 集(non-CA only)掃;檔案不存在的 rev 直接跳過。git show 對不存在 pathspec
+      // 不報錯,產出空 patch → scanRevDiff 回 clean、無害。
+      scans.push(
+        scanRevDiff(
+          root,
+          rev,
+          syntaxNonCaFile,
+          `史 ${rev.slice(0, 8)}(SYNTAX 例外檔 non-CA diff)`,
+          "strict",
+          SYNTAX_EXEMPT_FILES
+        )
+      );
+    }
+  }
+  return scans;
+}
+
 function scanGitHistoryBlobs(
   root: string,
   nonCaFile: string | null,
   caFile: string | null,
-  syntaxNonCaFile: string | null
+  syntaxNonCaFile: string | null,
+  baseline: string | null
 ): Scan[] {
-  const revs = execFileSync("git", ["-C", root, "rev-list", "--all"], {
+  // PR A1 round 1 P2:baseline 給 → per-commit diff scan(scanRevDiff);
+  // baseline null → tree scan(舊行為,見下方)
+  if (baseline) {
+    return scanBaselineToHeadDiffs(root, nonCaFile, caFile, syntaxNonCaFile, baseline);
+  }
+  const revListArgs = ["-C", root, "rev-list", "--all"];
+  const revs = execFileSync("git", revListArgs, {
     encoding: "utf-8",
     maxBuffer: 256 * 1024 * 1024,
   })
@@ -589,7 +949,10 @@ function scanCommitMessages(root: string, allPatternFile: string): Scan {
     ["-C", root, "log", "--all", "--format=%H %an <%ae> %s %b"],
     { encoding: "utf-8", maxBuffer: 512 * 1024 * 1024 }
   );
-  const r = spawnSync("grep", ["-niIE", "-f", allPatternFile], {
+  // Step 5 adversarial finding 4 修法:對齊 scanRevDiff 用 `-a`,defense-in-depth
+  //   一致(即使 git log --format=%s%b 實務上不會產出 NUL、可觸發性極低,兩處
+  //   sink 都是 stdin-based grep、風險模型同樣)
+  const r = spawnSync("grep", ["-naiE", "-f", allPatternFile], {
     input: log,
     encoding: "utf-8",
     maxBuffer: 256 * 1024 * 1024,
@@ -683,6 +1046,56 @@ function main(): number {
     `── allowedPrs: ${allowedPrs.size} 個 PR 號被納入放行清單(delivery 已 merge ${mergedCount} + self-PR ${selfPrCount};collision 時 self ∈ delivery)──`
   );
 
+  // PR A1:載入 baseline config、決定 history scan 範圍(fail-closed on error)
+  // Round 1 P1 + Round 2 P1a:baseline 決策三態(ok / template-fallback / fail)
+  // template-fallback → 降級為「全史掃」(baseline=null)、不 skip history scan。
+  // 洗白場景(A 加 forbidden + B 刪 forbidden 同一 PR)current tree/msg 都乾淨,
+  // 只有全史掃才抓得到中間 blob。skip 語意違反此契約(round 2 P1a 抓到)。
+  let baseline: string | null = null;
+  let templateFallback = false;
+  try {
+    const rawBaseline = loadBaselineConfig(root).baseline;
+    if (rawBaseline !== null) {
+      const decision = validateBaseline(root, rawBaseline);
+      if (decision.kind === "fail") {
+        console.error(`❌ baseline 驗證失敗:${decision.reason}`);
+        for (const c of cleanups) c();
+        return 1;
+      }
+      if (decision.kind === "template-fallback") {
+        console.warn(`⚠️  ${decision.reason}`);
+        console.warn(
+          `    → 降級為全史掃描(掃 downstream repo 全部 history,擋洗白場景)`
+        );
+        console.warn(
+          `    → 建議:把 ${BASELINE_CONFIG_PATH} 的 sourceTermHistoryBaseline 改成本 repo 的 initial commit SHA(去掉 template: prefix,走嚴格 baseline..HEAD 語意)`
+        );
+        // baseline 保留 null → 走既有全史 tree scan(舊行為)
+        templateFallback = true;
+      } else {
+        baseline = decision.sha;
+      }
+    }
+  } catch (e) {
+    console.error(`❌ baseline config 載入失敗:${(e as Error).message}`);
+    for (const c of cleanups) c();
+    return 1;
+  }
+  // Startup 印掃描範圍(plan §5「啟動時輸出掃描範圍」)
+  if (templateFallback) {
+    console.log(
+      `── history scan range: --all(template-fallback,downstream fork 未建 baseline;downstream 建議改成 initial commit SHA)──`
+    );
+  } else if (baseline) {
+    console.log(
+      `── history scan range: baseline..HEAD(grandfather ≤ ${baseline.slice(0, 8)},見 ${BASELINE_CONFIG_PATH})──`
+    );
+  } else {
+    console.log(
+      `── history scan range: --all(no baseline configured,${BASELINE_CONFIG_PATH} 不存在或 baseline 為 null)──`
+    );
+  }
+
   let fail = false;
   try {
     console.log("── [1/3] working tree 掃描 ──");
@@ -698,13 +1111,20 @@ function main(): number {
     if (!wtFail) console.log("✅ working tree 乾淨");
     else fail = true;
 
-    console.log("── [2/3] git 全史 blob 掃描 ──");
+    console.log(
+      baseline
+        ? "── [2/3] git 歷史 blob 掃描(baseline..HEAD diff)──"
+        : templateFallback
+        ? "── [2/3] git 全史 blob 掃描(template-fallback)──"
+        : "── [2/3] git 全史 blob 掃描 ──"
+    );
     let histFail = false;
     for (const scan of scanGitHistoryBlobs(
       root,
       nonCaFile?.file ?? null,
       caFile?.file ?? null,
-      syntaxNonCaFile?.file ?? null
+      syntaxNonCaFile?.file ?? null,
+      baseline
     )) {
       if (!processScan(scan, allowedPrs)) histFail = true;
     }
