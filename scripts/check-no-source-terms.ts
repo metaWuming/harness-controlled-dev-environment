@@ -368,7 +368,8 @@ function loadBaselineConfig(root: string): { baseline: string | null } {
  * 三條檢查逐條可獨立 kill;移除任一條 → 對應測試轉綠(P1e/P1f/P1i)。
  * 通過 → { kind: "ok", sha }。呼叫端 main 依 kind 分派:
  *   ok               → 走 baseline..HEAD diff scan
- *   template-fallback → 印 warning、跳過 history scan(current tree + commit msg 照跑)
+ *   template-fallback → 印 warning、**降級為全史掃描**(baseline=null;current tree
+ *                       與 commit 訊息掃描仍照常執行)
  *   fail             → exit 1(baseline 是治理決策,壞掉不能靜默降級)
  */
 export type BaselineDecision =
