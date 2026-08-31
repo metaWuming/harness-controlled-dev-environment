@@ -713,8 +713,9 @@ export function extractAddedLinesFromPatch(patch: string): string {
 // 提取兩次,且 subprocess 隨 baseline..HEAD 的 commit 數單調成長(3 次 git show +
 // 3 次 grep 每 commit),baseline 是治理決策不能為效能推進 → 會撞 CI 十分鐘上限。
 //
-// 新語意**與舊版完全相同**(per-commit diff 新增行、first-parent、豁免兩層),
-// 只改「怎麼取到那份 patch」:
+// **掃描語意與判定結果不變**(per-commit diff 新增行、first-parent、豁免兩層),
+// 只改「怎麼取到那份 patch」。唯一的對外差異是診斷輸出:hit 的 label 從
+// per-rev 一段改成彙總一段,rev 改由每行 hit 的前綴帶(顯示格式不變)。
 //   1. `git rev-list baseline..HEAD` 取 rev(metadata,不輸出 patch bytes)
 //   2. rev 分批,每批**一次** patch producer 呼叫、**不帶 pathspec**
 //   3. 每個 rev 的 patch **只解析一次** → `Map<path, 新增行[]>`
@@ -848,8 +849,9 @@ export type PatchDst = { kind: "deleted" } | { kind: "path"; path: string };
  *   `+++ b/sp ace.txt<TAB>`        → **檔名含空白時 git 會追加一個 TAB 分隔符**
  *   `+++ "b/tab\tname.txt"`        → C-quoted(tab / newline / 引號 / 反斜線)
  *
- * ⚠️ unquoted 形式的名稱**不可能含 TAB**(含 TAB 一定觸發 quoting),所以
- *    「移除至多一個尾端 TAB」是無損的;移除後若仍含 TAB → 形狀異常 → throw。
+ * ⚠️ git 對含 TAB 的名稱會改用 quoted 形式,所以 unquoted 形式預期不含 TAB,
+ *    「移除至多一個尾端 TAB」在該前提下無損。**不倚賴這個前提**:移除後若仍
+ *    含 TAB → 形狀異常 → throw(前提不成立時是 fail-closed,不是誤判)。
  * ⚠️ 少了 `b/` 前綴代表 prefix 釘法失效(例如未來有人拿掉 `--dst-prefix`)
  *    → **throw,不得把該 section 當空**——當空 = 該檔的新增行整段漏掃 = false green。
  */
@@ -890,8 +892,8 @@ export function parsePatchDstPath(line: string): PatchDst {
  *
  * ⚠️ hunk 內出現新增行但當前路徑不明(null 或 deleted)→ **throw**。
  *    這種 patch 結構異常代表檔頭解析失敗或 patch 被截斷;吞掉它 = 漏掃。
- * ⚠️ hunk 內容行長得像檔頭(`+++ b/x` / `diff --git ...` / `@@ ...`)不會誤判:
- *    它們在 patch 內帶了額外的 `+` 前綴,不符合各分支的字面條件。
+ * ⚠️ hunk 內容行長得像檔頭(`+++ b/x` / `diff --git ...` / `@@ ...`)不被當成檔頭:
+ *    它們在 patch 內帶了額外的 `+` 前綴,不符合各分支的字面條件(U10 守這條)。
  */
 export function extractAddedLinesByPath(patch: string): Map<string, string[]> {
   const out = new Map<string, string[]>();
@@ -1122,7 +1124,8 @@ function grepRevDir(
   mode: Mode
 ): Scan {
   if (fileCount === 0) return { label, mode, hits: [], rc: 1 }; // clean
-  // `-a` 覆蓋 binary detection(round 6 P1:NUL byte 洗白);`-H` 保證印檔名;
+  // `-a` 覆蓋 binary detection(round 6 P1:NUL byte 洗白);`-H` 明確要求印檔名
+  // (不倚賴 `-r` 的隱含行為);
   // `-E` POSIX ERE(不用 JS regex 反查 deny-terms);`-i` 對齊既有大小寫語意。
   const r = spawnSync("grep", ["-aiEH", "-r", "-f", patternFile, dir], {
     encoding: "utf-8",
