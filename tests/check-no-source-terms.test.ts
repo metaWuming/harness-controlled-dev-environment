@@ -23,8 +23,10 @@
 
 import { execFileSync } from "node:child_process";
 import {
+  chmodSync,
   mkdtempSync,
   mkdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -418,6 +420,12 @@ function makeRepo(opts: {
     /** 若給,pushes 後 `git remote set-head origin <name>` 讓 ①路徑抓得到 */
     setHeadTo?: string;
   };
+  /**
+   * PR A1.1:對 disposable repo 注入 git config。
+   * 用途:E6 用「敵意 config」(`diff.noprefix=true` / `core.quotePath=true`)證明
+   * patch producer 的 command-local flag 壓得過使用者設定。
+   */
+  gitConfig?: Record<string, string>;
 }): string {
   const wrap = mkdtempSync(join(tmpdir(), "cnst-e2e-"));
   created.push(wrap);
@@ -431,6 +439,7 @@ function makeRepo(opts: {
   git("init", "-q", "-b", "main");
   git("config", "user.email", "t@example.com");
   git("config", "user.name", "t");
+  for (const [k, v] of Object.entries(opts.gitConfig ?? {})) git("config", k, v);
 
   // Step 5 F1:預設自動注入 CA entries(避免 CI startup assert fail-hard);
   // omitCaAutoInject 專用於 F1 e2e 反例(測 assert 本身)
@@ -1585,5 +1594,674 @@ describe("check-no-source-terms — history baseline(PR A1)", () => {
     expect(out).not.toContain("history scan range: skipped");
     expect(out).toContain("含來源專案識別詞");
     expect(code).toBe(1);
+  });
+});
+
+// ══════════════════ PR A1.1 F1:diff-scan 效能重構的守門契約 ══════════════════
+//
+// 設計正本:docs/architecture/source-term-history-baseline.md「效能與 scale 契約」。
+//
+// 政策不變量(**與實作無關**,四條):
+//   INV-1 baseline..HEAD 的每個 rev,其 patch 全域最多被提取一次(不分 view / policy)
+//   INV-2 每個 rev 恰好被交給 patch producer 一次(無漏、無重、無額外)
+//   INV-3 三組 policy(main×non-CA / main×CA / syntax×non-CA)全部由同一份
+//         per-rev extraction 分桶,不得為任何一組另產 patch
+//   INV-4 subprocess 不得回退成每 rev 多倍乘法
+//
+// ⚠️ 「patch-producing invocation」= 會輸出 patch bytes 的 git 呼叫
+//    (`show` / `diff` / `diff-tree` / 帶 diff 選項的 `log`)。
+//    **不輸出 patch bytes 的 metadata command(`rev-list` / `rev-parse` /
+//    `merge-base` / `symbolic-ref` / `cat-file -e`)不受這些預算限制。**
+
+/** shim log 的 argv 分隔字元(ASCII UNIT SEPARATOR = 0x1f)。 */
+const ARGV_SEP = String.fromCharCode(31);
+
+interface ShimCall {
+  bin: string;
+  exit: number;
+  stdinFile: string;
+  stdoutFile: string;
+  /** 呼叫當下 `-f <file>` 指到的 pattern 檔快照(無則 "-")。 */
+  patternFile: string;
+  argv: string[];
+}
+
+interface Shim {
+  binDir: string;
+  logFile: string;
+  env: Record<string, string>;
+}
+
+/**
+ * 建 PATH shim:`git` 與 `grep` 各一個 wrapper,記 argv / stdin / stdout / exit,
+ * 再原樣 exec 真 binary。**必須對結果透明**(T1 自測逐字節比對)。
+ */
+function makeShim(): Shim {
+  const base = mkdtempSync(join(tmpdir(), "cnst-shim-"));
+  created.push(base);
+  const binDir = join(base, "bin");
+  const dataDir = join(base, "data");
+  mkdirSync(binDir, { recursive: true });
+  mkdirSync(dataDir, { recursive: true });
+  const logFile = join(base, "calls.log");
+  writeFileSync(logFile, "", "utf-8");
+  for (const name of ["git", "grep"]) {
+    const real = execFileSync("sh", ["-c", `command -v ${name}`], {
+      encoding: "utf-8",
+    }).trim();
+    const script = [
+      "#!/bin/sh",
+      `_in=$(mktemp "${dataDir}/stdin.XXXXXX")`,
+      `_out=$(mktemp "${dataDir}/stdout.XXXXXX")`,
+      // 呼叫當下快照 `-f <file>`:checker 結束時會清掉 pattern 暫存目錄,
+      // 事後再讀就 ENOENT(C5 需要逐字節比對 pattern 檔內容)。
+      '_pat="-"',
+      '_prev=""',
+      'for _a in "$@"; do',
+      '  if [ "$_prev" = "-f" ] && [ -f "$_a" ]; then',
+      `    _pat=$(mktemp "${dataDir}/pat.XXXXXX"); cp "$_a" "$_pat"`,
+      "  fi",
+      '  _prev="$_a"',
+      "done",
+      'cat > "$_in"',
+      `"${real}" "$@" < "$_in" > "$_out"`,
+      "_rc=$?",
+      "{",
+      `  printf '%s\\t%s\\t%s\\t%s\\t%s\\t' '${name}' "$_rc" "$_in" "$_out" "$_pat"`,
+      '  for _a in "$@"; do printf \'%s\\037\' "$_a"; done',
+      "  printf '\\n'",
+      `} >> "${logFile}"`,
+      'cat "$_out"',
+      "exit $_rc",
+    ].join("\n");
+    const p = join(binDir, name);
+    writeFileSync(p, script + "\n", "utf-8");
+    chmodSync(p, 0o755);
+  }
+  return {
+    binDir,
+    logFile,
+    env: { PATH: `${binDir}:${process.env.PATH ?? ""}` },
+  };
+}
+
+function readShimCalls(shim: Shim): ShimCall[] {
+  const raw = readFileSync(shim.logFile, "utf-8");
+  const calls: ShimCall[] = [];
+  for (const line of raw.split("\n")) {
+    if (!line) continue;
+    const parts = line.split("\t");
+    if (parts.length < 6) continue;
+    const [bin, rc, stdinFile, stdoutFile, patternFile, ...argvRest] = parts;
+    const argv = argvRest
+      .join("\t")
+      .split(ARGV_SEP)
+      .filter((a) => a.length > 0);
+    calls.push({
+      bin: bin!,
+      exit: Number(rc),
+      stdinFile: stdinFile!,
+      stdoutFile: stdoutFile!,
+      patternFile: patternFile!,
+      argv,
+    });
+  }
+  return calls;
+}
+
+/** 跳過 `-C <path>` / `-c <cfg>` 之後的第一個非 option 引數 = git 子指令。 */
+function gitSubcommand(argv: string[]): string | null {
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a === "-C" || a === "-c") {
+      i++;
+      continue;
+    }
+    if (a.startsWith("-")) continue;
+    return a;
+  }
+  return null;
+}
+
+function isPatchProducing(c: ShimCall): boolean {
+  if (c.bin !== "git") return false;
+  const sub = gitSubcommand(c.argv);
+  if (sub === "show" || sub === "diff" || sub === "diff-tree") return true;
+  if (sub === "log") {
+    return c.argv.some(
+      (a) => a === "-p" || a === "--patch" || a.startsWith("--unified")
+    );
+  }
+  return false;
+}
+
+const SHA40 = /^[0-9a-f]{40}$/;
+
+/** 一次 patch-producing 呼叫實際處理到的 rev(argv 內的裸 SHA + stdin 內的 SHA 行)。 */
+function revsOfCall(c: ShimCall): string[] {
+  const out: string[] = [];
+  for (const a of c.argv) if (SHA40.test(a)) out.push(a);
+  let stdin = "";
+  try {
+    stdin = readFileSync(c.stdinFile, "utf-8");
+  } catch {
+    /* 檔可能已被清掉 */
+  }
+  for (const l of stdin.split("\n")) {
+    const t = l.trim();
+    if (SHA40.test(t)) out.push(t);
+  }
+  return out;
+}
+
+interface SubprocessProfile {
+  calls: ShimCall[];
+  patchProducing: ShimCall[];
+  greps: ShimCall[];
+  otherGit: ShimCall[];
+}
+
+function profile(shim: Shim): SubprocessProfile {
+  const calls = readShimCalls(shim);
+  return {
+    calls,
+    patchProducing: calls.filter(isPatchProducing),
+    greps: calls.filter((c) => c.bin === "grep"),
+    otherGit: calls.filter((c) => c.bin === "git" && !isPatchProducing(c)),
+  };
+}
+
+/**
+ * 建一個「baseline 之後有 n 個乾淨 commit」的 repo,baseline 指到 `clean init`。
+ * 內容乾淨 → checker 應 exit 0,計數不被 early-exit 干擾。
+ */
+function makeScaleRepo(n: number): { dir: string; revs: string[] } {
+  const commits: Array<{ message: string; files?: Record<string, string> }> = [
+    { message: "clean init", files: { "src/init.md": "hello\n" } },
+  ];
+  for (let i = 0; i < n; i++) {
+    commits.push({
+      message: `clean commit ${i}`,
+      files: { [`src/f${i}.md`]: `content ${i}\n` },
+    });
+  }
+  const dir = makeRepo({ deny: ["forbidden_scale_term"], commits });
+  const baseline = shaAt(dir, `HEAD~${n}`);
+  writeBaselineConfig(dir, {
+    schemaVersion: 1,
+    sourceTermHistoryBaseline: baseline,
+  });
+  const revs = execFileSync("git", ["-C", dir, "rev-list", `${baseline}..HEAD`], {
+    encoding: "utf-8",
+  })
+    .split("\n")
+    .filter(Boolean);
+  return { dir, revs };
+}
+
+describe("PR A1.1 — subprocess 觀測 shim 自測(擋契約假綠)", () => {
+  it("🔴 T1:掛 shim 與不掛 shim,exit / 輸出逐字節相同(instrumentation 透明)", () => {
+    const { dir } = makeScaleRepo(3);
+    const plain = runChecker(dir);
+    const shim = makeShim();
+    const shimmed = runChecker(dir, shim.env);
+    expect(shimmed.code).toBe(plain.code);
+    expect(shimmed.out).toBe(plain.out);
+  });
+
+  it("🔴 T2:shim 真的被走到(log 非空、含 git 與 patch-producing 呼叫)", () => {
+    const { dir } = makeScaleRepo(3);
+    const shim = makeShim();
+    runChecker(dir, shim.env);
+    const p = profile(shim);
+    expect(p.calls.length).toBeGreaterThan(0);
+    expect(p.calls.some((c) => c.bin === "git")).toBe(true);
+    expect(p.patchProducing.length).toBeGreaterThan(0);
+  });
+
+  it("🔴 T3:子行程 exit code 透傳(baseline 非祖先 → checker exit 1)", () => {
+    const dir = makeRepo({
+      deny: ["forbidden_t3_term"],
+      commits: [{ message: "init clean", files: { "src/a.md": "x\n" } }],
+    });
+    execFileSync("git", ["-C", dir, "checkout", "-q", "--orphan", "sidebranch"], {
+      stdio: "ignore",
+    });
+    writeFileSync(join(dir, "other.md"), "y\n", "utf-8");
+    execFileSync("git", ["-C", dir, "add", "-A"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "orphan"], { stdio: "ignore" });
+    const orphan = shaAt(dir, "HEAD");
+    execFileSync("git", ["-C", dir, "checkout", "-q", "main"], { stdio: "ignore" });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: orphan,
+    });
+    const shim = makeShim();
+    const { code, out } = runChecker(dir, shim.env);
+    expect(code).toBe(1);
+    expect(out).toContain("baseline 驗證失敗");
+  });
+});
+
+describe("PR A1.1 — scale contract(implementation-neutral)", () => {
+  it("🔴 C1:patch-producing 呼叫數 ≤ N(每 rev 最多一次 extraction)", () => {
+    const { dir, revs } = makeScaleRepo(15);
+    const shim = makeShim();
+    const { code } = runChecker(dir, shim.env);
+    expect(code).toBe(0);
+    const p = profile(shim);
+    expect(revs.length).toBe(15);
+    expect(
+      p.patchProducing.length,
+      `patch-producing=${p.patchProducing.length} 應 ≤ N=${revs.length};` +
+        "每 rev 三次 git show 的舊實作會得到 3N=45"
+    ).toBeLessThanOrEqual(revs.length);
+    expect(p.patchProducing.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("🔴 C2a:每個 rev 在所有 patch-producing 呼叫中恰出現 1 次(封死 per-view 重複提取)", () => {
+    const { dir, revs } = makeScaleRepo(15);
+    const shim = makeShim();
+    expect(runChecker(dir, shim.env).code).toBe(0);
+    const p = profile(shim);
+    const count = new Map<string, number>();
+    for (const c of p.patchProducing) {
+      for (const r of revsOfCall(c)) count.set(r, (count.get(r) ?? 0) + 1);
+    }
+    for (const r of revs) {
+      expect(count.get(r) ?? 0, `rev ${r.slice(0, 8)} 出現次數`).toBe(1);
+    }
+    expect([...count.keys()].sort()).toEqual([...revs].sort());
+  });
+
+  it("🔴 C2b:各批次 rev 集合兩兩互斥,聯集恰等於 rev-list", () => {
+    const { dir, revs } = makeScaleRepo(15);
+    const shim = makeShim();
+    expect(runChecker(dir, shim.env).code).toBe(0);
+    const p = profile(shim);
+    const batches = p.patchProducing.map((c) => new Set(revsOfCall(c)));
+    for (let i = 0; i < batches.length; i++) {
+      for (let j = i + 1; j < batches.length; j++) {
+        const inter = [...batches[i]!].filter((r) => batches[j]!.has(r));
+        expect(inter, `批次 ${i} 與 ${j} 不得重疊`).toEqual([]);
+      }
+    }
+    const union = new Set<string>();
+    for (const b of batches) for (const r of b) union.add(r);
+    expect([...union].sort()).toEqual([...revs].sort());
+  });
+
+  it("🔴 C2d:patch-producing 呼叫不得帶 pathspec,封死「每個 view 各產一份 patch」", () => {
+    const { dir } = makeScaleRepo(6);
+    const shim = makeShim();
+    expect(runChecker(dir, shim.env).code).toBe(0);
+    const p = profile(shim);
+    for (const c of p.patchProducing) {
+      expect(
+        c.argv.includes("--"),
+        `patch producer 不得帶 pathspec:${c.argv.join(" ")}`
+      ).toBe(false);
+    }
+  });
+
+  it("🔴 C3:grep 呼叫總數 ≤ 5 且與 N 無關", () => {
+    const small = makeScaleRepo(3);
+    const shimS = makeShim();
+    expect(runChecker(small.dir, shimS.env).code).toBe(0);
+    const big = makeScaleRepo(15);
+    const shimB = makeShim();
+    expect(runChecker(big.dir, shimB.env).code).toBe(0);
+    expect(profile(shimS).greps.length).toBeLessThanOrEqual(5);
+    expect(profile(shimB).greps.length).toBeLessThanOrEqual(5);
+  });
+
+  it("🔴 C4:三類 subprocess 各自的斜率 ≤ 1(N=3 → N=15)", () => {
+    const small = makeScaleRepo(3);
+    const shimS = makeShim();
+    expect(runChecker(small.dir, shimS.env).code).toBe(0);
+    const big = makeScaleRepo(15);
+    const shimB = makeShim();
+    expect(runChecker(big.dir, shimB.env).code).toBe(0);
+    const a = profile(shimS);
+    const b = profile(shimB);
+    expect(
+      b.patchProducing.length - a.patchProducing.length,
+      "patchProducing 斜率"
+    ).toBeLessThanOrEqual(1);
+    expect(b.greps.length - a.greps.length, "grep 斜率").toBeLessThanOrEqual(1);
+    expect(
+      b.otherGit.length - a.otherGit.length,
+      "otherGit 斜率"
+    ).toBeLessThanOrEqual(1);
+  });
+
+  it("🔴 C5:grep 仍走 POSIX ERE,pattern 檔內容與 denylist 逐字節相同", () => {
+    const { dir } = makeScaleRepo(3);
+    const shim = makeShim();
+    expect(runChecker(dir, shim.env).code).toBe(0);
+    const p = profile(shim);
+    expect(p.greps.length).toBeGreaterThan(0);
+    const denyLines = readFileSync(join(dir, "scripts/deny-terms.txt"), "utf-8")
+      .split("\n")
+      .filter((l) => !/^\s*(#|$)/.test(l));
+    for (const g of p.greps) {
+      const shortFlags = g.argv.filter(
+        (a) => a.startsWith("-") && !a.startsWith("--")
+      );
+      expect(
+        shortFlags.some((f) => f.includes("E")),
+        `grep 必須用 POSIX ERE:${g.argv.join(" ")}`
+      ).toBe(true);
+      expect(g.argv.indexOf("-f")).toBeGreaterThanOrEqual(0);
+      expect(g.patternFile, "shim 應快照到 pattern 檔").not.toBe("-");
+      const pats = readFileSync(g.patternFile, "utf-8")
+        .split("\n")
+        .filter(Boolean);
+      expect(pats.length).toBeGreaterThan(0);
+      for (const pat of pats) expect(denyLines).toContain(pat);
+    }
+  });
+
+  it("🔴 C5p:patch producer argv 釘住 src/dst prefix 與 core.quotePath", () => {
+    const { dir } = makeScaleRepo(3);
+    const shim = makeShim();
+    expect(runChecker(dir, shim.env).code).toBe(0);
+    const p = profile(shim);
+    expect(p.patchProducing.length).toBeGreaterThan(0);
+    for (const c of p.patchProducing) {
+      expect(c.argv).toContain("--src-prefix=a/");
+      expect(c.argv).toContain("--dst-prefix=b/");
+      expect(c.argv).toContain("core.quotePath=false");
+    }
+  });
+
+  it("🟡 C6(implementation test,**非政策**):當前實作不使用 git show", () => {
+    // ⚠️ 這條綁當前實作、不是政策正本。未來若安全地改回「每 rev 一次 git show
+    //    再重用於三組 policy」,**不算違規**——以 C1 / C2a / C2b / C2d 為準。
+    const { dir } = makeScaleRepo(6);
+    const shim = makeShim();
+    expect(runChecker(dir, shim.env).code).toBe(0);
+    const p = profile(shim);
+    expect(p.calls.filter((c) => gitSubcommand(c.argv) === "show").length).toBe(0);
+  });
+});
+
+describe("PR A1.1 — patch 解析與分桶的 e2e 契約(disposable repo)", () => {
+  const FORBIDDEN = "forbidden" + "_e2e_term";
+
+  it("🔴 E1:特殊檔名(空白 / 非 ASCII / tab / newline)內的 forbidden → 全部抓到", () => {
+    const names = [
+      "src/sp ace.md",
+      "src/非ASCII.md",
+      "src/tab\tname.md",
+      "src/nl\nname.md",
+    ];
+    for (const name of names) {
+      const dir = makeRepo({
+        deny: [FORBIDDEN],
+        commits: [
+          { message: "clean init", files: { "src/init.md": "hello\n" } },
+          { message: "add polluted", files: { [name]: `${FORBIDDEN}\n` } },
+        ],
+      });
+      writeBaselineConfig(dir, {
+        schemaVersion: 1,
+        sourceTermHistoryBaseline: shaAt(dir, "HEAD~1"),
+      });
+      const { code, out } = runChecker(dir);
+      expect(code, `檔名 ${JSON.stringify(name)} 內的 forbidden 應被抓到`).toBe(1);
+      expect(out).toContain("含來源專案識別詞");
+    }
+  });
+
+  it("🔴 E2:forbidden 只出現在 FULL_EXCLUDES 路徑 → 仍放行(豁免未被誤刪)", () => {
+    const dir = makeRepo({
+      deny: [FORBIDDEN],
+      commits: [{ message: "clean init", files: { "src/init.md": "hello\n" } }],
+    });
+    const baseline = shaAt(dir, "HEAD");
+    writeFileSync(
+      join(dir, "package-lock.json"),
+      `{"x":"${FORBIDDEN}"}\n`,
+      "utf-8"
+    );
+    execFileSync("git", ["-C", dir, "add", "-A"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "add lock"], {
+      stdio: "ignore",
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: baseline,
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("history scan range: baseline..HEAD");
+    expect(code).toBe(0);
+  });
+
+  it("🔴 E3:SYNTAX_EXEMPT 檔只走縮減 pattern 集(non-CA 抓、CA 字面放行)", () => {
+    const SYN = "scripts/check-todos-markers.ts";
+    const a = makeRepo({
+      deny: [FORBIDDEN],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        { message: "pollute syntax file", files: { [SYN]: `// ${FORBIDDEN}\n` } },
+      ],
+    });
+    writeBaselineConfig(a, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(a, "HEAD~1"),
+    });
+    expect(runChecker(a).code, "SYNTAX 檔內 non-CA term 必須被抓").toBe(1);
+
+    const b = makeRepo({
+      deny: [FORBIDDEN],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        {
+          message: "syntax file with CA literal",
+          files: { [SYN]: `// see ${PREF_PR}98765\n` },
+        },
+      ],
+    });
+    writeBaselineConfig(b, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(b, "HEAD~1"),
+    });
+    const rb = runChecker(b);
+    expect(rb.out).not.toContain("含未知 PR/pull 引用");
+    expect(rb.code, "SYNTAX 檔內 CA 字面應被縮減 pattern 集放行").toBe(0);
+  });
+
+  it("🔴 E4:刪除檔案的 commit(dst 為 /dev/null)不誤吞也不誤報", () => {
+    const dir = makeRepo({
+      deny: [FORBIDDEN],
+      commits: [
+        {
+          message: "clean init",
+          files: { "src/init.md": "hello\n", "src/gone.md": "bye\n" },
+        },
+        { message: "delete a file", deletions: ["src/gone.md"] },
+        { message: "add polluted", files: { "src/p.md": `${FORBIDDEN}\n` } },
+      ],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD~2"),
+    });
+    const { code, out } = runChecker(dir);
+    expect(code).toBe(1);
+    expect(out).toContain("含來源專案識別詞");
+
+    const clean = makeRepo({
+      deny: [FORBIDDEN],
+      commits: [
+        {
+          message: "clean init",
+          files: { "src/init.md": "hello\n", "src/gone.md": "bye\n" },
+        },
+        { message: "delete a file", deletions: ["src/gone.md"] },
+      ],
+    });
+    writeBaselineConfig(clean, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(clean, "HEAD~1"),
+    });
+    expect(runChecker(clean).code, "純刪除 commit 不得誤報").toBe(0);
+  });
+
+  it("🔴 E6:敵意 git config 不得覆蓋 command-local flags(乾淨 repo 必須 exit 0)", () => {
+    const dir = makeRepo({
+      deny: [FORBIDDEN],
+      gitConfig: {
+        "diff.noprefix": "true",
+        "core.quotePath": "true",
+        "diff.mnemonicPrefix": "true",
+      },
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        {
+          message: "clean special names",
+          files: {
+            "src/sp ace.md": "clean\n",
+            "src/非ASCII.md": "clean\n",
+            "src/tab\tname.md": "clean\n",
+          },
+        },
+      ],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD~1"),
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("history scan range: baseline..HEAD");
+    expect(code, "釘死的 flags 應壓過使用者 config").toBe(0);
+  });
+
+  it("🔴 E6b:敵意 git config + forbidden → 仍抓得到(不因 quoting 漏掃)", () => {
+    const dir = makeRepo({
+      deny: [FORBIDDEN],
+      gitConfig: {
+        "diff.noprefix": "true",
+        "core.quotePath": "true",
+        "diff.mnemonicPrefix": "true",
+      },
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        {
+          message: "polluted special names",
+          files: { "src/tab\tname.md": `${FORBIDDEN}\n` },
+        },
+      ],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD~1"),
+    });
+    expect(runChecker(dir).code).toBe(1);
+  });
+
+  it("🔴 E7:含 NUL byte 的檔 + forbidden 文字行 → 仍抓(binary detection 不得短路)", () => {
+    const dir = makeRepo({
+      deny: [FORBIDDEN],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        {
+          message: "add nul + forbidden",
+          files: {
+            "src/nul.bin": `head${String.fromCharCode(0)}binary\n${FORBIDDEN}\n`,
+          },
+        },
+      ],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD~1"),
+    });
+    expect(runChecker(dir).code).toBe(1);
+  });
+
+  it("🔴 N1:同 PR 洗白(A 加 forbidden、B 刪)→ per-commit diff scan 仍抓 commit A", () => {
+    const dir = makeRepo({
+      deny: [FORBIDDEN],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        { message: "A adds forbidden", files: { "src/w.md": `${FORBIDDEN}\n` } },
+        { message: "B removes it", files: { "src/w.md": "clean now\n" } },
+      ],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD~2"),
+    });
+    const { code, out } = runChecker(dir);
+    expect(code).toBe(1);
+    expect(out).toContain("含來源專案識別詞");
+  });
+
+  it("🔴 N4:post-baseline 新增未知 PR 引用 → CA 桶擋;合法 self-PR → 放行", () => {
+    const bad = makeRepo({
+      deny: [FORBIDDEN],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        { message: "cite unknown", files: { "src/c.md": `${PREF_PR}98765 ref\n` } },
+      ],
+    });
+    writeBaselineConfig(bad, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(bad, "HEAD~1"),
+    });
+    const rb = runChecker(bad);
+    expect(rb.code).toBe(1);
+    expect(rb.out).toContain("含未知 PR/pull 引用");
+
+    const ok = makeRepo({
+      deny: [FORBIDDEN],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        { message: "merged work (#4242)", files: { "src/d.md": "hi\n" } },
+        { message: "cite self", files: { "src/c.md": `${PREF_PR}4242 ref\n` } },
+      ],
+    });
+    writeBaselineConfig(ok, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(ok, "HEAD~2"),
+    });
+    const ro = runChecker(ok);
+    expect(ro.out).toContain("self-PR 引用放行");
+    expect(ro.code).toBe(0);
+  });
+
+  it("🔴 N6:ERE-only 構造在 diff scan 仍命中 → 沒被換成 JS regex", () => {
+    const dir = makeRepo({
+      deny: ["ere[[:digit:]]only"],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        { message: "add ere hit", files: { "src/e.md": "ere7only\n" } },
+      ],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD~1"),
+    });
+    expect(runChecker(dir).code).toBe(1);
+  });
+
+  it("🔴 C2c-a:baseline..HEAD 內有空 commit → 掃描不因缺 patch 而失敗", () => {
+    const dir = makeRepo({
+      deny: [FORBIDDEN],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        { message: "empty commit" },
+        { message: "another clean", files: { "src/z.md": "z\n" } },
+      ],
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD~2"),
+    });
+    const { code, out } = runChecker(dir);
+    expect(out).toContain("history scan range: baseline..HEAD");
+    expect(code, "空 commit 必須有 separator、不得被判成串流缺 rev").toBe(0);
   });
 });
