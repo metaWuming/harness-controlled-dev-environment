@@ -2772,8 +2772,8 @@ describe("R1 P1 — aggregate diff hit 的 framing(未知 PR 引用不得被丟�
   });
 
   it("🔴 R1P1-c:真正 NUL-framed 的 hit(grep -z)仍照舊正確解析", () => {
-    // `path\0line:content` —— 第一個 NUL 是 grep 的框架,不是資料
-    const raw = `docs/a.md${NUL0}12:${PREF_PR}40 ref`;
+    // 真實格式:`path<NUL>行號<NUL>內容`(兩個 NUL)——前兩段是 grep 的框架,不是資料
+    const raw = `docs/a.md${NUL0}12${NUL0}${PREF_PR}40 ref`;
     expect(hitContent(raw, "grep-z")).toBe(`${PREF_PR}40 ref`);
     expect(
       processScan(
