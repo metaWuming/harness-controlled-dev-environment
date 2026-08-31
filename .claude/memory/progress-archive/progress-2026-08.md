@@ -129,3 +129,33 @@ type: archive
 > (無真實取捨,D1-D6 全 sensible default)/ Step 3 ✅(4 phases atomic commits、
 > 每 phase gate 綠)/ Step 4 ✅(9 輪收乾,含降級輪)/ 4.5 ✅(模板 repo 例外人工
 > 判定)/ 4.6 ✅(未觸發)/ Step 5 ✅(含本 entry bookkeeping)/ Step 6-7 待執行。
+
+---
+
+📅 2026-08-28 ⑤ — **批 11:加 docs/OVERVIEW.md 深度總覽 + README pointer**
+
+> **緣起**:Owner 讀完批 10 收工報告後、看到 outputs/ 產出的深度說明文件(md + 離線 HTML 版含 5 張 inline SVG 流程圖),提議「這份可以擺 GitHub 讓考慮用的 user 有更完整理解」。我建議選項 A(把 md 挪進 docs/OVERVIEW.md、去掉日期、加 SSOT 錨定、README 加 pointer),Owner 拍板 go A。
+> **改動**:2 檔 +927 —— `docs/OVERVIEW.md`(從 outputs/ 蒸餾、去日期、加 SSOT 錨定檔頭「若與 CLAUDE.md / SOP checklist 有出入以那兩份為準」、markdown link 改 docs/ 相對路徑);`README.md` 英中兩處「What is this / 這是什麼」段末加 pointer block 指向 OVERVIEW(措辭「評估要不要導入本模板的讀者建議先讀這份」)。**out of scope**(留給下棒 sprint):`.claude/memory/health-history/` 首週產出兩檔仍 untracked,屬 memory 層自然產物、下次 sprint 一起收乾。
+> **審查**:docs-only 情境、走簡化 SOP —— 跳 Step 4 codex review(明確 pattern、無新機制)、跳 Step 5 adversarial(Owner 明說「批 10 全部結束」政策延續、conf ≥ 4 一律修 conf ≤ 3 skip、doc-only 屬 skip 帶)。全 gate 綠即進 Step 6。**安全關 4.5** `check:cso` fail-closed(表空)→ 純新增 doc + README 段落、無 auth/金流/個資/權限/資產轉移 → 模板 repo 例外**不進高風險車道**。**視覺關 4.6** 未觸發(無 UI 改動)。
+> **驗證**:typecheck / lint / check:doc-refs 239 引用 0 失效(新增 63 條全對得上、check-doc-refs 用 repo-root 相對解析所以 backtick 文字引用 `docs/xxx` 從 docs/OVERVIEW.md 位置仍 resolve 對)/ check:no-source-terms / check:doc-size progress 76% LESSONS 27% / check:todos 4 個 PR 4 個有 merge / check:claims 14 hits 全留 A(見下)。
+> **⭐ 教訓**:①**deep doc 定位 = SSOT 摘要不是正本**——避免變成第 4 份 authoritative 文件(CLAUDE.md、SOP checklist、docs/ 個別檔已是 SSOT);OVERVIEW 檔頭明列「若有出入以那兩份為準」+ 定期同步、可能落後最新 sprint 的免責。②**backtick 文字路徑跟 markdown link 語意不同,check-doc-refs 都會抓**——好處是文字引用也能被守門,壞處是 outputs/ 版原文的 `docs/xxx` 全 repo-root 相對格式若碰到 file-relative 解析的 checker 會全爆(本 checker 用 repo-root 所以 work)。③**Owner 拍「不再 defer」政策的自然延伸**是 sprint 大小自我調節——doc-only 該用 docs-only 判準跳 review 輪、不硬套 batch 8-10 那種 conf 判定;Owner 建議、我拍推薦選項 A(不是 B 選項的拆多份)、5 min 完成、體現 sprint 大小應 fit 內容不是 fit SOP。
+> **⏭️ 下一棒候選**(hint 非 truth):A. `.claude/memory/health-history/` 首週產出兩檔進 git(小 sprint、順手);B. 跑 `npm run health:weekly` 產第 2 週對照 baseline(累積 3-5 週後看趨勢);C. 若批 11 之後有導入實績、收「導入者 30 分鐘完成」實測數據補強 QUICKSTART。
+> **check:claims 逐條處置**:命中 14 處全留 A —— L45「每一次」/ L77「唯一」/ L82「永遠不」/ L130「絕不」/ L222「永遠不 / 幾乎不」/ L379「唯一」/ L526 三處「只有 / 唯一 / 各自都足夠」+ L774「只有」/ 其他 3 條同批 —— 全屬引 SSOT 錨定既有敘述(CLAUDE.md 核心哲學、DEGRADATION.md 明列事實、check:claims 自身量詞範例引用)、非新宣稱、批 5 已處置過同批 pattern(README 那次)。0 降級 B。
+> 📊 成本:CC ~0.5h / Codex 0 rounds(docs-only skip)/ Step5 0 輪(同) / P1 0 個 / P2 0 個 / Step5 獨立發現 0 個 / 累計 0 findings。
+> 📐 量測:主迴圈 claude-opus-4-7 預設 effort / doc-only 無 code review baseline / 來源分佈 N/A(純新增 doc、非既有面改動)。
+> **7 步 checklist 狀態**:1 ✅(plan 直接用對話拍板)/ 2 ✅(Owner「go A」拍板選項)/ 3 ✅(單 phase 一 commit)/ 4 ⏭️ skip(docs-only)/ 4.5 ✅(不進高風險車道)/ 4.6 ✅(未觸發)/ 5 ⏭️ skip(docs-only)/ 6-7 待執行
+
+---
+
+📅 2026-08-28 ⑥ — **批 12:health-history 首週產出兩檔進 git + archive 批 9(順手)**
+
+> **緣起**:Owner 讀批 11 收工報告後說「順手把 health-history 進 git」。批 8-10 sprint 期間跑過的 `npm run health:weekly` 首週 snapshot(2026-W35.md + .json)一直 untracked、本 sprint 收乾。順帶 archive 批 9 到 progress-archive(progress.md 上 sprint 已 96.5%、必須先 archive 才能加本 entry 不超上限)。
+> **改動**:5 檔 —— `.claude/memory/health-history/2026-W35.{md,json}` 新加進 git;`.claude/memory/progress.md` 拿掉批 9 全文 + 加本 entry;`.claude/memory/progress-archive/progress-2026-08.md` append 批 9 全文(pattern 對齊批 8/9 sprint 的 archive 動作)。
+> **審查**:pure-bookkeeping sprint(Owner「順手」= minimal path)——跳 Step 4 codex / Step 5 adversarial(無 code、無新機制、無守門變化)。**安全關 4.5** `check:cso` fail-closed(表空)→ 純 memory 層檔案 → 模板 repo 例外**不進高風險車道**。**視覺關 4.6** 未觸發。⚠️ **check:bookkeeping HEAD~1** 對 Phase A commit 判 non-bookkeeping(health-history/ 不在 EXACT_ALLOW / ARCHIVE_DIRS)——屬預期、advisory-only 現況不擋 CI(批 5 已定 hard-gate 觀察窗);累積 3-5 sprint 誤報數據後再決定是否擴 allowlist 收 `.claude/memory/health-history/*.{md,json}`。
+> **驗證**:typecheck / lint / dogfood 綠;check:doc-refs 綠(全 memory 層無跨檔引用改變);check:doc-size 應綠(archive 批 9 讓 progress.md 從 96.5% 大幅下降)。
+> **⭐ 教訓**:①**「順手」sprint 也要走 sprint 紀律**——Owner 說順手 ≠ 跳 progress entry / bookkeeping、只是跳 Step 4/5 review 輪。若跳 entry、未來 audit 這批 health-history 首檔怎麼進 git、只能靠 git blame 猜(不可靠)。②**progress.md 額度警戒**(96.5% → 這 sprint 觸發 archive)——早該在批 10 或批 11 之一 archive,拖到批 12 才順手做。教訓:每 sprint 收尾 check:doc-size 若 >90% 立即順手 archive、不留給下棒。
+> **⏭️ 下一棒候選**(hint 非 truth):A. 擴 check-bookkeeping allowlist 收 `.claude/memory/health-history/*`(等 3-5 sprint 誤報數據累積後、避免過早 optimize);B. 跑第 2 週 health:weekly 產 W36 對照 baseline(累積 3-5 週看趨勢);C. TODOS 目前 pending = 0、若無新 Owner 指示、進入 fresh cycle 等健康指標 or 新踩坑觸發。
+> **check:claims 逐條處置**:0 處(check:claims dogfood 對本 sprint diff 綠)。
+> 📊 成本:CC ~15 min / Codex 0 rounds / Step5 0 輪 / P1 0 個 / P2 0 個 / 累計 0 findings。
+> 📐 量測:主迴圈 claude-opus-4-7 預設 effort / bookkeeping-only 無 code baseline。
+> **7 步 checklist 狀態**:1 ✅(對話拍板)/ 2 ✅(Owner「順手」拍板)/ 3 ✅(2 phase atomic commits:Phase A health-history + Phase B archive+entry)/ 4 ⏭️ skip(bookkeeping-only)/ 4.5 ✅ / 4.6 ✅(未觸發)/ 5 ⏭️ skip(bookkeeping-only)/ 6-7 待執行
