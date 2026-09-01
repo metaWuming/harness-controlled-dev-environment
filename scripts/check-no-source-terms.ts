@@ -1309,9 +1309,12 @@ const LONG_LINE_PROBE_BYTES = 1 << 20;
  *    判定與用整行判定等價。**不靠提高上限、也不靠文件說明繞過。**
  *
  * ⚠️ 以下情況一律回 false(保留累積),缺一就是漏掃或誤判:
- *   - **未達門檻的行完全不走這裡**:separator(`<marker> <40-hex>`)與 patch 檔頭
- *     都遠短於門檻,所以門檻本身保證被丟的行不可能是 separator
- *     (N8a 的注入 marker `+MARK` 正是 `+` 開頭,無門檻保護就會被誤丟)。
+ *   - **未達門檻的行完全不走這裡**:production 的 separator 行長度上界是
+ *     marker(固定前綴 + 32-hex)加 1 加 40 字元,patch 檔頭則受 PATH_MAX 約束,
+ *     兩者都遠短於門檻,因此不會走到丟棄分支(N8a 的注入 marker `+MARK` 正是
+ *     `+` 開頭,少了門檻保護就會被誤丟)。⚠️ 誠實邊界:若有人注入長度接近門檻的
+ *     marker,被丟掉的 separator 會讓該 rev 缺席 → 觸發 §6.1 規則 5 → throw →
+ *     **fail-closed 轉紅**,不是假放行。
  *   - `diff --git ` / `@@` / 非 hunk 內的行:會改變狀態機狀態。
  *   - hunk 內新增行但當前路徑不明:`stepPatchLine` 要 throw(fail-closed),不可吞。
  *   - 當前路徑**至少屬於一個桶**:那是要被掃的內容,丟了就是漏掃。
