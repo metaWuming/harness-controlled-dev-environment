@@ -2014,16 +2014,57 @@ describe("PR A1.1 — scale contract(implementation-neutral)", () => {
     }
   });
 
-  it("🔴 C5p:patch producer argv 釘住 src/dst prefix 與 core.quotePath", () => {
+  /**
+   * 🔴 Step 5 r2:**輸出格式旗標的封閉清單**。
+   *
+   * 這一批旗標共用同一條不變量:「producer 的輸出形狀不得被 repo / 使用者 config
+   * 改變」。過去只釘了三個,結果同一類缺陷被獨立抓到三次
+   * (`log.diffMerges` 反轉 merge 格式、`color.ui` 讓 ANSI 序列打穿前綴比對、
+   * `textconv` 把內容換掉)。清單化之後,拿掉**任何一個**都會讓 C5p 轉紅,
+   * 不必等到有人想得出對應的敵意 config 才發現。
+   */
+  const PRODUCER_PINNED_ARGV = [
+    "core.quotePath=false",
+    "diff.noprefix=false",
+    "diff.mnemonicPrefix=false",
+    "log.diffMerges=separate",
+    "--src-prefix=a/",
+    "--dst-prefix=b/",
+    "--text",
+    "--no-textconv",
+    "--no-color",
+    "--no-renames",
+    "--first-parent",
+    "--unified=0",
+  ] as const;
+
+  it("🔴 C5p:patch producer argv 釘住整份輸出格式旗標清單", () => {
     const { dir } = makeScaleRepo(3);
     const shim = makeShim();
     expect(runChecker(dir, shim.env).code).toBe(0);
     const p = profile(shim);
     expect(p.patchProducing.length).toBeGreaterThan(0);
     for (const c of p.patchProducing) {
-      expect(c.argv).toContain("--src-prefix=a/");
-      expect(c.argv).toContain("--dst-prefix=b/");
-      expect(c.argv).toContain("core.quotePath=false");
+      for (const flag of PRODUCER_PINNED_ARGV) {
+        expect(c.argv, `patch producer 少了格式釘法 ${flag}`).toContain(flag);
+      }
+    }
+  });
+
+  it("🔴 C5q:git grep 兩條 tree 掃描路徑都要釘死顏色", () => {
+    // Step 5 r2 CRITICAL:producer 釘了 --no-color,gitGrep 沒釘 → 同一個不變量
+    // 兩條路徑兩種待遇,`color.ui=always` 讓 CA 判定抽到錯的 PR 號而假放行。
+    const { dir } = makeScaleRepo(3);
+    const shim = makeShim();
+    expect(runChecker(dir, shim.env).code).toBe(0);
+    const greps = profile(shim).calls.filter(
+      (c) => c.bin === "git" && gitSubcommand(c.argv) === "grep"
+    );
+    expect(greps.length, "應該有 git grep 呼叫").toBeGreaterThan(0);
+    for (const c of greps) {
+      // 命令列旗標,不是 `-c color.ui=false` —— `color.grep` 比 `color.ui` 更具體,
+      // 設了 `color.grep=always` 時後者蓋不掉(S5R2-C1 抓到的第一版修法缺陷)。
+      expect(c.argv, "git grep 少了 --color=never").toContain("--color=never");
     }
   });
 
@@ -3185,5 +3226,106 @@ describe("Step 5 — production 長行門檻預設值(不注入,夾住)", () => 
       `單行峰值必須遠小於整行 ${3 * 1024 * 1024} B(否則等於整行累積)`
     ).toBeLessThan(2 * 1024 * 1024);
     expect(scans.every((sc) => sc.hits.length === 0), "排除路徑不得產生命中").toBe(true);
+  });
+});
+
+// ─────────── Step 5 r2:輸出格式不得被 config 改變(行為面) ───────────
+//
+// 🔴 C5p / C5q 守的是 argv **有沒有那個旗標**;這一組守的是**拿掉之後真的會出事**。
+//    兩層都要:只有 argv 斷言,別人可以把旗標換成無效值;只有行為測試,新增旗標時
+//    沒人會記得補。同一類缺陷(config 改變輸出形狀)已經被獨立抓到三次。
+
+describe("Step 5 r2 — 敵意 git config 不得改變掃描結果", () => {
+  it("🔴 S5R2-C1:color.ui=always 不得讓未知 PR 引用被抽成已知號而放行", () => {
+    // git grep 只把**命中片段**上色:`see ref <ESC>[1;31mPR #9<ESC>[m99 for details`
+    // → 正則只抽到 9(已在 allowedPrs)、999 消失 → self-PR 判定放行。
+    const UNKNOWN = "999";
+    const dir = makeRepo({
+      deny: [],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        { message: `docs: add note (#9)`, files: { "src/n.md": "n\n" } },
+      ],
+      workingTree: {
+        "src/ref.md": `see ref PR ` + `#${UNKNOWN} for details\n`,
+      },
+      gitConfig: { "color.ui": "always", "color.grep": "always" },
+    });
+    const { code, out } = runChecker(dir);
+    expect(out, "未知號必須出現在輸出裡").toContain(UNKNOWN);
+    expect(code, "color.ui=always 不得讓未知 PR 引用假放行").toBe(1);
+  });
+
+  it("🔴 S5R2-C2:檔名同時含空白與 tab/newline/引號 → 乾淨 repo 不得被判紅", () => {
+    // git 只要路徑含空白就追加 TAB 分隔符,**不論有沒有 quote**;quoted + TAB 的
+    // 組合舊版沒處理 → decodeGitCQuote 判「引號未閉合」→ 整段 history scan rc=2。
+    const names = ["both sp\ttab.md", "nl sp\nname.md", 'q u"ote sp.md'];
+    for (const name of names) {
+      const dir = makeRepo({
+        deny: ["forbidden" + "_s5r2c2_term"],
+        commits: [{ message: "clean init", files: { "src/init.md": "hello\n" } }],
+      });
+      const baseline = shaAt(dir, "HEAD");
+      writeFileSync(join(dir, name), "totally clean content\n", "utf-8");
+      execFileSync("git", ["-C", dir, "add", "-A"], { stdio: "ignore" });
+      execFileSync("git", ["-C", dir, "commit", "-qm", "add odd name"], { stdio: "ignore" });
+      writeBaselineConfig(dir, {
+        schemaVersion: 1,
+        sourceTermHistoryBaseline: baseline,
+      });
+      const { code, out } = runChecker(dir);
+      expect(out, `${JSON.stringify(name)}:不得出現解析錯誤`).not.toContain("patch 提取失敗");
+      expect(code, `${JSON.stringify(name)}:乾淨 repo 不得被判紅`).toBe(0);
+    }
+  });
+
+  it("🔴 S5R2-I1:.gitattributes textconv 不得把新增行的內容換掉(--no-textconv)", () => {
+    const FORB = "forbidden" + "_s5r2i1_term";
+    const dir = makeRepo({
+      deny: [FORB],
+      commits: [
+        {
+          message: "clean init",
+          files: {
+            "src/init.md": "hello\n",
+            ".gitattributes": "*.md diff=scrub\n",
+          },
+        },
+        { message: "add polluted", files: { "src/p.md": `${FORB} here\n` } },
+        { message: "remove it", deletions: ["src/p.md"] },
+      ],
+      gitConfig: { "diff.scrub.textconv": `sed -e s/${FORB}/REDACTED/` },
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD~2"),
+    });
+    const { code, out } = runChecker(dir);
+    expect(out, "必須印出實際命中內容,不是掃描器錯誤").toContain(FORB);
+    expect(out).not.toContain("掃描器錯誤");
+    expect(code, "textconv 不得讓 forbidden 被換成 REDACTED 而漏抓").toBe(1);
+  });
+
+  it("🔴 S5R2-I2:color.ui=always 不得讓 diff scan 的狀態機靜默空轉(--no-color)", () => {
+    // 拿掉 --no-color 時,`diff --git` / `@@` / `+` 三個前綴全被 ANSI 序列擋掉,
+    // 狀態機一行都不採、也不會 throw → 靜默空結果,連 fail-closed 都沒有。
+    const FORB = "forbidden" + "_s5r2i2_term";
+    const dir = makeRepo({
+      deny: [FORB],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        { message: "add polluted", files: { "src/p.md": `${FORB} here\n` } },
+        { message: "remove it", deletions: ["src/p.md"] },
+      ],
+      gitConfig: { "color.ui": "always", "color.diff": "always" },
+    });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD~2"),
+    });
+    const { code, out } = runChecker(dir);
+    expect(out, "必須印出實際命中內容").toContain(FORB);
+    expect(out).not.toContain("掃描器錯誤");
+    expect(code, "color.ui=always 不得讓 diff scan 靜默空轉").toBe(1);
   });
 });

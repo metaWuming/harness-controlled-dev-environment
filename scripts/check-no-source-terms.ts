@@ -678,7 +678,22 @@ interface GrepResult {
 function gitGrep(root: string, args: string[]): GrepResult {
   // 🔴 round 6 P2-3:加 -z / --null → filename 與 line number 之間用 NUL 而
   // 非 `:`,結構化解析 filename 含 `:` 的情形(見 parseGrepZLine docstring)
-  const r = spawnSync("git", ["-C", root, "grep", "-z", ...args], {
+  //
+  // 🔴 Step 5 r2 CRITICAL。`-c color.ui=false` 是**必要**的,不是保險:
+  //    使用者或 repo 設 `color.ui=always` / `color.grep=always` 時,git grep 會把
+  //    **命中的那一小段**包進 ANSI 序列:一行「ref 井號+999」會變成
+  //    「ref <ESC>[1;31m井號+9<ESC>[m99」——CA 正則只抽得到命中片段內的個位數,
+  //    尾巴兩位被 ANSI 切斷。抽出的號碼通常已在 allowedPrs(任何 merge 過 10 個
+  //    以上的 repo 都是)→ self-PR 判定放行 → **未知引用假放行**。
+  //    實測:乾淨 config exit 1;`color.ui=always` exit 0。
+  //    這條**不受 baseline 影響**(工作樹與全史 tree 掃描都中),下游採用者一樣中。
+  //    patch producer 早就釘了 `--no-color`,同一個不變量不能在這條路徑放空。
+  //
+  //    ⚠️ 用**命令列** `--color=never`,不要用 `-c color.ui=false`:`color.grep` 比
+  //    `color.ui` 更具體,設了 `color.grep=always` 時 `color.ui=false` 蓋不掉它。
+  //    命令列旗標勝過所有 config,是唯一不用窮舉 config 鍵名的釘法。
+  //    (這個不完整的第一版修法是被 S5R2-C1 自己抓出來的。)
+  const r = spawnSync("git", ["-C", root, "grep", "--color=never", "-z", ...args], {
     encoding: "utf-8",
     maxBuffer: 256 * 1024 * 1024,
   });
@@ -939,9 +954,16 @@ export type PatchDst = { kind: "deleted" } | { kind: "path"; path: string };
  *   `+++ b/sp ace.txt<TAB>`        → **檔名含空白時 git 會追加一個 TAB 分隔符**
  *   `+++ "b/tab\tname.txt"`        → C-quoted(tab / newline / 引號 / 反斜線)
  *
- * ⚠️ git 對含 TAB 的名稱會改用 quoted 形式,所以 unquoted 形式預期不含 TAB,
- *    「移除至多一個尾端 TAB」在該前提下無損。**不倚賴這個前提**:移除後若仍
- *    含 TAB → 形狀異常 → throw(前提不成立時是 fail-closed,不是誤判)。
+ * ⚠️ **尾端 TAB 與 quoting 是兩個獨立的軸**(Step 5 r2 CRITICAL 修正)。git 只要
+ *    路徑**含空白**就追加 TAB 分隔符,**不論有沒有 quote**;而 tab / newline /
+ *    引號 / 反斜線 / 非 ASCII 才觸發 quoting。所以四種組合都存在:
+ *      `+++ b/sp ace.txt<TAB>`            unquoted + TAB
+ *      `+++ "b/tab\tname.txt"`            quoted   無 TAB
+ *      `+++ "b/both sp\ttab.txt"<TAB>`    **quoted + TAB**(舊版沒處理 → 引號未
+ *                                          閉合 → throw → 乾淨 repo 整段掃描 rc=2)
+ *      `+++ b/plain.txt`                  兩者皆無
+ *    因此**先剝尾端 TAB、再判斷 quoting**。unquoted 名稱剝完若仍含 TAB → 形狀
+ *    異常 → throw(fail-closed,不是誤判)。
  * ⚠️ 少了 `b/` 前綴代表 prefix 釘法失效(例如未來有人拿掉 `--dst-prefix`)
  *    → **throw,不得把該 section 當空**——當空 = 該檔的新增行整段漏掃 = false green。
  */
@@ -950,13 +972,15 @@ export function parsePatchDstPath(line: string): PatchDst {
   if (!line.startsWith(HEAD)) {
     throw new Error(`不是 +++ 檔頭:${line.slice(0, 120)}`);
   }
-  const rest = line.slice(HEAD.length);
-  if (rest === "/dev/null") return { kind: "deleted" };
+  const raw = line.slice(HEAD.length);
+  if (raw === "/dev/null") return { kind: "deleted" };
+  // 先剝至多一個尾端 TAB(路徑含空白時 git 一律追加,與 quoting 無關)。
+  const rest = raw.endsWith("\t") ? raw.slice(0, -1) : raw;
   let decoded: string;
   if (rest.startsWith('"')) {
     decoded = decodeGitCQuote(rest);
   } else {
-    decoded = rest.endsWith("\t") ? rest.slice(0, -1) : rest;
+    decoded = rest;
     if (decoded.includes("\t")) {
       throw new Error(`+++ 檔頭形狀異常(unquoted 名稱含非尾端 TAB):${line.slice(0, 120)}`);
     }
