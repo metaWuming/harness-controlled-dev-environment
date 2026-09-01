@@ -133,9 +133,9 @@
   },
   {
     "file": "scripts/check-no-source-terms.ts",
-    "find": "        \"-c\",\n        \"log.diffMerges=separate\",\n        \"log\",",
-    "replace": "        \"log\",",
-    "label": "M23 拿掉 log.diffMerges 釘法 → 敵意 config 讓 merge commit 的 forbidden 變綠(S5C2 / S5C2b)"
+    "find": "        \"log.diffMerges=separate\",",
+    "replace": "        \"log.diffMerges=combined\",",
+    "label": "M23 producer 的 log.diffMerges 釘成敵意值 combined → merge commit 變 diff --cc、forbidden 變綠(S5C2 / S5C2b)"
   },
   {
     "file": "scripts/check-no-source-terms.ts",
