@@ -164,8 +164,11 @@ CA(context-aware)判定只對「hit 的內容」做 self-PR 放行,所以**內�
    不在 JS 內實體化整行。**目前沒有指派給任何後續批次。**
 8. **tree 掃描跳過含 NUL 的 tracked 檔** —— working tree 與全史 tree 兩條路徑都用
    `git grep -nIiE`,`-I` 讓 git 把含 NUL byte 的檔當 binary 直接跳過。所以
-   **baseline 之前就存在、且現在仍在 tree 裡**的 binary 檔即使含識別詞也掃不到
-   (baseline 之後新增的檔另有 diff scan 的 `grep -a` 兜底)。這是**漏掃**方向的
+   binary 檔即使含識別詞也掃不到。⚠️ 「baseline 之後新增的檔有 diff scan 的
+   `grep -a` 兜底」**只在設了 baseline 的模式成立**;template-fallback 與
+   no-baseline 兩種模式**完全不跑 diff scan**(走 `git grep` 的 tree scan),
+   而 template-fallback 正是每個下游採用者開箱後的預設模式 —— 在那裡,採用
+   之後新增並留在 tree 裡的 binary 檔一樣掃不到。這是**漏掃**方向的
    限制,不是誤擋。要解除就是把 `gitGrep` 改成 `-a`——那會同時動到兩條掃描路徑、
    需要自己的測試與探針,屬獨立一刀。**目前沒有指派給任何後續批次。**
 9. **設了 baseline 會同時收窄「時間軸」與「可達性」兩個軸** —— 無 baseline 走

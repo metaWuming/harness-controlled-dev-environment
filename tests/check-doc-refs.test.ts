@@ -209,6 +209,44 @@ const EXPECTED_ADR_REFS: Array<[string, number]> = [
 ];
 const EXPECTED_ADR_REF_TOTAL = 6;
 
+/**
+ * 這個 repo 是**模板本身**,還是下游採用者?
+ *
+ * 🔴 Step 5 r2。以下三條(G2 的 memory 列、G4、G6)是**模板作者的簿記契約**,
+ *    不是模板要交付給採用者的契約。它們會隨模板一起被複製,由每個採用者的
+ *    `npm test` 執行 —— 守門對象與執行對象錯配:
+ *      G6 斷言 tracked 內容 0 個 PR 引用,但 checker 的政策**允許**引用自家已
+ *        merge 的號(在 allowedPrs 內);採用者引用自己的 PR → checker 綠、G6 紅。
+ *      G2 釘死 `.claude/memory/progress.md` 與 2026-08 archive 的引用數;採用者
+ *        刪掉模板作者的 sprint 紀錄或改寫自己的 progress → 紅。
+ *      G4 斷言 progress.md 不含 `/Users/`;macOS 採用者寫自己的路徑 → 紅。
+ *
+ *    判別式沿用既有機制:baseline config 的 `template:` 前綴就是「我是模板」的標記。
+ */
+function isTemplateRepo(): boolean {
+  try {
+    const cfg = JSON.parse(readTracked('scripts/source-term-baseline.json')) as {
+      sourceTermHistoryBaseline?: unknown;
+    };
+    return (
+      typeof cfg.sourceTermHistoryBaseline === 'string' &&
+      cfg.sourceTermHistoryBaseline.startsWith('template:')
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** 非模板 repo 時跳過模板自身的簿記契約,並把理由留在輸出裡。 */
+function skipUnlessTemplate(what: string): boolean {
+  if (isTemplateRepo()) return false;
+  expect(
+    true,
+    `非模板 repo:${what} 是模板作者的簿記契約,採用者不適用`
+  ).toBe(true);
+  return true;
+}
+
 function trackedFiles(): string[] {
   return execFileSync('git', ['-C', REPO, 'ls-files', '-z'], { encoding: 'utf-8' })
     .split('\0')
@@ -279,17 +317,28 @@ describe('PR A1.1 F2 — canonical ADR 引用治理', () => {
 
   it('🔴 G2:canonical 引用的位置與數量固定,且每處都指到穩定標題', () => {
     const hits = countInTracked(ADR_PATH);
+    // 🔴 Step 5 r2:`.claude/memory/**` 兩列是模板作者的 sprint 紀錄,採用者會改寫或
+    //    刪除 → 非模板 repo 時把它們排除,只驗模板真正交付的四處引用。
+    const rows = isTemplateRepo()
+      ? EXPECTED_ADR_REFS
+      : EXPECTED_ADR_REFS.filter(([rel]) => !rel.startsWith('.claude/memory/'));
+    const expectedTotal = rows.reduce((a, [, n]) => a + n, 0);
     // 位置 + 數量
-    for (const [rel, n] of EXPECTED_ADR_REFS) {
+    for (const [rel, n] of rows) {
       expect(hits.get(rel) ?? 0, `${rel} 的 ADR 引用數`).toBe(n);
     }
-    const total = [...hits.values()].reduce((a, b) => a + b, 0);
-    expect(total, 'ADR 引用總數(新增引用要同步更新 EXPECTED_ADR_REFS)').toBe(
-      EXPECTED_ADR_REF_TOTAL
-    );
-    expect([...hits.keys()].sort()).toEqual(
-      EXPECTED_ADR_REFS.map(([r]) => r).sort()
-    );
+    if (isTemplateRepo()) {
+      const total = [...hits.values()].reduce((a, b) => a + b, 0);
+      expect(total, 'ADR 引用總數(新增引用要同步更新 EXPECTED_ADR_REFS)').toBe(
+        EXPECTED_ADR_REF_TOTAL
+      );
+      expect(expectedTotal, 'EXPECTED_ADR_REFS 的列加總要等於總數常數').toBe(
+        EXPECTED_ADR_REF_TOTAL
+      );
+      expect([...hits.keys()].sort()).toEqual(
+        EXPECTED_ADR_REFS.map(([r]) => r).sort()
+      );
+    }
 
     // 每一處引用附近(同行或前後 2 行)要出現 ADR 的某個穩定 H2 標題,
     // 而不是只丟一個裸路徑。標題可能因換行落在鄰行,故取視窗。
@@ -300,7 +349,7 @@ describe('PR A1.1 F2 — canonical ADR 引用治理', () => {
     //    讀起來比它實際守的強得多。六處引用本來就都寫成「<標題>」,所以連括號
     //    一起比對不放寬任何既有寫法,只是把漏洞關掉。
     const headings = adrHeadings();
-    for (const [rel] of EXPECTED_ADR_REFS) {
+    for (const [rel] of rows) {
       const lines = readTracked(rel).split('\n');
       for (let i = 0; i < lines.length; i++) {
         if (!lines[i]!.includes(ADR_PATH)) continue;
@@ -319,6 +368,7 @@ describe('PR A1.1 F2 — canonical ADR 引用治理', () => {
   });
 
   it('🔴 G4:progress.md 不含個人絕對路徑(0 hit)', () => {
+    if (skipUnlessTemplate('G4(progress.md 個資路徑)')) return;
     const text = readTracked('.claude/memory/progress.md');
     expect(text).not.toContain('/Users/');
     expect(text).not.toContain('~/Documents');
@@ -332,6 +382,11 @@ describe('PR A1.1 F2 — canonical ADR 引用治理', () => {
     //    等於每個採用者開箱即被模板自己的檔擋住。
     //    所以這裡不是「本 repo 掃得過就好」,而是**數量必須為 0**。
     //    要寫 PR 號請用 repo 既有的「井號」寫法或「(井號+N)」括號格式。
+    //
+    // ⚠️ 只對**模板自己**斷言。checker 的政策**允許**引用自家已 merge 的號
+    //    (在 allowedPrs 內),所以對採用者跑這條會出現「checker 綠、G6 紅」的
+    //    錯配 —— 守門對象與執行對象不同(Step 5 r2)。
+    if (skipUnlessTemplate('G6(tracked 內容 0 個 PR 引用)')) return;
     const ex = new Set(FULL_EXCLUDES.map(stripExcludeMagic));
     const offenders: string[] = [];
     for (const rel of trackedFiles()) {

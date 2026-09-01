@@ -3161,8 +3161,12 @@ describe("Step 5 CRITICAL — 敵意 log.diffMerges 不得讓 merge commit 假�
     expect(code, "敵意 log.diffMerges 不得讓 merge commit 的新增行變綠").toBe(1);
   });
 
-  it("🔴 S5C2b:combined 與 remerge 兩種值也一樣擋", () => {
-    for (const v of ["combined", "remerge"]) {
+  // ⚠️ 只測 `combined`。實測 `remerge` 的輸出是 `diff --git` + **單一 `+`**,與
+  //    `separate` 逐字相同 —— 拿掉釘法它也不會轉紅,放在迴圈裡是等價變異、
+  //    會讓這條測試看起來比實際守得多(Step 5 r2 抓到)。真正有 `++` 的只有
+  //    `combined` 與 `dense-combined`(後者由 S5C2 測)。
+  it("🔴 S5C2b:combined 也一樣擋(dense-combined 由 S5C2 測)", () => {
+    for (const v of ["combined"]) {
       const DENY = "^forbidden" + "_s5merge_term";
       const dir = makeMergeRepo(DENY, { "log.diffMerges": v });
       expect(runChecker(dir).code, `log.diffMerges=${v} 不得假放行`).toBe(1);
@@ -3197,14 +3201,25 @@ describe("Step 5 — production 長行門檻預設值(不注入,夾住)", () => 
     return { dir, baseline };
   };
 
-  // ⚠️ 這條刻意用**等號 + 下界**,不是「>= 1」與「< 2 MiB」的鬆綁法。實測(讀取
-  //    分塊 1 MiB)同一個 fixture:
-  //      門檻 = 1 MiB(production):peak 1572632 / dropped 1
-  //      門檻 = 1(調太小)      :peak  524297 / dropped 2
-  //    鬆綁的斷言兩種都過 —— 前一版就是這樣讓 M22 存活的。收緊之後兩個方向都守得住。
+  // ⚠️ **兩個斷言各擋一個方向,缺一不可**。對本 fixture(單一 3 MiB 排除路徑長行、
+  //    讀取分塊 1 MiB)實測:
+  //      門檻 = 1        :dropped 1 / peak 1048348
+  //      門檻 = 512 KiB  :dropped 1 / peak 1048348
+  //      門檻 = 1 MiB(prod):dropped 1 / peak 2096924
+  //      門檻 = 2 MiB    :dropped 1 / peak 3145500
+  //      門檻 = MAX      :dropped 0 / peak 3145737
+  //    → `dropped === 1` 只擋得住**調大**(MAX 那列變 0);擋住**調小**的是
+  //      `peak > 1 MiB`(門檻 1 的那列 1048348 < 1048576)。
+  //    🔴 上一版的註解寫「門檻調小 → 2 條」是**沒有實測過的推論**,與量測不符
+  //    (真正殺掉 M22 的是 peak 那條)。同一輪才寫下「推論會騙人」的教訓,下一段
+  //    註解就又犯,所以這次把整張量測表貼上來。
   //
   //    另外刪掉了原本的 S5D1(512 KiB 不該被丟):兩種門檻下它的觀測值完全相同,
   //    **它不可能因為門檻改動而轉紅**,留著只是假信心(LESSONS ⓪)。
+  //
+  //    ⚠️ **上界與讀取分塊大小耦合**:peak ≈ 2 × 讀取分塊 − patch 前言長度。
+  //    分塊目前是 `1 << 20`,所以 production peak ≈ 2.0 MiB。上界取 2.5 MiB 留餘裕
+  //    (整行累積是 ~3 MiB,仍然轉紅);若日後調大讀取分塊,這裡要一起調。
   it("🔴 S5D2:3 MiB 的排除路徑長行必須被丟,且門檻不得被調大或調小", () => {
     const FORB = "forbidden" + "_s5d2_term";
     const { dir, baseline } = makeExcludedLongLineRepo(3 * 1024 * 1024, FORB);
@@ -3224,7 +3239,7 @@ describe("Step 5 — production 長行門檻預設值(不注入,夾住)", () => 
     expect(
       seen[0].peakPendingLineBytes,
       `單行峰值必須遠小於整行 ${3 * 1024 * 1024} B(否則等於整行累積)`
-    ).toBeLessThan(2 * 1024 * 1024);
+    ).toBeLessThan(2.5 * 1024 * 1024);
     expect(scans.every((sc) => sc.hits.length === 0), "排除路徑不得產生命中").toBe(true);
   });
 });
