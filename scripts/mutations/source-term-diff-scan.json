@@ -136,5 +136,29 @@
     "find": "        \"-c\",\n        \"log.diffMerges=separate\",\n        \"log\",",
     "replace": "        \"log\",",
     "label": "M23 拿掉 log.diffMerges 釘法 → 敵意 config 讓 merge commit 的 forbidden 變綠(S5C2 / S5C2b)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "const r = spawnSync(\"git\", [\"-C\", root, \"grep\", \"--color=never\", \"-z\", ...args], {",
+    "replace": "const r = spawnSync(\"git\", [\"-C\", root, \"grep\", \"-z\", ...args], {",
+    "label": "M24 git grep 拿掉 --color=never → color.grep=always 讓 CA 抽到錯號、未知引用假放行(S5R2-C1)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "        \"--no-color\",\n",
+    "replace": "",
+    "label": "M25 producer 拿掉 --no-color → ANSI 序列讓 diff 狀態機靜默空轉、連 fail-closed 都沒有(S5R2-I2)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "        \"--no-textconv\",\n",
+    "replace": "",
+    "label": "M26 producer 拿掉 --no-textconv → .gitattributes textconv 換掉新增行內容而漏抓(S5R2-I1)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "  const rest = raw.endsWith(\"\\t\") ? raw.slice(0, -1) : raw;",
+    "replace": "  const rest = raw;",
+    "label": "M27 不再先剝尾端 TAB → quoted + 含空白的檔名判成引號未閉合、乾淨 repo 整段 rc=2(S5R2-C2 / E1)"
   }
 ]
