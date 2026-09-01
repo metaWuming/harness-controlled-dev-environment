@@ -24,7 +24,8 @@ machine-readable 的 `scripts/source-term-baseline.json`(`schemaVersion` + SHA)�
 **取捨**:用 machine-readable baseline 把「已公開的去識別化債務」明文 grandfather,
 換取「不重寫公開歷史」與「新提交不降標準」。三件事**不因 baseline 而放寬**:
 
-1. **current tree 掃描永遠全量嚴格**,baseline 影響不到。
+1. **current tree 掃描永遠全量嚴格**——但限**文字檔**:`git grep` 走 `-I`,
+   含 NUL 的 tracked 檔會被當 binary 跳過(見〈已知限制〉第 8 條)。baseline 影響不到。
 2. **commit 訊息 + 作者掃描**照既有政策全史嚴格,與本地 `commit-msg` hook 對齊。
 3. `baseline..HEAD` 內**每個 commit 相對 first parent 的 diff 新增行**仍嚴格擋。
    採 per-commit 而非淨 diff,是為了擋洗白:同一批改動先加後刪,淨 diff 乾淨、
@@ -143,7 +144,8 @@ CA(context-aware)判定只對「hit 的內容」做 self-PR 放行,所以**內�
    從 baseline 之前分出、之後才合併的長命分支做清理時可能誤紅。
    **已指派後續 control catalog 批次處理。**
 4. **全史掃描路徑(baseline 為 null / 下游降級)的 subprocess 成本未最佳化** ——
-   該路徑對每個 rev 各跑 2 次 `git grep` 加最多 3 次 `cat-file -e`,成本隨歷史線性成長。
+   該路徑對每個 rev 跑 2-3 次 `git grep`(non-CA、CA,SYNTAX 例外檔存在時再一次)
+   加最多 3 次 `cat-file -e`,成本隨歷史線性成長。
    `baseline..HEAD` 路徑的最佳化**沒有**套用到它。**目前沒有指派給任何後續批次。**
 5. **文件引用檢查的覆蓋缺口** —— `scripts/check-doc-refs.ts` 只讀 `.md`,
    所以 CI workflow(`.yml`)、baseline config(`.json`)、測試碼(`.ts`)裡指向本檔的
@@ -160,10 +162,24 @@ CA(context-aware)判定只對「hit 的內容」做 self-PR 放行,所以**內�
    `maxBuffer: 256 MiB`,同樣情境在**更低**的門檻就會失敗;重構把界線從「整批
    256 MiB」放寬成「單行約 512 MB」。要徹底解除,需要把長行分塊寫進桶檔、
    不在 JS 內實體化整行。**目前沒有指派給任何後續批次。**
+8. **tree 掃描跳過含 NUL 的 tracked 檔** —— working tree 與全史 tree 兩條路徑都用
+   `git grep -nIiE`,`-I` 讓 git 把含 NUL byte 的檔當 binary 直接跳過。所以
+   **baseline 之前就存在、且現在仍在 tree 裡**的 binary 檔即使含識別詞也掃不到
+   (baseline 之後新增的檔另有 diff scan 的 `grep -a` 兜底)。這是**漏掃**方向的
+   限制,不是誤擋。要解除就是把 `gitGrep` 改成 `-a`——那會同時動到兩條掃描路徑、
+   需要自己的測試與探針,屬獨立一刀。**目前沒有指派給任何後續批次。**
+9. **設了 baseline 會同時收窄「時間軸」與「可達性」兩個軸** —— 無 baseline 走
+   `rev-list --all`(掃所有 ref);設了 baseline 走 `rev-list baseline..HEAD`。
+   所以 baseline 之後、但**不從 HEAD 可達**的 commit(例:PR 關掉但分支還在的
+   `origin/some-branch`)在 baseline 模式下掃不到。對「只交付 default branch」的
+   模型這是可辯護的設計,此處明列以免讀者以為只 grandfather 了時間軸。
 
 ## Provenance
 
-- baseline cutover 由 PR #40 落地(squash merge 進主線)。
+- baseline cutover 由交付 PR(squash subject 以「(井號+40)」結尾)落地。
+  ⚠️ 這裡刻意**不寫**裸的「PR 井號+數字」字面:那是 CA(context-aware)pattern,
+  而 working tree 掃描**不受 baseline 影響**。下游採用者的新 history 沒有該 squash
+  subject、`allowedPrs` 不含此號 → 開箱第一次跑 gate 就會被自己的檔擋紅。
 - 首次 baseline SHA:`641065227924184b058b3f64c1c9f9971a3a17b4`(當時的主線 HEAD)。
 - 掃描實作的效能重構(〈效能與 scale 契約〉四條不變量)由後續的 A1 residual PR 落地。
   **diff scan 的語意未改變**(仍是 per-commit 相對 first parent 的新增行)。

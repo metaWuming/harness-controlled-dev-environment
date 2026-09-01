@@ -10,6 +10,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { extractRefs, checkRefs, type Ref } from '../scripts/check-doc-refs';
+import {
+  extractPrRefsFromLine,
+  FULL_EXCLUDES,
+  stripExcludeMagic,
+} from '../scripts/check-no-source-terms';
 
 describe('extractRefs', () => {
   it('@import 整行', () => {
@@ -265,7 +270,10 @@ describe('PR A1.1 F2 — canonical ADR 引用治理', () => {
 
   it('🔴 G1b:ADR 記錄 provenance(PR 引用 + 首次 baseline SHA)', () => {
     const text = readTracked(ADR_PATH);
-    expect(text).toMatch(/PR #\d+/);
+    // ⚠️ 刻意**不要求**裸的「PR 井號+數字」字面:那是 CA pattern,而 working tree
+    //    掃描不受 baseline 影響 → 下游採用者開箱即被自己的 ADR 擋紅(Step 5 CRITICAL)。
+    //    provenance 改以 repo 既有的「井號」寫法記錄。
+    expect(text).toMatch(/井號\+\d+/);
     expect(text).toContain('641065227924184b058b3f64c1c9f9971a3a17b4');
   });
 
@@ -285,6 +293,12 @@ describe('PR A1.1 F2 — canonical ADR 引用治理', () => {
 
     // 每一處引用附近(同行或前後 2 行)要出現 ADR 的某個穩定 H2 標題,
     // 而不是只丟一個裸路徑。標題可能因換行落在鄰行,故取視窗。
+    //
+    // 🔴 Step 5 INFORMATIONAL:錨點必須帶「」括號。ADR 的 H2 之一是**兩個字**的
+    //    「決策」,中文散文裡「治理決策」「拍板決策」隨處可見——只比對裸標題時,
+    //    引用就算改成裸路徑、指錯章節,只要鄰近句子含那兩個字仍會通過,契約
+    //    讀起來比它實際守的強得多。六處引用本來就都寫成「<標題>」,所以連括號
+    //    一起比對不放寬任何既有寫法,只是把漏洞關掉。
     const headings = adrHeadings();
     for (const [rel] of EXPECTED_ADR_REFS) {
       const lines = readTracked(rel).split('\n');
@@ -292,8 +306,8 @@ describe('PR A1.1 F2 — canonical ADR 引用治理', () => {
         if (!lines[i]!.includes(ADR_PATH)) continue;
         const win = lines.slice(Math.max(0, i - 2), i + 3).join('\n');
         expect(
-          headings.some((h) => win.includes(h)),
-          `${rel}:${i + 1} 的 ADR 引用未指到穩定標題`
+          headings.some((h) => win.includes(`\u300c${h}\u300d`)),
+          `${rel}:${i + 1} 的 ADR 引用未以「<穩定標題>」形式指到章節`
         ).toBe(true);
       }
     }
@@ -310,6 +324,33 @@ describe('PR A1.1 F2 — canonical ADR 引用治理', () => {
     expect(text).not.toContain('~/Documents');
   });
 
+  it('🔴 G6:tracked 內容不得含任何 PR/pull 引用(下游可攜性)', () => {
+    // 🔴 Step 5 CRITICAL。CA(context-aware)判定靠 allowedPrs 放行,而 allowedPrs
+    //    是**本 repo 的** squash subject 推出來的。任何寫進 tracked 檔的 PR 引用,
+    //    在本 repo 綠、到下游(全新 history、allowedPrs 不含該號)就紅——而且
+    //    **working tree 掃描不受 baseline 影響**,template-fallback 也救不了,
+    //    等於每個採用者開箱即被模板自己的檔擋住。
+    //    所以這裡不是「本 repo 掃得過就好」,而是**數量必須為 0**。
+    //    要寫 PR 號請用 repo 既有的「井號」寫法或「(井號+N)」括號格式。
+    const ex = new Set(FULL_EXCLUDES.map(stripExcludeMagic));
+    const offenders: string[] = [];
+    for (const rel of trackedFiles()) {
+      if (ex.has(rel)) continue;
+      let text: string;
+      try {
+        text = readTracked(rel);
+      } catch {
+        continue;
+      }
+      text.split('\n').forEach((line, i) => {
+        if (extractPrRefsFromLine(line).length > 0) {
+          offenders.push(`${rel}:${i + 1}`);
+        }
+      });
+    }
+    expect(offenders, 'tracked 內容含 PR 引用 → 下游開箱會被自己的檔擋紅').toEqual([]);
+  });
+
   it('🔴 G5:docs/architecture 已納入 doc-ref 掃描範圍,且 checker 對本 repo 綠', () => {
     const src = readTracked('scripts/check-doc-refs.ts');
     expect(src).toContain("'docs/architecture'");
@@ -318,6 +359,8 @@ describe('PR A1.1 F2 — canonical ADR 引用治理', () => {
       [path.join(REPO, 'scripts/check-doc-refs.ts')],
       { cwd: REPO, encoding: 'utf-8' }
     );
-    expect(r).toContain('0');
+    // 🔴 Step 5 INFORMATIONAL:原本是 toContain('0') —— '0' 在「掃 20 份」「共驗
+    //    268 個」裡都命中,無論結果如何都會過,等於空斷言。改斷言那句結論全文。
+    expect(r).toContain('0 個失效引用');
   });
 });
