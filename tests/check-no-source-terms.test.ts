@@ -3163,8 +3163,9 @@ describe("Step 5 CRITICAL — 敵意 log.diffMerges 不得讓 merge commit 假�
 
   // ⚠️ 只測 `combined`。實測 `remerge` 的輸出是 `diff --git` + **單一 `+`**,與
   //    `separate` 逐字相同 —— 拿掉釘法它也不會轉紅,放在迴圈裡是等價變異、
-  //    會讓這條測試看起來比實際守得多(Step 5 r2 抓到)。真正有 `++` 的只有
-  //    `combined` 與 `dense-combined`(後者由 S5C2 測)。
+  //    會讓這條測試看起來比實際守得多(Step 5 r2 抓到)。實測會產出 `++` 的是
+  //    `combined` 與 `dense-combined`(後者由 S5C2 測);`remerge` 與 `separate`
+  //    的輸出逐字相同。
   it("🔴 S5C2b:combined 也一樣擋(dense-combined 由 S5C2 測)", () => {
     for (const v of ["combined"]) {
       const DENY = "^forbidden" + "_s5merge_term";

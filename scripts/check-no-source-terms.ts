@@ -691,7 +691,7 @@ function gitGrep(root: string, args: string[]): GrepResult {
   //
   //    ⚠️ 用**命令列** `--color=never`,不要用 `-c color.ui=false`:`color.grep` 比
   //    `color.ui` 更具體,設了 `color.grep=always` 時 `color.ui=false` 蓋不掉它。
-  //    命令列旗標勝過所有 config,是唯一不用窮舉 config 鍵名的釘法。
+  //    命令列旗標勝過 config,所以不必去窮舉可能的 config 鍵名。
   //    (這個不完整的第一版修法是被 S5R2-C1 自己抓出來的。)
   const r = spawnSync("git", ["-C", root, "grep", "--color=never", "-z", ...args], {
     encoding: "utf-8",
