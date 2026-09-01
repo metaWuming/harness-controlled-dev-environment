@@ -57,6 +57,10 @@ import {
   // Codex round 1 P1
   DIFF_HIT_MARK,
   hitContent,
+  // Codex round 2 P2-1
+  canDropLongPatchLine,
+  newPatchLineState,
+  type DiffStreamStats,
 } from "../scripts/check-no-source-terms";
 
 const REPO_ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], {
@@ -2927,3 +2931,150 @@ describe("R1 P2 — producer 不得走有上限的記憶體 buffer(排除路徑�
     expect(code, "跨 flush 門檻與 chunk 邊界的最後一行必須仍被掃到").toBe(1);
   });
 });
+
+// ─────────── R2 P2-1:單一超長邏輯行不得整行進記憶體 ───────────
+//
+// 🔴 R1 只把 producer 的 256 MiB maxBuffer 拿掉,消費端仍是「累積完整邏輯行才處理」。
+//    只動 FULL_EXCLUDES 路徑、且該檔被編碼成單一超長行的 commit,會把 pendingText
+//    推過 Node 的 MAX_STRING_LENGTH → throw → rc=2 → 政策豁免的改動被判紅。
+//    false-red 只是從 producer 位移到消費端。
+//
+// ⚠️ 回歸測試用**注入的小門檻**(64 KiB)+ 數 MiB 的行構造這個形狀:真的造一條
+//    536 MB 的行才能觸發原生上限,那在 CI 不實際。可觀測量是「單行峰值位元組數」,
+//    整行累積的實作必然讓峰值逼近整行長度 → M16 被抓。
+
+describe("R2 P2-1 — 排除路徑的單一超長行(false-red 位移)", () => {
+  const PROBE = 64 * 1024;
+
+  it("🔴 R2P2-a:只動排除路徑的超長單行 → 判乾淨,且單行峰值有界", () => {
+    const LINE_BYTES = 8 * 1024 * 1024;
+    const FORB = "forbidden" + "_r2p21a_term";
+    const dir = makeRepo({
+      deny: [FORB],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        {
+          message: "lockfile v1",
+          files: { "package-lock.json": `{"pad":"${"a".repeat(LINE_BYTES)}"}\n` },
+        },
+      ],
+    });
+    const baseline = shaAt(dir, "HEAD");
+    // post-baseline 只改同一個排除路徑 → patch 內同時有超長的 `-` 與 `+` 兩行。
+    writeFileSync(
+      join(dir, "package-lock.json"),
+      `{"pad":"${"b".repeat(LINE_BYTES)}"}\n`,
+      "utf-8"
+    );
+    execFileSync("git", ["-C", dir, "add", "-A"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "lockfile v2"], {
+      stdio: "ignore",
+    });
+
+    const seen: DiffStreamStats[] = [];
+    const scans = runDiffScan(dir, [FORB], baseline, {
+      longLineProbeBytes: PROBE,
+      onStreamStats: (st) => seen.push(st),
+    });
+
+    expect(
+      scans.every((sc) => sc.hits.length === 0),
+      "政策明文豁免的路徑不得產生命中"
+    ).toBe(true);
+    expect(seen.length, "串流統計觀測器必須被呼叫").toBe(1);
+    expect(
+      seen[0].droppedLongLines,
+      "排除路徑的超長 `-` 與 `+` 兩行都必須被增量丟棄"
+    ).toBeGreaterThanOrEqual(2);
+    expect(
+      seen[0].peakPendingLineBytes,
+      `單行峰值 ${seen[0].peakPendingLineBytes} B;整行累積會逼近 ${LINE_BYTES} B`
+    ).toBeLessThan(2 * 1024 * 1024);
+  });
+
+  it("🔴 R2P2-b:被掃路徑的超長行**不得**被丟(丟了就是漏掃)", () => {
+    const LINE_BYTES = 4 * 1024 * 1024;
+    const FORB = "forbidden" + "_r2p21b_term";
+    // forbidden 放在超長行的**最尾端**:任何提前丟棄都會讓它消失。
+    const dir = makeRepo({
+      deny: [FORB],
+      commits: [
+        { message: "clean init", files: { "src/init.md": "hello\n" } },
+        {
+          message: "long scanned line",
+          files: { "src/long.md": `${"a".repeat(LINE_BYTES)}${FORB}\n` },
+        },
+      ],
+    });
+    const baseline = shaAt(dir, "HEAD~1");
+
+    const seen: DiffStreamStats[] = [];
+    const scans = runDiffScan(dir, [FORB], baseline, {
+      longLineProbeBytes: PROBE,
+      onStreamStats: (st) => seen.push(st),
+    });
+
+    expect(seen[0].droppedLongLines, "被掃路徑的內容行一行都不得丟").toBe(0);
+    expect(
+      scans.some((sc) => sc.rc === 0 && sc.hits.join("\n").includes(FORB)),
+      "超長行尾端的 forbidden 必須仍被抓到"
+    ).toBe(true);
+  });
+});
+
+describe("R2 P2-1 U13 — canDropLongPatchLine 判定矩陣", () => {
+  const ex = new Set(FULL_EXCLUDES.map(stripExcludeMagic));
+  const syn = new Set(SYNTAX_EXEMPT_FILES);
+  const EXCLUDED = "package-lock.json";
+  const SYNTAX = SYNTAX_EXEMPT_FILES[0];
+
+  const st = (
+    current: { kind: "path"; path: string } | { kind: "deleted" } | null,
+    inHunk = true
+  ) => {
+    const s = newPatchLineState();
+    s.inHunk = inHunk;
+    s.current = current;
+    return s;
+  };
+  const atPath = (p: string) => ({ kind: "path" as const, path: p });
+
+  it("非 hunk 內的行一律保留(檔頭與 separator 都在這裡)", () => {
+    expect(canDropLongPatchLine(st(atPath(EXCLUDED), false), "+x", ex, syn)).toBe(false);
+    expect(canDropLongPatchLine(st(null, false), "+++ b/x", ex, syn)).toBe(false);
+  });
+
+  it("會改變狀態機狀態的前綴一律保留", () => {
+    expect(canDropLongPatchLine(st(atPath(EXCLUDED)), "diff --git a/x b/x", ex, syn)).toBe(false);
+    expect(canDropLongPatchLine(st(atPath(EXCLUDED)), "@@ -0,0 +1 @@", ex, syn)).toBe(false);
+  });
+
+  it("hunk 內非 `+` 開頭(刪除行)可丟:stepPatchLine 直接忽略且不改狀態", () => {
+    expect(canDropLongPatchLine(st(atPath(EXCLUDED)), "-old", ex, syn)).toBe(true);
+    expect(canDropLongPatchLine(st(atPath("src/a.md")), "-old", ex, syn)).toBe(true);
+  });
+
+  it("hunk 內新增行:排除路徑可丟,被掃路徑不可丟", () => {
+    expect(canDropLongPatchLine(st(atPath(EXCLUDED)), "+x", ex, syn)).toBe(true);
+    expect(canDropLongPatchLine(st(atPath("src/a.md")), "+x", ex, syn)).toBe(false);
+  });
+
+  it("syntax 例外檔仍屬 syntax 桶 → 不可丟", () => {
+    expect(bucketsOfPathIsSyntaxOnly(SYNTAX, ex, syn)).toBe(true);
+    expect(canDropLongPatchLine(st(atPath(SYNTAX)), "+x", ex, syn)).toBe(false);
+  });
+
+  it("路徑不明(null / deleted)一律保留:stepPatchLine 要 fail-closed throw", () => {
+    expect(canDropLongPatchLine(st(null), "+x", ex, syn)).toBe(false);
+    expect(canDropLongPatchLine(st({ kind: "deleted" }), "+x", ex, syn)).toBe(false);
+  });
+});
+
+/** SYNTAX 例外檔的前提:它在 FULL_EXCLUDES 內、只屬 syntax 桶(S-2 的局部複述)。 */
+function bucketsOfPathIsSyntaxOnly(
+  p: string,
+  ex: Set<string>,
+  syn: Set<string>
+): boolean {
+  return ex.has(p) && syn.has(p);
+}

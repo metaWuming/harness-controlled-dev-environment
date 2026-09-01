@@ -1189,6 +1189,18 @@ export interface DiffScanOptions {
   /** patch 前綴釘法(測試用空值構造 fail-closed 負對照)。 */
   srcPrefix?: string;
   dstPrefix?: string;
+  /** 長行增量丟棄的探測門檻(測試用小值,讓「超長行」在合理體積下可構造)。 */
+  longLineProbeBytes?: number;
+  /** 串流統計觀測器(測試用;**純觀測,不改任何行為**,production 不傳)。 */
+  onStreamStats?: (stats: DiffStreamStats) => void;
+}
+
+/** 串流消費的可觀測統計(測試用;production 不讀)。 */
+export interface DiffStreamStats {
+  /** 單一邏輯行在記憶體中累積過的最大字元數。 */
+  peakPendingLineBytes: number;
+  /** 因「一定不貢獻桶內容、也不改狀態」而被增量丟棄的長行數。 */
+  droppedLongLines: number;
 }
 
 function chunkRevs(revs: string[], size: number): string[][] {
@@ -1274,6 +1286,47 @@ function runPatchProducerToFile(
 /** 每累積這麼多行就 flush 到桶檔,讓記憶體不隨單一 rev 的 patch 大小成長。 */
 const BUCKET_FLUSH_LINES = 2048;
 
+/** 長行探測門檻:累積超過這麼多字元仍未見換行,才評估能否增量丟棄。 */
+const LONG_LINE_PROBE_BYTES = 1 << 20;
+
+/**
+ * 這個「已超過探測門檻的長行」能否在**還沒讀完整行**時就丟棄後續位元組?
+ *
+ * 🔴 R2 P2-1 修法。R1 拿掉了 producer 的 256 MiB maxBuffer,但消費端仍把
+ *    **整個邏輯行**累積進 `pendingText` 才交給狀態機 —— false-red 只是從
+ *    producer 位移到消費端,沒有消失。可達序列:baseline 之後某 commit
+ *    **只動** FULL_EXCLUDES 路徑(例 `package-lock.json`)、且該檔被編碼成
+ *    **單一超長邏輯行**;pendingText 會長到超過 Node 的 MAX_STRING_LENGTH
+ *    (v24 = 536870888)而 throw → rc=2 → **政策明文豁免的改動被判紅**。
+ *    A1.1 之前 git pathspec 在來源端就不會產出那些位元組。
+ *
+ *    修法:對「處理它一定不產生任何桶內容、也一定不改變狀態機狀態」的長行,
+ *    讀到門檻就丟棄其餘位元組。判定只用 `startsWith`,所以用門檻長度的**前綴**
+ *    判定與用整行判定等價。**不靠提高上限、也不靠文件說明繞過。**
+ *
+ * ⚠️ 以下情況一律回 false(保留累積),缺一就是漏掃或誤判:
+ *   - **未達門檻的行完全不走這裡**:separator(`<marker> <40-hex>`)與 patch 檔頭
+ *     都遠短於門檻,所以門檻本身保證被丟的行不可能是 separator
+ *     (N8a 的注入 marker `+MARK` 正是 `+` 開頭,無門檻保護就會被誤丟)。
+ *   - `diff --git ` / `@@` / 非 hunk 內的行:會改變狀態機狀態。
+ *   - hunk 內新增行但當前路徑不明:`stepPatchLine` 要 throw(fail-closed),不可吞。
+ *   - 當前路徑**至少屬於一個桶**:那是要被掃的內容,丟了就是漏掃。
+ */
+export function canDropLongPatchLine(
+  state: PatchLineState,
+  prefix: string,
+  ex: Set<string>,
+  syn: Set<string>
+): boolean {
+  if (prefix.startsWith("diff --git ")) return false;
+  if (prefix.startsWith("@@")) return false;
+  if (!state.inHunk) return false;
+  // hunk 內非 `+` 開頭:`stepPatchLine` 直接忽略且不改狀態 → 丟棄與處理等價。
+  if (!prefix.startsWith("+")) return true;
+  if (state.current === null || state.current.kind === "deleted") return false;
+  return bucketsOfPath(state.current.path, ex, syn).length === 0;
+}
+
 /**
  * 逐行消費 producer 產出的檔案,把新增行直接路由進「每 rev 每桶」的暫存檔。
  *
@@ -1287,7 +1340,8 @@ function consumeProducerFile(
   ex: Set<string>,
   syn: Set<string>,
   dirs: Record<BucketName, string>,
-  touched: Record<BucketName, Set<string>>
+  touched: Record<BucketName, Set<string>>,
+  stream: { probeBytes: number; stats: DiffStreamStats }
 ): void {
   let state = newPatchLineState();
   const pending: Record<BucketName, string[]> = { main: [], syntax: [] };
@@ -1328,19 +1382,51 @@ function consumeProducerFile(
     const decoder = new StringDecoder("utf8");
     const buf = Buffer.allocUnsafe(1 << 20);
     let pendingText = "";
+    let dropping = false;
+    const observe = (len: number): void => {
+      if (len > stream.stats.peakPendingLineBytes) {
+        stream.stats.peakPendingLineBytes = len;
+      }
+    };
+    /** 消費一塊已解碼文字:切行送 consumer;長行確定無貢獻時改為丟棄其餘位元組。 */
+    const feed = (text: string): void => {
+      let rest = text;
+      for (;;) {
+        const nl = rest.indexOf("\n");
+        if (dropping) {
+          if (nl === -1) return;
+          dropping = false;
+          rest = rest.slice(nl + 1);
+          continue;
+        }
+        if (nl === -1) {
+          pendingText += rest;
+          observe(pendingText.length);
+          if (
+            pendingText.length > stream.probeBytes &&
+            canDropLongPatchLine(state, pendingText, ex, syn)
+          ) {
+            pendingText = "";
+            dropping = true;
+            stream.stats.droppedLongLines += 1;
+          }
+          return;
+        }
+        const line = pendingText + rest.slice(0, nl);
+        observe(line.length);
+        pendingText = "";
+        consumer.pushLine(line);
+        rest = rest.slice(nl + 1);
+      }
+    };
     for (;;) {
       const n = readSync(fd, buf, 0, buf.length, null);
       if (n === 0) break;
-      pendingText += decoder.write(buf.subarray(0, n));
-      let i = pendingText.indexOf("\n");
-      while (i !== -1) {
-        consumer.pushLine(pendingText.slice(0, i));
-        pendingText = pendingText.slice(i + 1);
-        i = pendingText.indexOf("\n");
-      }
+      feed(decoder.write(buf.subarray(0, n)));
     }
-    pendingText += decoder.end();
-    if (pendingText.length > 0) consumer.pushLine(pendingText);
+    feed(decoder.end());
+    // 丟棄中的尾段沒有換行結尾 → 它就是那條被丟的行,不補送。
+    if (!dropping && pendingText.length > 0) consumer.pushLine(pendingText);
   } finally {
     closeSync(fd);
   }
@@ -1401,6 +1487,14 @@ export function scanBaselineToHeadDiffs(
   const marker = opts.marker ?? buildPatchMarker();
   const srcPrefix = opts.srcPrefix ?? PINNED_SRC_PREFIX;
   const dstPrefix = opts.dstPrefix ?? PINNED_DST_PREFIX;
+  const probeBytes = opts.longLineProbeBytes ?? LONG_LINE_PROBE_BYTES;
+  if (!Number.isInteger(probeBytes) || probeBytes < 1) {
+    throw new Error(`longLineProbeBytes 必須是 ≥ 1 的整數(收到 ${String(probeBytes)})`);
+  }
+  const streamStats: DiffStreamStats = {
+    peakPendingLineBytes: 0,
+    droppedLongLines: 0,
+  };
 
   const revs = execFileSync(
     "git",
@@ -1428,9 +1522,13 @@ export function scanBaselineToHeadDiffs(
     const streamPath = path.join(workDir, "stream");
     for (const batch of chunkRevs(revs, batchSize)) {
       runPatchProducerToFile(root, batch, marker, srcPrefix, dstPrefix, streamPath);
-      consumeProducerFile(streamPath, batch, marker, ex, syn, dirs, touched);
+      consumeProducerFile(streamPath, batch, marker, ex, syn, dirs, touched, {
+        probeBytes,
+        stats: streamStats,
+      });
       rmSync(streamPath, { force: true });
     }
+    opts.onStreamStats?.(streamStats);
     const scans: Scan[] = [];
     if (nonCaFile) {
       scans.push(
