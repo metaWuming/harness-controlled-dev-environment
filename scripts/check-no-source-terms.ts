@@ -318,7 +318,11 @@ export function displayGrepHit(raw: string): string {
  *    不再從內容猜。真正 NUL-framed 的 hit(git grep -z)維持原本正確解析。
  */
 export type HitFraming =
-  /** `git grep -z` 產出:`path\0line:content`(history tree 掃描是 `rev:path\0line:content`)。 */
+  /**
+   * `git grep -z -n` 產出:`path\0line\0content` —— **兩個 NUL**(git 2.50.1 實測)。
+   * history tree 掃描時第一段是 `rev:path`,NUL 框架不變。
+   * 缺第二個 NUL 時 `parseGrepZLine` 保守把剩餘整段當內容(不用冒號猜行號邊界)。
+   */
   | "grep-z"
   /** aggregate diff 掃描產出:`<rev8> [+diff] <content>`;content 可含任意位元組(含 NUL)。 */
   | "diff-prefixed"
