@@ -1184,7 +1184,15 @@ export function splitPatchStream(
   return out;
 }
 
-/** diff scan 的可注入參數。**production 一律走預設值**(契約 C5p 守這件事)。 */
+/**
+ * diff scan 的可注入參數。**production 一律走預設值**——但守法分兩層,別誤以為
+ * 單一契約全包(Step 5 INFORMATIONAL):
+ *   - `srcPrefix` / `dstPrefix` 與 `core.quotePath` 釘法會出現在 argv → 由 **C5p**
+ *     以 shim 斷言 CLI 實際傳的就是釘死的值。
+ *   - `batchSize` / `marker` / `longLineProbeBytes` **不出現在 argv**,shim 看不到。
+ *     `longLineProbeBytes` 的預設值由 **S5D1 / S5D2** 夾住(512 KiB 不丟、3 MiB 要丟),
+ *     所以把 `LONG_LINE_PROBE_BYTES` 調成極大或極小值都會轉紅。
+ */
 export interface DiffScanOptions {
   /** 一次 patch producer 呼叫最多幾個 rev(測試用小值打批次邊界)。 */
   batchSize?: number;

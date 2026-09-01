@@ -118,5 +118,23 @@
     "find": "  return bucketsOfPath(state.current.path, ex, syn).length === 0;",
     "replace": "  return true;",
     "label": "M18 被掃路徑的超長行也被丟棄 → 行尾 forbidden 漏掃(R2P2-b)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "const LONG_LINE_PROBE_BYTES = 1 << 20;",
+    "replace": "const LONG_LINE_PROBE_BYTES = Number.MAX_SAFE_INTEGER;",
+    "label": "M21 production 長行門檻調成極大 → 等於撤銷 R2 增量丟棄(S5D2)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "const LONG_LINE_PROBE_BYTES = 1 << 20;",
+    "replace": "const LONG_LINE_PROBE_BYTES = 1;",
+    "label": "M22 production 長行門檻調成 1 → 過度丟棄、短行也進丟棄分支(S5D1)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "        \"-c\",\n        \"log.diffMerges=separate\",\n        \"log\",",
+    "replace": "        \"log\",",
+    "label": "M23 拿掉 log.diffMerges 釘法 → 敵意 config 讓 merge commit 的 forbidden 變綠(S5C2 / S5C2b)"
   }
 ]

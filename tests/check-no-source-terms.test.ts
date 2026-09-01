@@ -3128,3 +3128,62 @@ describe("Step 5 CRITICAL — 敵意 log.diffMerges 不得讓 merge commit 假�
     }
   });
 });
+
+// ─────────── Step 5 INFORMATIONAL:釘住 production 的長行門檻預設值 ───────────
+//
+// 🔴 docstring 宣稱「production 一律走預設值(契約 C5p 守這件事)」,但 C5p 只斷言
+//    argv 內的三個 prefix / quotePath 釘法。`longLineProbeBytes` 不出現在 argv,
+//    而 R2P2-a / R2P2-b 都**自己注入** 64 KiB 探測值 —— 把
+//    `LONG_LINE_PROBE_BYTES` 改成 Number.MAX_SAFE_INTEGER 等於靜默撤銷 R2 修法,
+//    兩條回歸都不會轉紅。以下兩條**不注入門檻**,用可觀測的 droppedLongLines
+//    把預設值夾在 (512 KiB, 3 MiB) 之間。
+
+describe("Step 5 — production 長行門檻預設值(不注入,夾住)", () => {
+  /** 造一個「post-baseline 只動排除路徑、內容是單一長行」的 repo。 */
+  const makeExcludedLongLineRepo = (lineBytes: number, forb: string) => {
+    const dir = makeRepo({
+      deny: [forb],
+      commits: [{ message: "clean init", files: { "src/init.md": "hello\n" } }],
+    });
+    const baseline = shaAt(dir, "HEAD");
+    writeFileSync(
+      join(dir, "package-lock.json"),
+      `{"pad":"${"a".repeat(lineBytes)}"}\n`,
+      "utf-8"
+    );
+    execFileSync("git", ["-C", dir, "add", "-A"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "lockfile churn"], { stdio: "ignore" });
+    return { dir, baseline };
+  };
+
+  it("🔴 S5D1:512 KiB 的排除路徑長行**不**該被丟(門檻不得被調得太小)", () => {
+    const FORB = "forbidden" + "_s5d1_term";
+    const { dir, baseline } = makeExcludedLongLineRepo(512 * 1024, FORB);
+    const seen: DiffStreamStats[] = [];
+    runDiffScan(dir, [FORB], baseline, { onStreamStats: (st) => seen.push(st) });
+    expect(seen.length, "觀測器必須被呼叫").toBe(1);
+    expect(
+      seen[0].droppedLongLines,
+      "512 KiB 低於 production 門檻(1 MiB),不該進丟棄分支"
+    ).toBe(0);
+  });
+
+  it("🔴 S5D2:3 MiB 的排除路徑長行**必須**被丟(門檻不得被撤銷)", () => {
+    const FORB = "forbidden" + "_s5d2_term";
+    const { dir, baseline } = makeExcludedLongLineRepo(3 * 1024 * 1024, FORB);
+    const seen: DiffStreamStats[] = [];
+    const scans = runDiffScan(dir, [FORB], baseline, {
+      onStreamStats: (st) => seen.push(st),
+    });
+    expect(seen.length, "觀測器必須被呼叫").toBe(1);
+    expect(
+      seen[0].droppedLongLines,
+      "3 MiB 高於 production 門檻(1 MiB),必須增量丟棄;把門檻調成極大值等於撤銷 R2 修法"
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      seen[0].peakPendingLineBytes,
+      `單行峰值 ${seen[0].peakPendingLineBytes} B 必須遠小於整行 ${3 * 1024 * 1024} B`
+    ).toBeLessThan(2 * 1024 * 1024);
+    expect(scans.every((sc) => sc.hits.length === 0), "排除路徑不得產生命中").toBe(true);
+  });
+});
