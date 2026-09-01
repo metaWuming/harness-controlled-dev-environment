@@ -123,13 +123,13 @@
     "file": "scripts/check-no-source-terms.ts",
     "find": "const LONG_LINE_PROBE_BYTES = 1 << 20;",
     "replace": "const LONG_LINE_PROBE_BYTES = Number.MAX_SAFE_INTEGER;",
-    "label": "M21 production 長行門檻調成極大 → 等於撤銷 R2 增量丟棄(S5D2)"
+    "label": "M21 production 長行門檻調成極大 → 等於撤銷 R2 增量丟棄(S5D2:dropped 變 0)"
   },
   {
     "file": "scripts/check-no-source-terms.ts",
     "find": "const LONG_LINE_PROBE_BYTES = 1 << 20;",
     "replace": "const LONG_LINE_PROBE_BYTES = 1;",
-    "label": "M22 production 長行門檻調成 1 → 過度丟棄、短行也進丟棄分支(S5D1)"
+    "label": "M22 production 長行門檻調成 1 → 過早丟棄、separator 保護邊界消失(S5D2:dropped 變 2、peak 掉到 1 MiB 以下)"
   },
   {
     "file": "scripts/check-no-source-terms.ts",

@@ -3156,19 +3156,15 @@ describe("Step 5 — production 長行門檻預設值(不注入,夾住)", () => 
     return { dir, baseline };
   };
 
-  it("🔴 S5D1:512 KiB 的排除路徑長行**不**該被丟(門檻不得被調得太小)", () => {
-    const FORB = "forbidden" + "_s5d1_term";
-    const { dir, baseline } = makeExcludedLongLineRepo(512 * 1024, FORB);
-    const seen: DiffStreamStats[] = [];
-    runDiffScan(dir, [FORB], baseline, { onStreamStats: (st) => seen.push(st) });
-    expect(seen.length, "觀測器必須被呼叫").toBe(1);
-    expect(
-      seen[0].droppedLongLines,
-      "512 KiB 低於 production 門檻(1 MiB),不該進丟棄分支"
-    ).toBe(0);
-  });
-
-  it("🔴 S5D2:3 MiB 的排除路徑長行**必須**被丟(門檻不得被撤銷)", () => {
+  // ⚠️ 這條刻意用**等號 + 下界**,不是「>= 1」與「< 2 MiB」的鬆綁法。實測(讀取
+  //    分塊 1 MiB)同一個 fixture:
+  //      門檻 = 1 MiB(production):peak 1572632 / dropped 1
+  //      門檻 = 1(調太小)      :peak  524297 / dropped 2
+  //    鬆綁的斷言兩種都過 —— 前一版就是這樣讓 M22 存活的。收緊之後兩個方向都守得住。
+  //
+  //    另外刪掉了原本的 S5D1(512 KiB 不該被丟):兩種門檻下它的觀測值完全相同,
+  //    **它不可能因為門檻改動而轉紅**,留著只是假信心(LESSONS ⓪)。
+  it("🔴 S5D2:3 MiB 的排除路徑長行必須被丟,且門檻不得被調大或調小", () => {
     const FORB = "forbidden" + "_s5d2_term";
     const { dir, baseline } = makeExcludedLongLineRepo(3 * 1024 * 1024, FORB);
     const seen: DiffStreamStats[] = [];
@@ -3178,11 +3174,15 @@ describe("Step 5 — production 長行門檻預設值(不注入,夾住)", () => 
     expect(seen.length, "觀測器必須被呼叫").toBe(1);
     expect(
       seen[0].droppedLongLines,
-      "3 MiB 高於 production 門檻(1 MiB),必須增量丟棄;把門檻調成極大值等於撤銷 R2 修法"
-    ).toBeGreaterThanOrEqual(1);
+      "恰好 1 條:3 MiB 的新增行要丟,512 KiB 的刪除行低於門檻不該丟。門檻調大 → 0 條;調小 → 2 條"
+    ).toBe(1);
     expect(
       seen[0].peakPendingLineBytes,
-      `單行峰值 ${seen[0].peakPendingLineBytes} B 必須遠小於整行 ${3 * 1024 * 1024} B`
+      `單行峰值 ${seen[0].peakPendingLineBytes} B:必須 > 1 MiB(門檻前先累積滿一個讀取分塊)`
+    ).toBeGreaterThan(1024 * 1024);
+    expect(
+      seen[0].peakPendingLineBytes,
+      `單行峰值必須遠小於整行 ${3 * 1024 * 1024} B(否則等於整行累積)`
     ).toBeLessThan(2 * 1024 * 1024);
     expect(scans.every((sc) => sc.hits.length === 0), "排除路徑不得產生命中").toBe(true);
   });

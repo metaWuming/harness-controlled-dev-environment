@@ -1190,8 +1190,9 @@ export function splitPatchStream(
  *   - `srcPrefix` / `dstPrefix` 與 `core.quotePath` 釘法會出現在 argv → 由 **C5p**
  *     以 shim 斷言 CLI 實際傳的就是釘死的值。
  *   - `batchSize` / `marker` / `longLineProbeBytes` **不出現在 argv**,shim 看不到。
- *     `longLineProbeBytes` 的預設值由 **S5D1 / S5D2** 夾住(512 KiB 不丟、3 MiB 要丟),
- *     所以把 `LONG_LINE_PROBE_BYTES` 調成極大或極小值都會轉紅。
+ *     `longLineProbeBytes` 的預設值由 **S5D2** 夾住:同一個 3 MiB fixture 斷言
+ *     `droppedLongLines === 1` 且 `peakPendingLineBytes > 1 MiB` —— 門檻調大變 0 條、
+ *     調小變 2 條且峰值掉到 1 MiB 以下,兩個方向都轉紅。
  */
 export interface DiffScanOptions {
   /** 一次 patch producer 呼叫最多幾個 rev(測試用小值打批次邊界)。 */
