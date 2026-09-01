@@ -145,15 +145,15 @@
   },
   {
     "file": "scripts/check-no-source-terms.ts",
-    "find": "        \"--no-color\",\n",
-    "replace": "",
-    "label": "M25 producer 拿掉 --no-color → ANSI 序列讓 diff 狀態機靜默空轉、連 fail-closed 都沒有(S5R2-I2)"
+    "find": "        \"--no-color\",",
+    "replace": "        \"--color=always\",",
+    "label": "M25 producer 的 --no-color 反轉成 --color=always → ANSI 序列讓 diff 狀態機靜默空轉、連 fail-closed 都沒有(S5R2-I2)"
   },
   {
     "file": "scripts/check-no-source-terms.ts",
-    "find": "        \"--no-textconv\",\n",
-    "replace": "",
-    "label": "M26 producer 拿掉 --no-textconv → .gitattributes textconv 換掉新增行內容而漏抓(S5R2-I1)"
+    "find": "        \"--no-textconv\",",
+    "replace": "        \"--textconv\",",
+    "label": "M26 producer 的 --no-textconv 反轉成 --textconv → .gitattributes textconv 換掉新增行內容而漏抓(S5R2-I1)"
   },
   {
     "file": "scripts/check-no-source-terms.ts",
