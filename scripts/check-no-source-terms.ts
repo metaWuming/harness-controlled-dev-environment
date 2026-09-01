@@ -1251,6 +1251,15 @@ function runPatchProducerToFile(
         "diff.noprefix=false",
         "-c",
         "diff.mnemonicPrefix=false",
+        // 🔴 Step 5 CRITICAL。`-m` 的語意是「用**預設** merge-diff 格式」,而預設值
+        //    由 `log.diffMerges` 決定(git ≥ 2.32)。repo 或使用者 config 設成
+        //    `dense-combined` / `combined` / `remerge`,merge commit 就變 `diff --cc`:
+        //    新增行是 `++forbidden`,`stepPatchLine` strip 一個 `+` 後剩 `+forbidden`,
+        //    帶錨的 deny pattern 不 match → **merge commit 引入的 forbidden 整段變綠**。
+        //    實測 `log.diffMerges=dense-combined` 會讓 P1zz4 的場景從 exit 1 變 exit 0。
+        //    釘成 `separate` = 每個 parent 一份普通 diff,配 `--first-parent` 即傳統 `-m` 行為。
+        "-c",
+        "log.diffMerges=separate",
         "log",
         "--no-walk=unsorted",
         "--stdin",

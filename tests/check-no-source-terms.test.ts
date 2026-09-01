@@ -3078,3 +3078,53 @@ function bucketsOfPathIsSyntaxOnly(
 ): boolean {
   return ex.has(p) && syn.has(p);
 }
+
+// ─────────── Step 5 CRITICAL:merge-diff 格式不得被 git config 反轉 ───────────
+//
+// 🔴 `-m` 只是「用預設 merge-diff 格式」。預設值由 `log.diffMerges` 決定(git ≥ 2.32),
+//    所以 repo / 使用者 config 就能把 round 3 P2 的修法整條反轉:merge commit 變
+//    `diff --cc`、新增行帶兩個 `+`,strip 一個之後帶錨的 pattern 不 match → 假放行。
+//    E6/E6b 守的是 `diff.noprefix` / `core.quotePath` 兩條,漏了這一條。
+
+describe("Step 5 CRITICAL — 敵意 log.diffMerges 不得讓 merge commit 假放行", () => {
+  /** 建一個「merge commit 引入 forbidden、後續刪除」的 repo(語意同 P1zz4)。 */
+  const makeMergeRepo = (deny: string, gitConfig?: Record<string, string>) => {
+    const dir = makeRepo({
+      deny: [deny],
+      commits: [{ message: "baseline", files: { "src/base.md": "hello\n" } }],
+      gitConfig,
+    });
+    execFileSync("git", ["-C", dir, "checkout", "-q", "-b", "side"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "--allow-empty", "-qm", "side commit"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "checkout", "-q", "main"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "--allow-empty", "-qm", "main commit"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "merge", "--no-ff", "-q", "-m", "merge side", "side"], { stdio: "ignore" });
+    writeFileSync(join(dir, "src/base.md"), `hello\n${deny.replace("^", "")} added in merge\n`, "utf-8");
+    execFileSync("git", ["-C", dir, "add", "src/base.md"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "--amend", "--no-edit", "-q"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "rm", "-q", "src/base.md"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-qm", "remove base"], { stdio: "ignore" });
+    writeBaselineConfig(dir, {
+      schemaVersion: 1,
+      sourceTermHistoryBaseline: shaAt(dir, "HEAD~3"),
+    });
+    return dir;
+  };
+
+  it("🔴 S5C2:repo config log.diffMerges=dense-combined 仍要抓到 merge 引入的 forbidden", () => {
+    const DENY = "^forbidden" + "_s5merge_term";
+    const dir = makeMergeRepo(DENY, { "log.diffMerges": "dense-combined" });
+    const { code, out } = runChecker(dir);
+    expect(out, "命中內容要印出來,不能只是掃描器錯誤").toContain("added in merge");
+    expect(out, "串流/解析錯誤會變掃描器錯誤,不算這條測到的東西").not.toContain("掃描器錯誤");
+    expect(code, "敵意 log.diffMerges 不得讓 merge commit 的新增行變綠").toBe(1);
+  });
+
+  it("🔴 S5C2b:combined 與 remerge 兩種值也一樣擋", () => {
+    for (const v of ["combined", "remerge"]) {
+      const DENY = "^forbidden" + "_s5merge_term";
+      const dir = makeMergeRepo(DENY, { "log.diffMerges": v });
+      expect(runChecker(dir).code, `log.diffMerges=${v} 不得假放行`).toBe(1);
+    }
+  });
+});
