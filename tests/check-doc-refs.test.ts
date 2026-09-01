@@ -209,44 +209,6 @@ const EXPECTED_ADR_REFS: Array<[string, number]> = [
 ];
 const EXPECTED_ADR_REF_TOTAL = 6;
 
-/**
- * 這個 repo 是**模板本身**,還是下游採用者?
- *
- * 🔴 Step 5 r2。以下三條(G2 的 memory 列、G4、G6)是**模板作者的簿記契約**,
- *    不是模板要交付給採用者的契約。它們會隨模板一起被複製,由每個採用者的
- *    `npm test` 執行 —— 守門對象與執行對象錯配:
- *      G6 斷言 tracked 內容 0 個 PR 引用,但 checker 的政策**允許**引用自家已
- *        merge 的號(在 allowedPrs 內);採用者引用自己的 PR → checker 綠、G6 紅。
- *      G2 釘死 `.claude/memory/progress.md` 與 2026-08 archive 的引用數;採用者
- *        刪掉模板作者的 sprint 紀錄或改寫自己的 progress → 紅。
- *      G4 斷言 progress.md 不含 `/Users/`;macOS 採用者寫自己的路徑 → 紅。
- *
- *    判別式沿用既有機制:baseline config 的 `template:` 前綴就是「我是模板」的標記。
- */
-function isTemplateRepo(): boolean {
-  try {
-    const cfg = JSON.parse(readTracked('scripts/source-term-baseline.json')) as {
-      sourceTermHistoryBaseline?: unknown;
-    };
-    return (
-      typeof cfg.sourceTermHistoryBaseline === 'string' &&
-      cfg.sourceTermHistoryBaseline.startsWith('template:')
-    );
-  } catch {
-    return false;
-  }
-}
-
-/** 非模板 repo 時跳過模板自身的簿記契約,並把理由留在輸出裡。 */
-function skipUnlessTemplate(what: string): boolean {
-  if (isTemplateRepo()) return false;
-  expect(
-    true,
-    `非模板 repo:${what} 是模板作者的簿記契約,採用者不適用`
-  ).toBe(true);
-  return true;
-}
-
 function trackedFiles(): string[] {
   return execFileSync('git', ['-C', REPO, 'ls-files', '-z'], { encoding: 'utf-8' })
     .split('\0')
@@ -317,28 +279,21 @@ describe('PR A1.1 F2 — canonical ADR 引用治理', () => {
 
   it('🔴 G2:canonical 引用的位置與數量固定,且每處都指到穩定標題', () => {
     const hits = countInTracked(ADR_PATH);
-    // 🔴 Step 5 r2:`.claude/memory/**` 兩列是模板作者的 sprint 紀錄,採用者會改寫或
-    //    刪除 → 非模板 repo 時把它們排除,只驗模板真正交付的四處引用。
-    const rows = isTemplateRepo()
-      ? EXPECTED_ADR_REFS
-      : EXPECTED_ADR_REFS.filter(([rel]) => !rel.startsWith('.claude/memory/'));
-    const expectedTotal = rows.reduce((a, [, n]) => a + n, 0);
     // 位置 + 數量
-    for (const [rel, n] of rows) {
+    for (const [rel, n] of EXPECTED_ADR_REFS) {
       expect(hits.get(rel) ?? 0, `${rel} 的 ADR 引用數`).toBe(n);
     }
-    if (isTemplateRepo()) {
-      const total = [...hits.values()].reduce((a, b) => a + b, 0);
-      expect(total, 'ADR 引用總數(新增引用要同步更新 EXPECTED_ADR_REFS)').toBe(
-        EXPECTED_ADR_REF_TOTAL
-      );
-      expect(expectedTotal, 'EXPECTED_ADR_REFS 的列加總要等於總數常數').toBe(
-        EXPECTED_ADR_REF_TOTAL
-      );
-      expect([...hits.keys()].sort()).toEqual(
-        EXPECTED_ADR_REFS.map(([r]) => r).sort()
-      );
-    }
+    const total = [...hits.values()].reduce((a, b) => a + b, 0);
+    expect(total, 'ADR 引用總數(新增引用要同步更新 EXPECTED_ADR_REFS)').toBe(
+      EXPECTED_ADR_REF_TOTAL
+    );
+    expect(
+      EXPECTED_ADR_REFS.reduce((a, [, n]) => a + n, 0),
+      'EXPECTED_ADR_REFS 的列加總要等於總數常數'
+    ).toBe(EXPECTED_ADR_REF_TOTAL);
+    expect([...hits.keys()].sort()).toEqual(
+      EXPECTED_ADR_REFS.map(([r]) => r).sort()
+    );
 
     // 每一處引用附近(同行或前後 2 行)要出現 ADR 的某個穩定 H2 標題,
     // 而不是只丟一個裸路徑。標題可能因換行落在鄰行,故取視窗。
@@ -349,7 +304,7 @@ describe('PR A1.1 F2 — canonical ADR 引用治理', () => {
     //    讀起來比它實際守的強得多。六處引用本來就都寫成「<標題>」,所以連括號
     //    一起比對不放寬任何既有寫法,只是把漏洞關掉。
     const headings = adrHeadings();
-    for (const [rel] of rows) {
+    for (const [rel] of EXPECTED_ADR_REFS) {
       const lines = readTracked(rel).split('\n');
       for (let i = 0; i < lines.length; i++) {
         if (!lines[i]!.includes(ADR_PATH)) continue;
@@ -368,13 +323,12 @@ describe('PR A1.1 F2 — canonical ADR 引用治理', () => {
   });
 
   it('🔴 G4:progress.md 不含個人絕對路徑(0 hit)', () => {
-    if (skipUnlessTemplate('G4(progress.md 個資路徑)')) return;
     const text = readTracked('.claude/memory/progress.md');
     expect(text).not.toContain('/Users/');
     expect(text).not.toContain('~/Documents');
   });
 
-  it('🔴 G6:tracked 內容不得含任何 PR/pull 引用(下游可攜性)', () => {
+  it('🔴 G6:模板出貨的檔不得含任何 PR/pull 引用(下游可攜性)', () => {
     // 🔴 Step 5 CRITICAL。CA(context-aware)判定靠 allowedPrs 放行,而 allowedPrs
     //    是**本 repo 的** squash subject 推出來的。任何寫進 tracked 檔的 PR 引用,
     //    在本 repo 綠、到下游(全新 history、allowedPrs 不含該號)就紅——而且
@@ -383,14 +337,27 @@ describe('PR A1.1 F2 — canonical ADR 引用治理', () => {
     //    所以這裡不是「本 repo 掃得過就好」,而是**數量必須為 0**。
     //    要寫 PR 號請用 repo 既有的「井號」寫法或「(井號+N)」括號格式。
     //
-    // ⚠️ 只對**模板自己**斷言。checker 的政策**允許**引用自家已 merge 的號
-    //    (在 allowedPrs 內),所以對採用者跑這條會出現「checker 綠、G6 紅」的
-    //    錯配 —— 守門對象與執行對象不同(Step 5 r2)。
-    if (skipUnlessTemplate('G6(tracked 內容 0 個 PR 引用)')) return;
+    // ⚠️ **只掃模板出貨的檔,用靜態前綴清單、不做 runtime 判斷**(Step 5 r3)。
+    //    第一版對「全部 tracked 檔」斷言,採用者寫自己的紀錄、引用自家已 merge
+    //    的號就會紅(checker 政策是允許的)—— 守門對象與執行對象錯配。
+    //    第二版改用 runtime 判別式(看 baseline 的 `template:` 前綴)更糟:
+    //    GitHub Template 會把那個檔原樣複製過去,對採用者**判反**;而且它同時
+    //    變成一行就能關掉三條守門的斷路器,關掉時還報 PASS 不是 SKIP。
+    //    靜態清單沒有這兩個問題:它不看環境、關不掉、也不會誤判族群。
+    const TEMPLATE_OWNED_PREFIXES = [
+      'scripts/',
+      'tests/',
+      'docs/',
+      '.github/',
+      '.claude/sop/',
+      'CLAUDE.md',
+      'README.md',
+    ];
     const ex = new Set(FULL_EXCLUDES.map(stripExcludeMagic));
     const offenders: string[] = [];
     for (const rel of trackedFiles()) {
       if (ex.has(rel)) continue;
+      if (!TEMPLATE_OWNED_PREFIXES.some((pfx) => rel.startsWith(pfx))) continue;
       let text: string;
       try {
         text = readTracked(rel);
@@ -403,7 +370,7 @@ describe('PR A1.1 F2 — canonical ADR 引用治理', () => {
         }
       });
     }
-    expect(offenders, 'tracked 內容含 PR 引用 → 下游開箱會被自己的檔擋紅').toEqual([]);
+    expect(offenders, '模板出貨的檔含 PR 引用 → 採用者開箱會被模板的檔擋紅').toEqual([]);
   });
 
   it('🔴 G5:docs/architecture 已納入 doc-ref 掃描範圍,且 checker 對本 repo 綠', () => {

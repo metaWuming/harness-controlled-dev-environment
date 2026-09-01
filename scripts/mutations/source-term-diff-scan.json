@@ -160,5 +160,17 @@
     "find": "  const rest = raw.endsWith(\"\\t\") ? raw.slice(0, -1) : raw;",
     "replace": "  const rest = raw;",
     "label": "M27 不再先剝尾端 TAB → quoted + 含空白的檔名判成引號未閉合、乾淨 repo 整段 rc=2(S5R2-C2 / E1)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "      \"-C\",\n      root,\n      \"-c\",\n      \"i18n.logOutputEncoding=UTF-8\",\n      \"log\",\n      \"--all\",",
+    "replace": "      \"-C\",\n      root,\n      \"log\",\n      \"--all\",",
+    "label": "M28 commit 訊息掃描拿掉編碼釘法 → i18n.logOutputEncoding 讓整段掃描歸零(S5R3-C1)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "        \"-c\",\n        \"i18n.logOutputEncoding=UTF-8\",\n        \"log\",",
+    "replace": "        \"log\",",
+    "label": "M29 producer 拿掉編碼釘法 → C5p/C5r 的 argv 契約破口"
   }
 ]

@@ -2020,14 +2020,22 @@ describe("PR A1.1 — scale contract(implementation-neutral)", () => {
    * 這一批旗標共用同一條不變量:「producer 的輸出形狀不得被 repo / 使用者 config
    * 改變」。過去只釘了三個,結果同一類缺陷被獨立抓到三次
    * (`log.diffMerges` 反轉 merge 格式、`color.ui` 讓 ANSI 序列打穿前綴比對、
-   * `textconv` 把內容換掉)。清單化之後,拿掉**任何一個**都會讓 C5p 轉紅,
-   * 不必等到有人想得出對應的敵意 config 才發現。
+   * `textconv` 把內容換掉)。清單化之後,**拿掉**任何一個都會讓 C5p 轉紅。
+   *
+   * ⚠️ **這份契約守得比字面窄,兩條邊界寫清楚**(Step 5 r3):
+   *   1. 它只驗**存在**,不驗有沒有後續項蓋掉它 —— 追加 `--color=always` 之後
+   *      argv 仍含 `--no-color`,C5p 照樣綠。擋下那種改法的是行為測試 S5R2-I2。
+   *   2. 它只涵蓋 **patch producer**。`scanCommitMessages` 與 `loadAllowedPrs`
+   *      的 `git log` 是另外兩條路徑,由下面的 C5r 分別守 —— r3 的 CRITICAL
+   *      正是從清單外的那條路徑打進來的。
    */
   const PRODUCER_PINNED_ARGV = [
     "core.quotePath=false",
     "diff.noprefix=false",
     "diff.mnemonicPrefix=false",
     "log.diffMerges=separate",
+    "i18n.logOutputEncoding=UTF-8",
+    "-m",
     "--src-prefix=a/",
     "--dst-prefix=b/",
     "--text",
@@ -2048,6 +2056,24 @@ describe("PR A1.1 — scale contract(implementation-neutral)", () => {
       for (const flag of PRODUCER_PINNED_ARGV) {
         expect(c.argv, `patch producer 少了格式釘法 ${flag}`).toContain(flag);
       }
+    }
+  });
+
+  it("🔴 C5r:兩個 git log 呼叫點都要釘死輸出編碼", () => {
+    // Step 5 r3 CRITICAL:i18n.logOutputEncoding 會把 commit 訊息重新編碼,
+    // UTF-8 的 denylist pattern 就再也對不上 → 整段 commit 訊息掃描歸零。
+    const { dir } = makeScaleRepo(3);
+    const shim = makeShim();
+    expect(runChecker(dir, shim.env).code).toBe(0);
+    const logs = profile(shim).calls.filter(
+      (c) => c.bin === "git" && gitSubcommand(c.argv) === "log"
+    );
+    expect(logs.length, "應該有 git log 呼叫").toBeGreaterThan(0);
+    for (const c of logs) {
+      expect(
+        c.argv,
+        "git log 少了 i18n.logOutputEncoding=UTF-8(重編碼會讓 denylist 對不上)"
+      ).toContain("i18n.logOutputEncoding=UTF-8");
     }
   });
 
@@ -3231,7 +3257,7 @@ describe("Step 5 — production 長行門檻預設值(不注入,夾住)", () => 
     expect(seen.length, "觀測器必須被呼叫").toBe(1);
     expect(
       seen[0].droppedLongLines,
-      "恰好 1 條:3 MiB 的新增行要丟,512 KiB 的刪除行低於門檻不該丟。門檻調大 → 0 條;調小 → 2 條"
+      "恰好 1 條。門檻調大 → 0 條(這條擋得住);調小仍是 1 條,擋住調小的是下面的 peak 下界 —— 見上方量測表"
     ).toBe(1);
     expect(
       seen[0].peakPendingLineBytes,
@@ -3344,4 +3370,25 @@ describe("Step 5 r2 — 敵意 git config 不得改變掃描結果", () => {
     expect(out).not.toContain("掃描器錯誤");
     expect(code, "color.ui=always 不得讓 diff scan 靜默空轉").toBe(1);
   });
+});
+
+// ─────────── Step 5 r3:git log 的輸出編碼不得被 config 改變 ───────────
+
+describe("Step 5 r3 — 敵意 i18n.logOutputEncoding 不得讓 commit 訊息掃描失明", () => {
+  for (const enc of ["UTF-16", "BIG5"]) {
+    it(`🔴 S5R3-C1:i18n.logOutputEncoding=${enc} 仍要抓到 commit 訊息裡的 forbidden`, () => {
+      const FORB = "forbidden" + "_s5r3_term";
+      const dir = makeRepo({
+        deny: [FORB],
+        commits: [
+          { message: "clean init", files: { "src/init.md": "hello\n" } },
+          { message: `chore: ${FORB} in subject`, files: { "src/a.md": "a\n" } },
+        ],
+        gitConfig: { "i18n.logOutputEncoding": enc },
+      });
+      const { code, out } = runChecker(dir);
+      expect(out, "必須印出命中的 commit 訊息").toContain(FORB);
+      expect(code, `${enc} 不得讓 commit 訊息掃描歸零`).toBe(1);
+    });
+  }
 });

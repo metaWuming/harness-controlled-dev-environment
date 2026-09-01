@@ -638,10 +638,13 @@ function loadAllowedPrs(root: string): {
     refs.length === 0
       ? new Set<number>()
       : parseAllowedPrs(
-          execFileSync("git", ["-C", root, "log", ...refs, "--format=%s"], {
-            encoding: "utf-8",
-            maxBuffer: 512 * 1024 * 1024,
-          })
+          // 同 Step 5 r3 CRITICAL:重編碼會讓 subject 抽不出 `(井號+N)` →
+          // allowedPrs 變空 → 合法 self-PR 引用全被擋(方向是 false-red)。
+          execFileSync(
+            "git",
+            ["-C", root, "-c", "i18n.logOutputEncoding=UTF-8", "log", ...refs, "--format=%s"],
+            { encoding: "utf-8", maxBuffer: 512 * 1024 * 1024 }
+          )
         );
   const mergedCount = prs.size;
   let selfPrCount = 0;
@@ -1293,6 +1296,10 @@ function runPatchProducerToFile(
         //    釘成 `separate` = 每個 parent 一份普通 diff,配 `--first-parent` 即傳統 `-m` 行為。
         "-c",
         "log.diffMerges=separate",
+        // 與另外兩個 git log 呼叫點一致(Step 5 r3):輸出編碼一律釘死,
+        // 契約不開例外,C5r 才能無條件掃所有 git log 呼叫。
+        "-c",
+        "i18n.logOutputEncoding=UTF-8",
         "log",
         "--no-walk=unsorted",
         "--stdin",
@@ -1727,9 +1734,22 @@ function scanGitHistoryBlobs(
  * (mode="strict"),CA/non-CA 一起用全 pattern 掃。
  */
 function scanCommitMessages(root: string, allPatternFile: string): Scan {
+  // 🔴 Step 5 r3 CRITICAL。`git log` 的輸出編碼由 `i18n.logOutputEncoding` 決定,
+  //    而這段掃描直接把輸出餵給 UTF-8 的 denylist pattern。設成 BIG5 / GBK 會讓
+  //    denylist 的非 ASCII 條目全部對不上;設成 UTF-16 / UTF-32 連純 ASCII 條目
+  //    也對不上 —— **整段 commit 訊息掃描歸零、exit 0**。`.git/config` 不受任何
+  //    gate 掃描,也不需要改寫歷史。與 producer 的顏色 / textconv 釘法同一類。
   const log = execFileSync(
     "git",
-    ["-C", root, "log", "--all", "--format=%H %an <%ae> %s %b"],
+    [
+      "-C",
+      root,
+      "-c",
+      "i18n.logOutputEncoding=UTF-8",
+      "log",
+      "--all",
+      "--format=%H %an <%ae> %s %b",
+    ],
     { encoding: "utf-8", maxBuffer: 512 * 1024 * 1024 }
   );
   // Step 5 adversarial finding 4 修法:對齊 scanRevDiff 用 `-a`,defense-in-depth
