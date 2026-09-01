@@ -1226,7 +1226,8 @@ function chunkRevs(revs: string[], size: number): string[][] {
  *    卻會讓 gate exit 非 0 —— 政策豁免的改動被判紅,是新引入的 false-red。
  *
  *    修法:stdout 接到檔案 fd,**完全不經過有上限的記憶體 buffer**;下游改成
- *    逐行串流消費(見 `consumeProducerFile`),記憶體不隨 patch 大小成長。
+ *    逐行串流消費(見 `consumeProducerFile`),記憶體不隨 patch 的**位元組總量**成長
+ *    (上界是單一邏輯行,界線見 `canDropLongPatchLine` 與 ADR〈已知限制〉第 7 條)。
  *    contract:X3 由 shim 觀測 producer 的 fd 1 必須是檔案而非 pipe。
  */
 function runPatchProducerToFile(
@@ -1287,7 +1288,7 @@ function runPatchProducerToFile(
   }
 }
 
-/** 每累積這麼多行就 flush 到桶檔,讓記憶體不隨單一 rev 的 patch 大小成長。 */
+/** 每累積這麼多**完成的行**就 flush 到桶檔,讓它們不在記憶體堆積(未完成行的長度另計)。 */
 const BUCKET_FLUSH_LINES = 2048;
 
 /** 長行探測門檻:累積超過這麼多字元仍未見換行,才評估能否增量丟棄。 */
@@ -1337,7 +1338,10 @@ export function canDropLongPatchLine(
 /**
  * 逐行消費 producer 產出的檔案,把新增行直接路由進「每 rev 每桶」的暫存檔。
  *
- * 記憶體只held 一行 + 一個小 flush buffer,不隨 patch / batch 大小成長。
+ * 記憶體上界 = 單一邏輯行 + 一個小 flush buffer;不隨 patch / batch 的**位元組總量**成長。
+ * ⚠️ **界線**:被掃路徑的超長單行仍會整行進記憶體(ADR〈已知限制〉第 7 條;非本次重構
+ * 造成的迴歸——重構前的 `git show` maxBuffer 是更低的 256 MiB)。排除路徑的長行由
+ * `canDropLongPatchLine` 增量丟棄。
  * separator 規則與 patch 狀態機都走 SSOT(`makeSeparatorConsumer` / `stepPatchLine`)。
  */
 function consumeProducerFile(

@@ -94,10 +94,15 @@ history diff 掃描的成本會隨 `baseline..HEAD` 的 commit 數成長,而 bas
 - **INV-4** subprocess 不得回退成每 rev 多倍乘法。
 
 patch producer 的 stdout **接檔案 fd、不經有上限的記憶體 buffer**,消費端逐行串流,
-記憶體不隨單一 patch 或整批的大小成長。這一點是必要的:pathspec 過濾在 JS 端做,
+記憶體不隨單一 patch 或整批的**位元組總量**成長。這一點是必要的:pathspec 過濾在 JS 端做,
 所以串流會包含後來才被排除的路徑(例如 lockfile 的大量 churn);若走有上限的
 記憶體 buffer,一個**只動豁免路徑**的大 commit 就會讓 gate 轉紅——政策豁免的改動
-被判紅是 false-red。代價是暫存檔佔用磁碟(而非記憶體),用完即刪。
+被判紅是 false-red。排除路徑的**超長單一邏輯行**另外由增量丟棄擋住。
+代價是暫存檔佔用磁碟(而非記憶體),用完即刪。
+
+⚠️ **界線**:記憶體用量不隨 patch 或整批的位元組總量成長,但**仍隨「單一邏輯行」的長度
+成長**——屬於任一掃描桶的內容不能丟(丟了就是漏掃),所以被掃路徑的超長單行沒有有界的
+串流處理方式。見〈已知限制〉第 7 條。
 
 守門測試在 `tests/check-no-source-terms.test.ts`(PATH shim 觀測實際 subprocess:
 呼叫預算、rev multiset 覆蓋、批次互斥、三類斜率、POSIX ERE 未被換掉)。
@@ -146,6 +151,15 @@ CA(context-aware)判定只對「hit 的內容」做 self-PR 放行,所以**內�
    契約守。章節錨點(`#anchor`)不被任何機器驗證,標題穩定性靠人工紀律。
 6. **非 UTF-8 位元組** —— patch 以 UTF-8 讀取(與改動前相同),`--text` 強制輸出的
    非 UTF-8 位元組會變成替換字元。這不影響 ASCII 識別詞的比對。
+7. **被掃路徑的單一超長邏輯行仍會整行進記憶體** —— 消費端逐行處理,一行就是記憶體
+   上界。屬於任一掃描桶的內容不能丟(丟了就是漏掃),所以只有**排除**路徑的超長行走
+   增量丟棄。若某個 post-baseline commit 在被掃路徑新增一條超過 Node
+   `MAX_STRING_LENGTH`(v24 = 536870888)的單一邏輯行,history diff scan 會 throw、
+   rc=2 → **false-red**(不是漏抓)。
+   ⚠️ **這不是效能重構造成的迴歸**:重構前 `scanRevDiff` 用 `git show` 搭
+   `maxBuffer: 256 MiB`,同樣情境在**更低**的門檻就會失敗;重構把界線從「整批
+   256 MiB」放寬成「單行約 512 MB」。要徹底解除,需要把長行分塊寫進桶檔、
+   不在 JS 內實體化整行。**目前沒有指派給任何後續批次。**
 
 ## Provenance
 
