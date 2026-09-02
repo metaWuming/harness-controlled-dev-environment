@@ -75,6 +75,19 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-09-02 ② — **git-add-guard:`git add -A` 誤加工具產物的機器化守門(LESSONS ⚠️ 第 ≥4 次 → 升級階梯)**
+
+> **緣起**:Owner 拍板(PR #45 merge 後):把 LESSONS ⚠️ [2026-08-29] 的規則寫進本 repo 並機器化。frozen base `80f76b8`(main = v0.2.0 + #45),直接在主 worktree 開 `feat/git-add-guard`(當時已無其他 worktree、工作樹乾淨)。
+> **改動**:**13 檔 / 5 commits**(`git diff --name-only base..HEAD | wc -l` / `git rev-list --count`)。三層:①`.gitignore` 列 `.codegraph` / `.gbrain-source` / `_handoffs`(**不加尾斜線**,symlink 才會被 ignore);②`code-pattern.sh` 第三個 SSOT `TOOL_ARTIFACT_PATTERN='(^|/)\.codegraph(/|$)|…'`,pre-commit 在**任何分支**、任意深度、檔 / 目錄 / symlink 皆擋,刪除放行以便清理;工具產物段用 `git diff --cached --name-only -z --diff-filter=d` 寫暫存檔(失敗即 exit 1)後 `read -d ''` 逐筆原始位元組比對;③`CLAUDE.md` §4.6 成文規則。`check-hooks.sh` 載入 + 冒煙第三個 SSOT;ADOPTION §4 / OVERVIEW / LESSONS / catalog CTRL-HOOK-001 同步。
+> **驗證**:typecheck / lint / **23 檔 856 passed + 2 skipped**;`check:hooks`(三個 pattern)/ catalog / doc-refs / doc-size / no-source-terms / adoption / todos 全綠;`tests/check-hooks.test.ts` 18 條(含真 `git commit` 行為級:非 ASCII、TAB、symlink、巢狀、`rm --cached` 清理放行、`.gitignore` 第一道 `add -A` 正對照)。**mutation `git-add-guard.json` 7/7** 綁 `875b015e089c04b8ea9066c287ac33d606698e4a`。
+> **審查**:Codex commit-only 4 輪(r1 P2 檔頭「兩個 pattern」;r2 **P1:`core.quotePath=false` 只解高位元、TAB / LF 仍 C-quote → 繞過**;r3 / r4 PASS)。Step 5 worktree 審 3 輪:r1 **2 C + 8 I**(C1 quotePath 非 ASCII 繞過、C2 刪除也被擋封死清理路徑)→ r2 **1 C + 5 I**(C1 修一半,`"` / `\` / TAB 仍繞過 = Codex P1 同形狀)→ r3 **0 C + 7 I 收斂**(順手修 F2 fail-open、F3 測試斷言、F7 用語)。共 3 CRITICAL + 1 P1 全修;登錄 F1 LF 路徑誤擋(安全方向)、F4 BSD grep locale、F5 測試 gitc 未切 global config、F6 訊息拆行、F6(r2)巢狀冒煙為刻意升級訊號。
+> **⭐ 教訓**:①**「修一半」比不修更危險**——r1 用 `quotePath=false` 修 C1,只覆蓋了 fixture 用的中文檔名;Codex 與 Step 5 r2 各自獨立用 TAB / `"` 打穿。修 encoding 類問題要拿**規格**(git 文件:引號 / 反斜線 / 控制字元不論設定一律跳脫)驗,不能拿一個樣本驗。②**目錄假設會在 symlink 上同時打穿兩道**(`.gitignore` 尾斜線 + pattern 尾 `/`);兩道防線用同一個假設就不是縱深。③process substitution 在 `set -e` 下是 fail-open 形狀——gate 讀外部指令輸出要落地並檢查 exit code。
+> **⏭️ 下一棒候選**(hint 非 truth):A. Milestone B1;B. TODOS P2#2 / P2#3;C. A2 / A3 defer 集合(含 protectedBranches 擴大警示)。
+> **check:claims 逐條處置**:命中以 pre-commit / code-pattern.sh 註解與測試名為主,留 A(「任何分支」「一律」是 hook 實際行為;「唯一」為 SSOT 設計)。
+> 📊 成本:CC ~3h / Codex 4 輪 + Step 5 3 輪 + mutate 5 輪 / P1 1 個 / P2 1 個 / Step5 獨立發現 20 個(3 CRITICAL、修 10、defer 7)
+> 📐 量測:claude-fable-5-1 effort low;Codex gpt-5.6-terra medium(新 pane w2:p8);baseline `80f76b858d1ffdfa902387dd62c6321575009c44`;來源分佈:既有缺陷 0・漏改 consumer 3(check-hooks 檔頭、ADOPTION §4、OVERVIEW)・baseline 後引入 17(其中 2 CRITICAL + 1 P1 由 r1 修法引入)
+> **7 步 checklist**:1 ✅(Owner 口頭 scope,無 plan file——小型 governance PR)/ 2 ✅ / 3 ✅ / 4 ✅ Codex r1–r4 / 4.5 ✅ 高風險車道(hooks),探針 7/7 / 4.6 ✅ 未觸發 / 5 ✅ r3 收斂 / 6-7 待執行
+
 📅 2026-09-03 ① — **PR A3:Control Catalog + 文件一致性治理 + Milestone A 收尾(0.2.0)**
 
 > **緣起**:優化方案 §7 + 不變量 I3 / I4 / I6;A2 交付後 Milestone A 最後一項。frozen base `5832d9ed7b57c471dcb1a298ddf9245100529bb4`,乾淨 worktree `feat/a3-control-catalog`;dirty main worktree 未讀未動(rev 2 provenance 原則:兩條 A1 defer 由已 commit 證據重建)。plan 走 supervisor 4 輪(trigger 陣列、CI-011/012 與 step 同 commit、不讀 dirty main、baseline gate 檔案集合與單一 `--base`、review 節奏改全範圍;rev 3 路徑精確化與 30 條計數;rev 4 `ciSetupSteps` root schema)。
