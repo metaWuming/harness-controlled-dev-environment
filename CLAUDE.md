@@ -207,6 +207,8 @@ codebase 裡兩種寫法打架時,選一個(通常選較新 / 測試較多的),�
 
 **例外**(不走流程):trivial 改(typo / 單行 rename / 純格式整理)— 直接 commit
 
+各道控制措施的強度分級(hard / soft / manual / advisory / periodic)、bypass 與證據以 `docs/CONTROL-CATALOG.md` 為正本,本檔不重列。
+
 ---
 
 ## Part 3:何時可以放寬規則
