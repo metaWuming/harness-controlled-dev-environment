@@ -10,9 +10,10 @@ type: guide
 
 ## [Unreleased] — 移除 `DELIVERY_REFS` env 通道(breaking)
 
-- **變了什麼**:`check:todos` 與 `check:no-source-terms` 的交付證據**唯一來源是受驗的 `origin/HEAD`**(目標須為 `refs/remotes/origin/<name>`、正規、可解、且 `<name>` 宣告在 `scripts/harness.config.json` 的 `deliveryBranches`)。兩支腳本**不再讀任何 env**;workflow-level `DELIVERY_REFS` 已從 `ci.yml` 刪除。
+- **變了什麼**:`check:todos` 與 `check:no-source-terms` 的交付證據**唯一來源是受驗的 `origin/HEAD`**(目標須為 `refs/remotes/origin/<name>`、正規、可解、且 `<name>` 宣告在 `scripts/harness.config.json` 的 `deliveryBranches`)。交付 ref 相關的 env **`DELIVERY_REFS` 已移除、不再被讀**;workflow-level `DELIVERY_REFS` 已從 `ci.yml` 刪除。(`MARKER_SELF_PR` 是另一條獨立通道,**保留**、仍必須設。)
+- **`deliveryBranches` 的語意**:現在只用來驗 `origin/HEAD` 目標**這一個**分支是否被允許——它是「允許的 origin/HEAD 目標白名單」,不是「證據來源集合」。宣告第二個以上的分支對證據集合**零影響**(例:`['main','develop']` 不會讓 develop 的 merge 算證據)。
 - **為什麼**:祖先契約(上一版)下,任何通過驗證的 env 候選都是 origin/HEAD 的祖先,`git log` 集合不變、加不進任何 PR 號;通道只剩「驗證會不會拒絕」與可被 tag / 遮蔽觸發的 fail-closed DoS 面。
-- **導入者要做什麼**:若你的 workflow 自訂了 `DELIVERY_REFS`,**刪掉即可**(留著也會被靜默忽略,不會壞)。若你依賴它把 `origin/develop` 或 release 線的 merge 算作證據:**現在沒有任何通道**——交付證據 = `git remote set-head` 指向的 default branch。CI 內 `origin/HEAD` 由 `git remote set-head origin -a` 決定,**等於 GitHub repo 的 default branch**,導入者無法在 CI 內另指;要換交付線就改 GitHub default branch,並把它宣告在 `deliveryBranches`。GitFlow 專案注意:push 到 `develop` 時三個 step 仍會跑,但證據只來自 default branch(policy A 既有行為)。
+- **導入者要做什麼**:若你的 workflow 自訂了 `DELIVERY_REFS`,**刪掉即可**(留著也會被靜默忽略,不會壞)。若你依賴它把 `origin/develop` 或 release 線的 merge 算作證據:**現在沒有這種通道**。CI 內 `origin/HEAD` 由 Fetch step 的 `git remote set-head origin -a` 決定 = GitHub repo 的 default branch;要換交付線有兩條路:(a) 改 GitHub default branch;(b) 把 Fetch step 那行改成 `git remote set-head origin <branch>`,並把 `<branch>` 宣告在 `deliveryBranches`。**GitFlow 專案注意**:PR 進 `develop` 或 push 到 `develop` 時三個 step 都會跑,但證據只來自 origin/HEAD;TODOS 內引用「只 squash 進 develop、尚未 promotion 到 main」的 PR 號會被 TODOS Markers Check 擋到 promotion 為止(policy A 既有行為,本版未改)——要避免就走上面 (b) 把交付線指到 develop。
 - **回滾**:`git revert` 本 PR 的 squash commit,env 通道與其測試 / 探針整組還原;無 config schema 變更。
 
 ## 0.1 → 0.2(Milestone A)
