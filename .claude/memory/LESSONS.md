@@ -68,6 +68,55 @@ type: note
 
 <!-- 教訓從這裡開始,新的在最上面 -->
 
+## [2026-08-29] `git add -A` 把 pre-existing untracked 誤加進 commit(即使 CLAUDE.md 已明文禁止仍踩)
+
+**情境**
+PR A1 Round 2 fix 收乾,要 commit code + tests。當時工作樹 tracked 檔剛改完、pre-existing untracked 有 `.codegraph/` + `.gbrain-source`(user 工具生成、明確不進版控)。順手打了 `git add -A`,commit 就把 `.codegraph/.gitignore` + `.gbrain-source` 都加進去。
+
+**錯誤/誤判**
+Commit 已建立(sha `2b80764`),違反 plan 明文約束「不 add .codegraph/ / .gbrain-source」+ CLAUDE.md 全域規則「用具體檔案名優先於 git add -A」。發現後立即 `git reset --soft HEAD~1` + `git restore --staged .codegraph .gbrain-source` + 重新 commit(sha `810cbb9`),但 commit 歷史 rewrite 了(feature branch 內部 rewrite 是允許 SOP)。
+
+**為什麼會發生**
+連續 commit 節奏中(每輪 review fix 都要 commit)、`-A` 打字快、腦子把「stage 這一輪改動」等同「stage 全部」——沒去看 status 內是否有 untracked。心裡想「只改了 tracked file 應該沒事」——這句話本身就是危險假設,因為 `-A` 對 untracked 有效。
+
+**之後該怎麼避免**
+- **每次 `git add` 前一定先 `git status --short`**,看有無 `??` 前綴的 untracked line。有 → 條列明白要 add 的檔名,不用 `-A`。
+- 覺得 `-A` 順手時,想「我可以列出所有要 add 的檔嗎?」——列不出來就代表根本不知道自己在 add 什麼。
+- CI hooks 未來可加 pre-commit 檢查:diff --cached 內若有 `??` 過的路徑 → 擋(但這是治理層 A3 之後的事、目前靠紀律)。
+- 已在 CLAUDE.md 全域「安全底線」寫過同精神規則,踩到說明**規則存在 ≠ 每次都套用**——高強度 sprint 節奏更容易犯,要更主動 status 檢查。
+
+**相關檔案/連結**
+- `~/.claude/CLAUDE.md`(全域「安全底線」)
+- PR #40 commit `810cbb9`(重 commit 後的正確版)+ 已 rewrite 掉的 `2b80764`
+
+---
+
+## [2026-08-29] Codex CLI `--base` 每輪**固定** vs check:claims `--base` 每輪**推進** — 兩個 base 語意不同
+
+**情境**
+PR A1 Round 3 送 codex review,把 `--base` 設成「上一輪送審前的 HEAD」(round 2 fix 完的 `810cbb9`),想說對齊 SOP 「上一輪送審 HEAD」語意。結果 codex 回:「The requested diff is empty」——因為那個 SHA 就是 current HEAD。
+
+**錯誤/誤判**
+把 SOP Step 4「送第一輪之前先固定 baseline」的 baseline、跟壓輪數紀律 ⑵ 的 `check:claims --base=<上一輪送審 HEAD>` 混為一談。兩個 base 是不同語意:
+- Codex review base:**跨輪固定** = origin/main(或 delivery branch)。每輪 codex 都看整支 branch(origin/main..HEAD),整支 branch 每輪都可能有新 fix 加進來、也可能之前的 finding 被修掉、代表整體審查對象。
+- check:claims base:**每輪推進** = 上一輪送審前的 HEAD。用來只掃「本輪 fix 引入的新宣稱句」,避免 round 2 之後每輪都被前幾輪已處置的宣稱淹沒(SOP checklist Step 4「壓輪數紀律 ⑵」明講)。
+- SOP Step 4「送第一輪之前先固定 baseline」的 baseline **只用來分類 finding 來源**(既有缺陷 / 漏改 consumer / baseline 後引入)、寫進 progress cost metadata;**不是任何工具的 --base 參數**。
+
+**為什麼會發生**
+- SOP 三處用到「base / baseline」但語意不同(review 送審對象 / claims 掃描窗 / finding 分類),名詞相同、讀 SOP 快時容易合流。
+- Codex `--base` 的 error message(「diff empty」)其實已明講原因,但一開始我以為是 codex CLI 的 bug、不是我用錯。
+
+**之後該怎麼避免**
+- 三種 base 記在腦裡不同格子:①codex `--base`(送審對象、跨輪固定,通常 = 主線)。②check:claims `--base`(掃描窗、每輪推進,= 上一輪送審 HEAD)。③SOP Step 4 baseline(finding 分類,不是任何 CLI 參數)。
+- 每次跑 codex review 打 `--base origin/main` 別想別的。真要送別支 branch review 才另想。
+- SOP 未來版本可考慮把 ③ 改稱「classify-baseline」以區分。
+
+**相關檔案/連結**
+- `.claude/sop/plan-mode-checklist.md` Step 4「壓輪數紀律 ⑵」
+- PR #40 progress entry 教訓 ②(2026-08-29 ①)
+
+---
+
 ## [2026-08-27] self-PR # citation 三處撞去識別化 denylist:test fixture / TODOS 補號 / CI push event
 
 **情境**
