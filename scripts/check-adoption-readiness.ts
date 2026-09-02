@@ -232,10 +232,10 @@ export function checkPart4Content(cfg: HarnessConfig, io: CheckerIo): Finding[] 
             out.push(fail('A2.4.6', `### 4.6 必須以反引號提到 config 宣告的分支 \`${b}\``));
           }
         }
-        // Step 5 r1 I4:加 \b,否則「Firebase」的子字串 rebase 也算合併策略。
-        // r2 F1 / F2:允許英文時態 / 複數 / 連字(squashed、merge commits、rebased)與 fast-forward 系寫法。
-        if (!bodyLines.some((l) => /\b(squash(ed|es|ing)?|merge[ _-]?commits?|rebas(e|ed|ing)|fast-forward|ff-only|no-ff)\b/i.test(l))) {
-          out.push(fail('A2.4.6', '### 4.6 必須寫明合併策略(squash / merge commit / rebase 至少一個)'));
+        // PR A3 P5:合併策略改宣告式——harness.config.mergeStrategy 是正本,4.6 只驗有沒有以反引號提到它
+        // (A2 Step 5 三輪證明關鍵字 regex 是固有邊界:否定句 / URL / 時態變體都是邊角,不再打補丁)。
+        if (!s.body.includes(`\`${cfg.mergeStrategy}\``)) {
+          out.push(fail('A2.4.6', `### 4.6 必須以反引號提到 harness.config 宣告的合併策略 \`${cfg.mergeStrategy}\``));
         }
         break;
       }

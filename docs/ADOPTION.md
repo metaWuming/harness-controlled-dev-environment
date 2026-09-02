@@ -12,7 +12,8 @@ type: guide
 
 ## 0. 宣告模式(先做這個,其他步驟才有機器驗證)
 
-- [ ] 開 `scripts/harness.config.json`:`mode` 改成 `"adopted"`、`projectId` 改成你的 slug
+- [ ] 開 `scripts/harness.config.json`(schemaVersion **2**):`mode` 改成 `"adopted"`、`projectId` 改成你的 slug、
+      `mergeStrategy` 選 `squash` / `merge-commit` / `rebase` / `fast-forward`(§4.6 要以反引號提到它)
       (小寫英數與 `-`,不得含 template / placeholder / project)、`protectedBranches` /
       `deliveryBranches` 對齊你的分支策略、`requiredAgentAdapters` 宣告你會用的 agent
       (v1 認得 `claude` / `codex`)、`githubGovernanceRequired` 需要 CODEOWNERS 時設 true
@@ -44,7 +45,7 @@ type: guide
 - [ ] §4.3 Health Stack:反引號 `npm run <script>` ≥3 個、每個存在於 package.json、含 typecheck / lint / test
 - [ ] §4.4 部署資訊:staging / production
 - [ ] §4.5 禁區清單:≥2 個 bullet、每個 bullet 用反引號寫實際存在的檔或目錄
-- [ ] §4.6 Git 規範:config 宣告的每個分支名以反引號出現、寫明 squash / merge commit / rebase
+- [ ] §4.6 Git 規範:config 宣告的每個分支名以反引號出現、以反引號提到宣告的 `mergeStrategy` 值(關鍵字散文不算)
 
 ## 2.5 思考力道與 agent 定義
 

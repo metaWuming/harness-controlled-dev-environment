@@ -64,6 +64,7 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 - **內容**:①`checkCiRunsAdoption` 只比對 `run:` 行,step 加 `if: false` / `continue-on-error` 仍過(conf 5);②字面分支名文法比 `git check-ref-format --branch` 寬(`main.`、`a/.b`、`feat/x.lock/y` 通過;fail-closed 方向,4 來源都得含它才 READY)(conf 5);③`parsePart4` 逐行找 `### 4.x` 先於註解剝除,HTML 註解內假標題可覆蓋真段(conf 5);④4.5 路徑放行 `isDir` 讓 `` `..` `` / `` `.` `` 過(conf 4);⑤`PLACEHOLDER_RE` 不含 `?` / `無` / `unknown`(conf 4);⑥hook 檔 CRLF 讓 A5 regex `;;$` 找到 0 → 假紅(conf 4);⑦`--root` dynamic import 會執行該 root 的 `cso-trigger.config.ts`(等同跑對方 npm scripts;檔頭應標明)(conf 3);⑧4.3 反引號計數不辨 fenced code(conf 3);⑨HTML 註解剝除 regex 不辨 markdown code 邊界,code block 內 `<!--` … `-->` 會吞掉真引用(conf 4);⑩A6.claude.link 仍是子字串比對、比 codex 側寬(conf 4);⑪–⑯4.6 合併策略關鍵字檢查:`merge-commit-sha` / `mergecommit` 命中(conf 6)、`ff-only` 在 URL / 檔名內命中(conf 5)、否定句「不要用 no-ff」通過(conf 5)、`fast-forwarded` / `rebases` / 雙空白不過(conf 4)、錯誤訊息與 CLAUDE.md / ADOPTION 未列 ff 系寫法(conf 4)、正對照未覆蓋 `merge-commit` 連字分支(conf 2)
 - **方向**:4.6 那組是「關鍵字存在」檢查的固有邊界,不要再打補丁——若要收,改成要求採用者在 harness.config 宣告 `mergeStrategy` 枚舉值、4.6 只驗有沒有以反引號提到它(A3 catalog 時一併評估);其餘逐條 0.5–1h
 - **工時**:逐條 0.5–1h;4.6 改宣告式約 2h
+- **交付(部分,PR A3)**:⑪–⑯(4.6 那組)—— `harness.config.json` schemaVersion 2 加必要欄位 `mergeStrategy`,4.6 改驗「以反引號提到宣告值」、關鍵字 regex 整段刪除;①–⑩ 仍 pending
 
 ### 🟢 `grep.column=true` 時 `git grep -z` 是三個 NUL,顯示會錯位
 - **來源**:2026-09-01 PR A1.1 Step 5 r3 I11(confidence 8)

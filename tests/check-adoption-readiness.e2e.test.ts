@@ -123,7 +123,7 @@ const CLAUDE_FILLED = `# CLAUDE.md
 
 ### 4.6 Git 規範
 
-- \`main\` 正式、\`develop\` 開發;feature → develop squash
+- \`main\` 正式、\`develop\` 開發;feature → develop \`squash\`
 
 ---
 `;
@@ -132,7 +132,8 @@ function templateFiles(): Record<string, string> {
   const f: Record<string, string> = {
     'package.json': JSON.stringify({ name: 'harness-controlled-dev-environment', scripts: { typecheck: 'x', lint: 'x', test: 'x' } }),
     'scripts/harness.config.json': JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
+      mergeStrategy: 'squash',
       mode: 'template',
       projectId: '__TEMPLATE__',
       templatePackageName: 'harness-controlled-dev-environment',
@@ -160,7 +161,8 @@ function adoptedFiles(): Record<string, string> {
   return {
     'package.json': JSON.stringify({ name: 'my-shop', scripts: { typecheck: 'x', lint: 'x', test: 'x' } }),
     'scripts/harness.config.json': JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
+      mergeStrategy: 'squash',
       mode: 'adopted',
       projectId: 'my-shop',
       templatePackageName: 'harness-controlled-dev-environment',
@@ -221,7 +223,7 @@ describe('check:adoption e2e', () => {
     expect(r.out).not.toMatch(/TEMPLATE_MODE|READY/);
   });
   it('config malformed / mode 拼錯 / schema 未知 → exit 2 帶檔名', () => {
-    for (const bad of ['{', JSON.stringify({ ...JSON.parse(templateFiles()['scripts/harness.config.json']!), mode: 'adopte' }), JSON.stringify({ ...JSON.parse(templateFiles()['scripts/harness.config.json']!), schemaVersion: 2 })]) {
+    for (const bad of ['{', JSON.stringify({ ...JSON.parse(templateFiles()['scripts/harness.config.json']!), mode: 'adopte' }), JSON.stringify({ ...JSON.parse(templateFiles()['scripts/harness.config.json']!), schemaVersion: 3 })]) {
       const f = templateFiles();
       f['scripts/harness.config.json'] = bad;
       const r = run([`--root=${makeRepo(f)}`]);

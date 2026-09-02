@@ -106,5 +106,17 @@
     "find": "    if (l !== expected) out.push(fail('A5.ci.if'",
     "replace": "    if (false) out.push(fail('A5.ci.if'",
     "label": "M16 A5.ci.if:逐字比對拿掉 → 多 / 少分支、順序、default_branch 表達式負對照轉紅"
+  },
+  {
+    "file": "scripts/check-adoption-readiness.ts",
+    "find": "        if (!s.body.includes(`\\`${cfg.mergeStrategy}\\``)) {",
+    "replace": "        if (!s.body.includes(cfg.mergeStrategy)) {",
+    "label": "M17 4.6:不看反引號、散文提及也算 → 「沒反引號」負對照轉紅"
+  },
+  {
+    "file": "scripts/lib/harness-config.ts",
+    "find": "  if (obj.schemaVersion !== HARNESS_SCHEMA_VERSION) {",
+    "replace": "  if (obj.schemaVersion !== HARNESS_SCHEMA_VERSION && obj.schemaVersion !== 1) {",
+    "label": "M18 loader:偷收 schemaVersion 1 → 拒收負對照轉紅"
   }
 ]
