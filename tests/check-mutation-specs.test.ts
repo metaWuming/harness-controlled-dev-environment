@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { checkSpecFile, formatReport, invokedAsMain, listSpecFiles, parseRootArg, runCheck, SPEC_DIR } from '../scripts/check-mutation-specs';
+import { checkSpecFile, formatReport, listSpecFiles, parseRootArg, runCheck, SPEC_DIR } from '../scripts/check-mutation-specs';
 
 const REPO = path.resolve(__dirname, '..');
 const TSX = path.join(REPO, 'node_modules/.bin/tsx');
@@ -150,18 +150,8 @@ describe('formatReport / parseRootArg', () => {
     expect(parseRootArg(['--root=/x', '--root=/y'])).toMatchObject({ ok: false });
     expect(parseRootArg(['--all'])).toMatchObject({ ok: false });
   });
-  it('invokedAsMain:兩邊 realpath 後比對;argv[1] 缺 → false', () => {
-    const dir = makeRepo();
-    const real = path.join(dir, 'a.ts');
-    writeFileSync(real, '');
-    symlinkSync(dir, path.join(dir, 'link'));
-    const viaLink = path.join(dir, 'link', 'a.ts');
-    const url = 'file://' + real;
-    expect(invokedAsMain(url, viaLink)).toBe(true);
-    expect(invokedAsMain(url, real)).toBe(true);
-    expect(invokedAsMain(url, path.join(dir, 'b.ts'))).toBe(false);
-    expect(invokedAsMain(url, undefined)).toBe(false);
-  });
+  // invokedAsMain 本地實作已抽出到 scripts/lib/invoked-as-main.ts,unit test 覆蓋
+  // 見 tests/invoked-as-main.test.ts;此處不重複(P2#3 defer ①②)
   it('root 不存在 → code 2', () => {
     expect(runCheck(path.join(tmpdir(), 'msd-does-not-exist-' + Date.now())).code).toBe(2);
   });

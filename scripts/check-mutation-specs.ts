@@ -32,6 +32,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { detectInvocation, reportIfNotMain } from "./lib/invoked-as-main";
 import { applyMutation, checkTarget, parseSpecs } from "./mutate";
 
 export const SPEC_DIR = "scripts/mutations";
@@ -177,27 +178,10 @@ export function parseRootArg(argv: string[]): { ok: true; root: string | null } 
   return { ok: true, root: rootArgs.length === 1 ? rootArgs[0]!.slice("--root=".length) : null };
 }
 
-/**
- * ESM main 判定。**兩邊都 realpath** 再比——tsx 給的 `import.meta.url` 已是 realpath,
- * `process.argv[1]` 則是使用者打的原樣;經 symlink 目錄(macOS `/tmp` → `/private/tmp`)呼叫時
- * 兩者不等,舊寫法會讓整段 main 不執行、**靜默 exit 0**(Step 5 r1 CRITICAL:fail-closed 守門
- * 自己 fail-open)。realpath 失敗就退回原字串比對,不放大失效面。
- */
-export function invokedAsMain(selfUrl: string, argv1: string | undefined): boolean {
-  if (argv1 === undefined) return false;
-  const self = fileURLToPath(selfUrl);
-  const arg = path.resolve(argv1);
-  const real = (p: string): string => {
-    try {
-      return fs.realpathSync(p);
-    } catch {
-      return p;
-    }
-  };
-  return real(self) === real(arg);
-}
-
-const isMain = invokedAsMain(import.meta.url, process.argv[1]);
+// ESM main 判定改用 scripts/lib/invoked-as-main.ts 共用 lib(P2#3 defer ①②):
+// 兩端 realpath、indeterminate 由 caller 顯式 exit(2)、被當 import 用時完全靜默。
+const outcome = detectInvocation(import.meta.url, process.argv[1]);
+const isMain = reportIfNotMain(outcome, "check-mutation-specs");
 
 if (isMain) {
   let code: 0 | 1 | 2 = 2;
@@ -214,4 +198,6 @@ if (isMain) {
     console.error(`✗ 無法判定:未預期例外:${(e as Error).message}`);
   }
   process.exit(code);
+} else if (outcome.kind === "indeterminate") {
+  process.exit(2);
 }
