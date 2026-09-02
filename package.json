@@ -22,6 +22,7 @@
     "check:hooks": "bash scripts/check-hooks.sh",
     "check:no-source-terms": "tsx scripts/check-no-source-terms.ts",
     "check:bookkeeping": "tsx scripts/check-bookkeeping-commit.ts",
+    "check:adoption": "tsx scripts/check-adoption-readiness.ts",
     "mutate": "tsx scripts/mutate.ts"
   },
   "devDependencies": {
