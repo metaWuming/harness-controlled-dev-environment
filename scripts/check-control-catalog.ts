@@ -55,7 +55,7 @@ function normalizeStepName(raw: string): { name: string | null; unsupported: str
   const v = raw.trim();
   if (v === '' || v === '|' || v === '>' || v.startsWith('|') || v.startsWith('>')) return { name: null, unsupported: raw };
   const q = /^"(.*)"\s*(#.*)?$|^'(.*)'\s*(#.*)?$/.exec(v);
-  if (q) return { name: (q[1] ?? q[3])!, unsupported: null };
+  if (q) return { name: q[1] !== undefined ? q[1].replace(/\\"/g, '"') : q[3]!.replace(/''/g, "'"), unsupported: null };
   return { name: v.replace(/\s+#.*$/, ''), unsupported: null };
 }
 
@@ -85,7 +85,9 @@ export function extractCiSteps(yml: string): CiStepItem[] {
     if (/^\s*(#|$)/.test(raw)) continue;
     const indent = /^\s*/.exec(raw)![0].length;
     const t = raw.trim();
-    if (stepsIndent >= 0 && indent <= stepsIndent) {
+    // r3 I-2:YAML 允許 list item 與父 key 同欄位(`steps:` 與 `- name:` 同縮排);那種形狀不算離開區塊
+    const sameColumnItem = stepsIndent >= 0 && indent === stepsIndent && (t === '-' || t.startsWith('- ')) && (itemIndent < 0 || itemIndent === indent);
+    if (stepsIndent >= 0 && indent <= stepsIndent && !sameColumnItem) {
       flush();
       stepsIndent = -1;
       itemIndent = -1;

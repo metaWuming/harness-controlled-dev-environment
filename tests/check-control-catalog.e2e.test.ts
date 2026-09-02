@@ -113,6 +113,10 @@ describe('extractCiSteps(Step 5 r1 C4 / I1)', () => {
     const items = extractCiSteps(yml);
     expect(items.map((s) => s.name)).toEqual(['Baseline Governance Check', null, null, 'Dashed']);
   });
+  it('I-2:steps: 與 - name: 同欄位(YAML 合法)也算區塊;I-4:單引號 \'\' 與雙引號 \\" 跳脫還原', () => {
+    const yml = `jobs:\n  ci:\n    steps:\n    - name: A\n      run: x\n    - name: 'It''s'\n    - name: "Say \\"hi\\""\n    env: {}\n`;
+    expect(extractCiStepNames(yml)).toEqual(['A', "It's", 'Say "hi"']);
+  });
   it('引號剝掉、尾端註解剝掉;`name: |` 標 unsupported;matrix include 的 - name 不算 step;steps 以外的 - name 不算', () => {
     const yml = `jobs:\n  ci:\n    strategy:\n      matrix:\n        include:\n          - name: node22\n    steps:\n      - name: "Lint"\n        run: x\n      - name: 'Typecheck' # c\n      - name: Test (vitest) # trailing\n      - name: |\n          multi\n  other:\n    - name: NotAStep\n`;
     const items = extractCiSteps(yml);

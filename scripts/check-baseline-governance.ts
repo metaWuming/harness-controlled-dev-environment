@@ -11,8 +11,9 @@
 // 規則(全部 fail-closed;無法判定 exit 2):
 //   0. 判定輸入只有 argv:`--base=<ref>`(必填、單一,PR 的 base 分支)、選用 `--head=<name>`(PR 的 head 分支名,
 //      **只在同 repo 的 PR** 才由 CI 傳入;fork PR 不傳)、選用 `--root=<dir>`(e2e fixture);**不讀任何 env**。
-//      `--head` ∈ harness.config 宣告的 protectedBranches → 這是保護分支之間的 promotion PR(develop → main),
-//      其內容在進入 head 分支時已逐 PR 受本 gate 檢查 → 明文 SKIPPED、exit 0(Step 5 r1 C3)。
+//      `--head` ∈ **merge-base 那側** harness.config 宣告的 protectedBranches → 保護分支之間的 promotion PR
+//      (develop → main),其內容在進入 head 分支時已逐 PR 受本 gate 檢查 → 明文 SKIPPED、exit 0(Step 5 r1 C3;
+//      r3:政策必須讀 merge-base,PR 自己的 config 改不到豁免名單)。
 //   1. mb = merge-base(base, HEAD);取不到 / mb == HEAD → 2。
 //   2. 兩端 config 的 baseline 值相同 → 0(BASELINE_UNCHANGED)。
 //   3. 值改變 → `git diff --name-only mb HEAD` 每個路徑必須 ∈ {config, ADR} ∪ bookkeeping allowlist
@@ -30,7 +31,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isBookkeepingPath } from './check-bookkeeping-commit';
 import { parseBaselineConfig } from './check-no-source-terms';
-import { loadHarnessConfig } from './lib/harness-config';
+import { HARNESS_CONFIG_PATH, parseHarnessConfig } from './lib/harness-config';
 
 export const BASELINE_CONFIG = 'scripts/source-term-baseline.json';
 export const BASELINE_ADR = 'docs/architecture/' + 'source-term-history-baseline.md';
@@ -62,10 +63,12 @@ export interface GovernanceResult {
 }
 
 export interface GovernanceOptions {
-  /** PR head 分支名(同 repo PR 才傳);∈ protectedBranches → promotion PR,SKIPPED。 */
+  /**
+   * PR head 分支名(同 repo PR 才傳)。∈ **merge-base 那一側**的 harness.config `protectedBranches` → promotion PR,SKIPPED。
+   * 🔴 Step 5 r3 C:政策必須從 merge-base 讀(`git show <mb>:scripts/harness.config.json`),不能從 PR 的工作樹讀——
+   *    否則攻擊 PR 自己把分支名加進 protectedBranches 就能拿到豁免。mb 那側缺 config / 壞 → 不豁免、照常判定。
+   */
   headRef?: string | null;
-  /** harness.config 宣告的 protectedBranches(有 headRef 時必填)。 */
-  protectedBranches?: string[];
 }
 
 export function evaluateBaselineGovernance(baseRef: string, io: GitIo, opts: GovernanceOptions = {}): GovernanceResult {
@@ -73,21 +76,7 @@ export function evaluateBaselineGovernance(baseRef: string, io: GitIo, opts: Gov
   const und = (code: string, msg: string): GovernanceResult => ({ status: 'UNDETERMINED', findings: [{ code, msg }], lines: [`BASELINE_GOVERNANCE_UNDETERMINED — [${code}] ${msg}`] });
 
   if (!BASE_REF_RE.test(baseRef)) return und('base.shape', `base ref ${JSON.stringify(baseRef)} 形狀不合法`);
-  if (opts.headRef !== undefined && opts.headRef !== null) {
-    // Step 5 r2 C-2:head 是 GitHub 送來的任意合法 git 分支名(可含 # @ + = 非 ASCII),只拿來與 protectedBranches
-    // 做精確相等比對;不套 config 的保守文法(那會讓合法 PR 假紅)。不相等 = 不豁免,照常判定。
-    if (!opts.protectedBranches) return und('head.no-policy', '--head 需要 harness.config 的 protectedBranches 才能判定');
-    if (opts.protectedBranches.includes(opts.headRef)) {
-      return {
-        status: 'SKIPPED',
-        findings: [],
-        lines: [
-          `BASELINE_GOVERNANCE_SKIPPED — head ${opts.headRef} ∈ protectedBranches:保護分支之間的 promotion PR,其內容進入 ${opts.headRef} 時已逐 PR 受本 gate 檢查(fork PR 不會走到這裡)`,
-          `  [info] 此豁免只在所有 protectedBranches 都真的要求 PR(branch protection / ruleset)時成立;直接 push 到 ${opts.headRef} 不會經過本 gate(I-6)`,
-        ],
-      };
-    }
-  }
+
   const baseSha = io.git(['rev-parse', '--verify', '--quiet', `${baseRef}^{commit}`]);
   if (!baseSha) return und('base.unresolvable', `base ref ${baseRef} 解不開(未 fetch?)`);
   const head = io.git(['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
@@ -95,6 +84,33 @@ export function evaluateBaselineGovernance(baseRef: string, io: GitIo, opts: Gov
   const mb = io.git(['merge-base', baseSha, head]);
   if (!mb) return und('merge-base.unavailable', `merge-base(${baseRef}, HEAD) 取不到(shallow clone / 無共同祖先)`);
   if (mb === head) return und('merge-base.equals-head', 'merge-base == HEAD(PR 無 commit,或 base 就是 HEAD)→ 無法判定');
+
+  const infoLines: string[] = [];
+  if (opts.headRef !== undefined && opts.headRef !== null) {
+    // Step 5 r2 C-2:head 是 GitHub 送來的任意合法 git 分支名,只做精確相等比對,不套 config 文法。
+    // Step 5 r3 C:比對對象 = merge-base 那側的 protectedBranches(PR 改不到);mb 缺 config / 壞 → 不豁免。
+    const mbCfgText = io.git(['show', `${mb}:${HARNESS_CONFIG_PATH}`]);
+    let protectedAtMb: string[] | null = null;
+    if (mbCfgText !== null) {
+      try {
+        protectedAtMb = parseHarnessConfig(mbCfgText).protectedBranches;
+      } catch (e) {
+        infoLines.push(`  [info] merge-base 的 ${HARNESS_CONFIG_PATH} 解析失敗(${(e as Error).message.slice(0, 80)}),不套用 promotion 豁免`);
+      }
+    } else {
+      infoLines.push(`  [info] merge-base 沒有 ${HARNESS_CONFIG_PATH},不套用 promotion 豁免`);
+    }
+    if (protectedAtMb !== null && protectedAtMb.includes(opts.headRef)) {
+      return {
+        status: 'SKIPPED',
+        findings: [],
+        lines: [
+          `BASELINE_GOVERNANCE_SKIPPED — head ${opts.headRef} ∈ merge-base 的 protectedBranches:保護分支之間的 promotion PR,其內容進入 ${opts.headRef} 時已逐 PR 受本 gate 檢查(fork PR 不會走到這裡;政策讀自 merge-base,PR 改不到)`,
+          `  [info] 此豁免只在所有 protectedBranches 都真的要求 PR(branch protection / ruleset)時成立;直接 push 到 ${opts.headRef} 不會經過本 gate`,
+        ],
+      };
+    }
+  }
 
   const readCfg = (rev: string): { baseline: string | null } | 'absent' | { error: string } => {
     // Step 5 r1 I7 / r2 I-4:用 ls-tree 區分「該 rev 沒這個檔」(exit 0、輸出空)與「git 本身失敗」(exit 非 0,
@@ -121,7 +137,6 @@ export function evaluateBaselineGovernance(baseRef: string, io: GitIo, opts: Gov
     return { status: 'UNCHANGED', findings: [], lines: [`BASELINE_UNCHANGED — ${BASELINE_CONFIG} 的 baseline 在 merge-base ${mb.slice(0, 12)} 與 HEAD 相同(${newVal ?? 'null'})`] };
   }
 
-  const infoLines: string[] = [];
   // 3. 變更面
   const diff = io.git(['diff', '--name-only', mb, head]);
   if (diff === null) return und('diff.unavailable', 'git diff --name-only 取不到');
@@ -201,16 +216,7 @@ function main(): number {
   }
   const base = baseArgs[0]!.slice('--base='.length);
   const root = rootArgs[0] ? path.resolve(rootArgs[0].slice('--root='.length)) : execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf-8' }).trim();
-  let opts: GovernanceOptions = {};
-  if (headArgs.length === 1) {
-    try {
-      opts = { headRef: headArgs[0]!.slice('--head='.length), protectedBranches: loadHarnessConfig(root).protectedBranches };
-    } catch (e) {
-      console.error(`❌ ${(e as Error).message}`);
-      console.error('BASELINE_GOVERNANCE_UNDETERMINED — 有 --head 但 harness.config 無法載入(exit 2)');
-      return 2;
-    }
-  }
+  const opts: GovernanceOptions = headArgs.length === 1 ? { headRef: headArgs[0]!.slice('--head='.length) } : {};
   const r = evaluateBaselineGovernance(base, buildGitIo(root), opts);
   for (const l of r.lines) console.log(l);
   return r.status === 'UNCHANGED' || r.status === 'OK' || r.status === 'SKIPPED' ? 0 : 2;

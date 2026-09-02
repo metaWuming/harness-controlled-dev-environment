@@ -343,11 +343,11 @@
         ".github/workflows/ci.yml",
         "scripts/check-baseline-governance.ts"
       ],
-      "locator": "CI step「Baseline Governance Check」(pull_request only);merge-base 對 HEAD 比 source-term baseline 值",
+      "locator": "CI step「Baseline Governance Check」(pull_request only);對 PR 的 base 分支取 merge-base 比 source-term baseline 值;同 repo PR 另傳 --head,∈ merge-base 那側 protectedBranches 者為 promotion PR、明文 SKIPPED",
       "ciStep": "Baseline Governance Check",
       "owner": "github",
       "failureBehavior": "block",
-      "evidence": "CI check 狀態;本機 npm run check:baseline-governance -- --base=<ref> 印 UNCHANGED / OK / FAIL 逐條 code",
+      "evidence": "CI check 狀態;本機 npm run check:baseline-governance -- --base=<PR base ref> [--head=<同 repo head 名>] 印 UNCHANGED / OK / SKIPPED(promotion PR,政策讀自 merge-base)/ FAIL 逐條 code / UNDETERMINED",
       "degradation": "base ref 未 fetch 或 shallow → exit 2(無法判定,不放行)",
       "tested": [
         "e2e",

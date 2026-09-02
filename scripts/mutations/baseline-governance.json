@@ -43,7 +43,7 @@
   },
   {
     "file": "scripts/check-baseline-governance.ts",
-    "find": "    if (opts.protectedBranches.includes(opts.headRef)) {",
+    "find": "    if (protectedAtMb !== null && protectedAtMb.includes(opts.headRef)) {",
     "replace": "    if (true) {",
     "label": "BG-M8 --head 一律跳過(不看 protectedBranches)→ e2e (19) --head=feature 轉紅"
   },
@@ -52,5 +52,17 @@
     "find": "          if (!ovSha && oldVal.startsWith('template:')) {",
     "replace": "          if (!ovSha) {",
     "label": "BG-M9 非 template 舊值解不開也放行 → e2e (18) 轉紅"
+  },
+  {
+    "file": "scripts/check-baseline-governance.ts",
+    "find": "    if (entry === null) return { error: `git ls-tree",
+    "replace": "    if (false) return { error: `git ls-tree",
+    "label": "BG-M10 ls-tree 失敗當 absent → e2e (22) 轉紅"
+  },
+  {
+    "file": "scripts/check-baseline-governance.ts",
+    "find": "    const mbCfgText = io.git(['show', `${mb}:${HARNESS_CONFIG_PATH}`]);",
+    "replace": "    const mbCfgText = io.git(['show', `${head}:${HARNESS_CONFIG_PATH}`]);",
+    "label": "BG-M11 豁免政策改讀 PR 那側 config → e2e (21) 自我豁免轉紅"
   }
 ]

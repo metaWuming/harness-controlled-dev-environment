@@ -9,7 +9,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { isAllowedBaselineChangePath, stripTemplatePrefix } from '../scripts/check-baseline-governance';
+import { evaluateBaselineGovernance, isAllowedBaselineChangePath, stripTemplatePrefix } from '../scripts/check-baseline-governance';
 
 const REPO = path.resolve(__dirname, '..');
 const TSX = path.join(REPO, 'node_modules/.bin/tsx');
@@ -239,10 +239,13 @@ describe('check:baseline-governance e2e(16 條)', () => {
     expect(r.out).toContain('[value.old-unresolvable]');
   });
   const HC = JSON.stringify({ schemaVersion: 2, mode: 'template', projectId: '__TEMPLATE__', templatePackageName: 'x', protectedBranches: ['develop', 'main'], deliveryBranches: ['main'], requiredAgentAdapters: ['claude'], githubGovernanceRequired: false, mergeStrategy: 'squash' });
-  it('(19) C3:--head ∈ protectedBranches(promotion PR)→ SKIPPED exit 0;--head=feature 不跳過;--head 形狀非法 / 缺 config → exit 2', () => {
+  it('(19) C3:--head ∈ merge-base 的 protectedBranches(promotion PR)→ SKIPPED exit 0;--head=feature 不跳過;任意名不假紅;mb 無 config → 不豁免', () => {
     const f = fixture();
-    f.write('scripts/harness.config.json', HC);
-    f.write(CONFIG, cfg(f.B));
+    f.git('checkout', '-q', 'main');
+    f.write('scripts/harness.config.json', HC); // 政策在 merge-base(main)那側
+    f.commit('cfg on main');
+    f.git('checkout', '-q', '-b', 'feature2');
+    f.write(CONFIG, cfg(f.git('rev-parse', 'main')));
     f.write('scripts/x.ts', 'export {}\n'); // 若不跳過會 path.disallowed
     f.commit('C');
     let r = run([`--root=${f.dir}`, '--base=main', '--head=develop']);
@@ -260,12 +263,46 @@ describe('check:baseline-governance e2e(16 條)', () => {
     }
     expect(run([`--root=${f.dir}`, '--base=main', '--head=']).code).toBe(2);
     expect(run([`--root=${f.dir}`, '--base=main', '--head=a', '--head=b']).code).toBe(2);
-    const g = fixture(); // 無 harness.config
-    g.write('README.md', 'x\n');
+    const g = fixture(); // merge-base 無 harness.config → 不豁免、照常判定
+    g.write(CONFIG, cfg(g.B));
+    g.write('scripts/x.ts', 'export {}\n');
     g.commit('C');
     r = run([`--root=${g.dir}`, '--base=main', '--head=develop']);
     expect(r.code).toBe(2);
-    expect(r.err).toMatch(/harness\.config/);
+    expect(r.out).toContain('[path.disallowed:scripts/x.ts]');
+    expect(r.out).toContain('不套用 promotion 豁免');
+  });
+  it('(21) r3 CRITICAL:攻擊 PR 自己把分支名加進 protectedBranches → 不得 SKIPPED(政策讀 merge-base)', () => {
+    const f = fixture();
+    f.git('checkout', '-q', 'main');
+    f.write('scripts/harness.config.json', HC);
+    f.commit('cfg on main');
+    f.git('checkout', '-q', '-b', 'feature2');
+    f.write('README.md', 'c1\n');
+    const C1 = f.commit('C1');
+    f.write(CONFIG, cfg(C1)); // 推到 PR 內 commit
+    f.write('scripts/x.ts', 'forbidden\n');
+    f.write('scripts/harness.config.json', HC.replace('"protectedBranches":["develop","main"]', '"protectedBranches":["develop","main","feature"]'));
+    f.commit('C2: launder + self-exempt');
+    const r = run([`--root=${f.dir}`, '--base=main', '--head=feature2']);
+    expect(r.code).toBe(2);
+    expect(r.out).not.toContain('SKIPPED');
+    expect(r.out).toContain('[path.disallowed:scripts/x.ts]');
+  });
+  it('(22) I-4:兩端 ls-tree 都失敗(git 錯誤)→ UNDETERMINED,不得 UNCHANGED(純函式注入)', () => {
+    const io = {
+      git: (args: string[]) => {
+        const k = args.join(' ');
+        if (k.startsWith('rev-parse --verify --quiet main')) return 'a'.repeat(40);
+        if (k.startsWith('rev-parse --verify --quiet HEAD')) return 'b'.repeat(40);
+        if (k.startsWith('merge-base ')) return 'a'.repeat(40);
+        if (k.startsWith('ls-tree ')) return null; // git 失敗
+        return null;
+      },
+    };
+    const r = evaluateBaselineGovernance('main', io);
+    expect(r.status).toBe('UNDETERMINED');
+    expect(r.findings[0]!.code).toBe('config.head.invalid');
   });
   it('(20) C3:GitFlow 三步 —— bump→develop 合法;release develop→main 以 --head=develop 跳過', () => {
     const f = fixture();
