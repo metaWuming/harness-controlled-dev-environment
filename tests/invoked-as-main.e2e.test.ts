@@ -109,20 +109,13 @@ for (const spec of CONSUMERS) {
       const r = run(wrapperPath); // 不設 IAM_DANGLING
       // wrapper 自然結束(target main 不執行);exit 應為 0(node 預設)
       expect(r.status).toBe(0);
-      // 關鍵:reporter 對 import-or-not-main 完全靜默、無 [invoked-as-main] / indeterminate 字樣
-      expect(r.stderr).not.toContain("[invoked-as-main]");
-      expect(r.stderr).not.toContain("indeterminate");
-      // target 頂層 main 未執行的證據:無 main 特徵輸出
-      // (每 consumer 的 main 特徵見 spec.expectedMainMatcher;此處反向斷言)
-      if (spec.label === "check-control-catalog") {
-        expect(r.stdout).not.toContain("CATALOG_OK");
-      }
-      if (spec.label === "check-mutation-specs") {
-        expect(r.stdout).not.toContain("mutation spec 樣本都對得上");
-      }
-      if (spec.label === "mutate") {
-        expect(r.stderr).not.toContain("拒跑");
-      }
+      // 關鍵:reporter 對 import-or-not-main 完全靜默——**stderr 必須完全為空**
+      // (Step 5 worktree F1 修:先前只擋特定字面,IAM-M3 mutant 印 `fake\n` 因無擋
+      // 這條字面而通過 e2e case #3;補這條全空斷言後 mutant 由 e2e 也能 kill,
+      // 不再只靠 unit #10 兜底)
+      expect(r.stderr).toBe("");
+      // stdout 也應完全靜默(target main 不執行)
+      expect(r.stdout).toBe("");
     });
 
     it(`#4 indeterminate wrapper → 精確驗到 ${spec.label} 自己的 caller exit(2) branch`, () => {

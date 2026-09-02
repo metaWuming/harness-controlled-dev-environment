@@ -84,7 +84,7 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 
 ### 🟢 其他 7 支 script 同款 invoked-as-main 舊寫法(遷移到 `scripts/lib/invoked-as-main.ts`)
 - **來源**:2026-09-03 PR P2#3 defer ①② 交付 sprint 中,repo-wide grep 發現 owner-scoped 3 支以外仍有 7 支 script 用舊 isMain 寫法(A/B 兩派)、經 symlink 目錄呼叫可能靜默 exit 0
-- **內容**(未修 7 支;分數關係:本 sprint 3 / 未修 7 / 總計 10,含已修 1):
+- **內容**(未修 8 支;分數關係:本 sprint 3 / 未修 8 / 總計 11,含已修 1):
   - A 派(fileURLToPath 直比 path.resolve,無 realpath):
     - `scripts/check-doc-size.ts:143-145`
     - `scripts/check-bookkeeping-commit.ts:185-186`
@@ -94,6 +94,7 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
     - `scripts/check-adoption-readiness.ts:722`
     - `scripts/check-doc-refs.ts:407`
     - `scripts/check-baseline-governance.ts:232`
+    - `scripts/render-control-catalog.ts:162`(⚠️ **是 `npm run catalog:render` 的 CLI 入口**;遷移時同時要對 `tests/fixtures/invoked-as-main-wrapper/check-control-catalog-wrapper.mjs` 改 2-step dynamic import,因為 check-control-catalog.ts 頂層 static import render-control-catalog、遷移後會撞 chain 問題,類似 check-mutation-specs → mutate 的處理)
 - **方向**:每支 script 各 ~10 分鐘遷移(import lib + 換 caller pattern + 加 caller 顯式 exit 2 branch);對應 e2e 若既有可覆蓋、就 rely;若無、加 minimal wrapper e2e。catalog 依 D7 grep 規則決定 implementation 是否追加 lib
 - **工時**:遷移 1–2h;e2e 補完 0.5–1h
 
