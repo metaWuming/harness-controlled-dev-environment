@@ -282,7 +282,7 @@ describe('check:baseline-governance e2e(16 條)', () => {
     const C1 = f.commit('C1');
     f.write(CONFIG, cfg(C1)); // 推到 PR 內 commit
     f.write('scripts/x.ts', 'forbidden\n');
-    f.write('scripts/harness.config.json', HC.replace('"protectedBranches":["develop","main"]', '"protectedBranches":["develop","main","feature"]'));
+    f.write('scripts/harness.config.json', HC.replace('"protectedBranches":["develop","main"]', '"protectedBranches":["develop","main","feature2"]'));
     f.commit('C2: launder + self-exempt');
     const r = run([`--root=${f.dir}`, '--base=main', '--head=feature2']);
     expect(r.code).toBe(2);

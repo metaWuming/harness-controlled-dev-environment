@@ -73,8 +73,8 @@
   },
   {
     "file": "scripts/check-control-catalog.ts",
-    "find": "  if (q) return { name: (q[1] ?? q[3])!, unsupported: null };",
-    "replace": "  if (false) return { name: (q[1] ?? q[3])!, unsupported: null };",
+    "find": "  if (q) return { name: q[1] !== undefined ? q[1].replace(/\\\\\"/g, '\"') : q[3]!.replace(/''/g, \"'\"), unsupported: null };",
+    "replace": "  if (false) return { name: q[1] !== undefined ? q[1].replace(/\\\\\"/g, '\"') : q[3]!.replace(/''/g, \"'\"), unsupported: null };",
     "label": "M13 extractor:不剝引號 → e2e (I1) 轉紅"
   },
   {
