@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### Removed
+- **breaking**:env `DELIVERY_REFS` 通道與 `ci.yml` workflow-level `DELIVERY_REFS`。交付證據唯一來源是受驗的 `origin/HEAD`;腳本不讀任何 env(設了被忽略)。理由:祖先契約下任何合法候選都是 base 祖先,`git log` 集合不變、無證據增益,只擴大輸入面。導入指引見 `docs/MIGRATION.md`;回滾 = 單一 revert。
+
 ### Changed
 - `check:todos` 與 `check:no-source-terms` 的交付 ref 來源改走共用契約 `scripts/lib/delivery-refs.ts`:origin/HEAD 目標須為正規、可解、且宣告在 `harness.config.json` `deliveryBranches` 的 origin 分支;env `DELIVERY_REFS` 每條須為 `origin/<已宣告分支>` 且為 origin/HEAD 祖先。**移除** `origin/develop` 與本地 `main` / `develop` fallback;任何拒絕印原因碼並 exit 2(不再靜默跳過)。兩支 checker 現在**必須**能讀到 `scripts/harness.config.json`。
 

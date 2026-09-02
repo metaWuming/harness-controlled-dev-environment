@@ -567,7 +567,7 @@ L2 加持（Next.js + Prisma）：4 支自訂 AST rule：
 `.github/workflows/ci.yml` — 單 job `ci`、timeout 10 min、`permissions: contents: read`（最小權限）。
 
 **Workflow-level env SSOT**（批 10 收乾）：
-- `DELIVERY_REFS = origin/${default_branch}`
+- 交付證據唯一來源 = 受驗的 `origin/HEAD`(目標須宣告在 `harness.config.json` `deliveryBranches`;`DELIVERY_REFS` env 已移除、不再讀)
 - `MARKER_SELF_PR = ${{ github.event.pull_request.number }}`
 
 CI step 逐條登錄於 [CONTROL-CATALOG.md](CONTROL-CATALOG.md)〈hard-automated〉（正本 `scripts/control-catalog.json`，

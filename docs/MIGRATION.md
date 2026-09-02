@@ -8,6 +8,13 @@ type: guide
 > 每個 milestone 一段。步驟是給**已導入的下游專案**看的;新用 template 的專案直接照 [`ADOPTION.md`](ADOPTION.md) 走。
 > 變更內容的完整清單見 [`../CHANGELOG.md`](../CHANGELOG.md)。
 
+## [Unreleased] — 移除 `DELIVERY_REFS` env 通道(breaking)
+
+- **變了什麼**:`check:todos` 與 `check:no-source-terms` 的交付證據**唯一來源是受驗的 `origin/HEAD`**(目標須為 `refs/remotes/origin/<name>`、正規、可解、且 `<name>` 宣告在 `scripts/harness.config.json` 的 `deliveryBranches`)。兩支腳本**不再讀任何 env**;workflow-level `DELIVERY_REFS` 已從 `ci.yml` 刪除。
+- **為什麼**:祖先契約(上一版)下,任何通過驗證的 env 候選都是 origin/HEAD 的祖先,`git log` 集合不變、加不進任何 PR 號;通道只剩「驗證會不會拒絕」與可被 tag / 遮蔽觸發的 fail-closed DoS 面。
+- **導入者要做什麼**:若你的 workflow 自訂了 `DELIVERY_REFS`,**刪掉即可**(留著也會被靜默忽略,不會壞)。若你依賴它把 `origin/develop` 或 release 線的 merge 算作證據:**現在沒有任何通道**——交付證據 = `git remote set-head` 指向的 default branch。GitFlow 專案請確認 `origin/HEAD` 指向你認定的交付線,並宣告在 `deliveryBranches`。
+- **回滾**:`git revert` 本 PR 的 squash commit,env 通道與其測試 / 探針整組還原;無 config schema 變更。
+
 ## 0.1 → 0.2(Milestone A)
 
 ### 1. `scripts/harness.config.json`:schemaVersion 1 → 2
