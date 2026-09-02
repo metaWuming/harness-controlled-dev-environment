@@ -268,7 +268,8 @@ describe('template mode T1–T9', () => {
         'CLAUDE.md': CLAUDE_TEMPLATE,
         'scripts/lib/destructive-guard.ts': DESTRUCTIVE_TEMPLATE,
         '.github/workflows/ci.yml': CI_OK + `# 見 ${ADR_PATH} 的「決策」\n# 見 ${ADR_PATH} 的「決策」\n`,
-        '.claude/memory/progress.md': 'entry 沒有個人路徑;見 ' + ADR_PATH + ' 的「決策」',
+        // PR A3 P0 起 progress.md 不在 EXPECTED_ADR_REFS 內 → 這裡不得含 ADR 引用
+        '.claude/memory/progress.md': 'entry 沒有個人路徑',
       },
     });
   it('T1 sentinel 正 / 負', () => {
@@ -324,9 +325,9 @@ describe('template mode T1–T9', () => {
     expect(checkTemplateAdrRefs(TEMPLATE_CFG, makeIo({ files: okFiles }))).toEqual([]);
     const extra = { ...okFiles, 'README.md': `見 ${ADR_PATH} 的「決策」` };
     expect(ids(checkTemplateAdrRefs(TEMPLATE_CFG, makeIo({ files: extra })))).toContain('T9');
-    const fewer = { ...okFiles, '.claude/memory/progress.md': 'nothing' };
+    const fewer = { ...okFiles, 'scripts/source-term-baseline.json': 'nothing' };
     expect(ids(checkTemplateAdrRefs(TEMPLATE_CFG, makeIo({ files: fewer })))).toContain('T9');
-    const bare = { ...okFiles, '.claude/memory/progress.md': `見 ${ADR_PATH}` };
+    const bare = { ...okFiles, 'scripts/source-term-baseline.json': `見 ${ADR_PATH}` };
     expect(fails(checkTemplateAdrRefs(TEMPLATE_CFG, makeIo({ files: bare }))).some((f) => f.msg.includes('未以「<穩定標題>」'))).toBe(true);
   });
   it('runAdoptionChecks(template):首行 TEMPLATE_MODE、不含 READY、有 fail 時 ready=false', () => {

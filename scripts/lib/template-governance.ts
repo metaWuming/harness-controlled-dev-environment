@@ -32,9 +32,11 @@ export const EXPECTED_ADR_REFS: ReadonlyArray<readonly [string, number]> = [
   ['.github/workflows/ci.yml', 2],
   ['scripts/source-term-baseline.json', 1],
   ['tests/check-no-source-terms.test.ts', 1],
-  ['.claude/memory/progress.md', 1],
   // progress 歸檔是唯讀歷史 snapshot;被搬走的 sprint entry 連同它的引用一起進來。
+  // PR A3 Phase 0:A1.1 entry(含 1 處引用)從 progress.md 搬到 progress-2026-09.md,
+  // 主檔現無引用。之後的 sprint entry 不得再引用 ADR 路徑(否則要回來改這張表)。
   ['.claude/memory/progress-archive/progress-2026-08.md', 1],
+  ['.claude/memory/progress-archive/progress-2026-09.md', 1],
 ];
 export const EXPECTED_ADR_REF_TOTAL = 6;
 

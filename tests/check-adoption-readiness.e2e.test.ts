@@ -137,6 +137,8 @@ function templateFiles(): Record<string, string> {
     'CLAUDE.md': CLAUDE_SKELETON,
     '.github/workflows/ci.yml': CI_TEMPLATE,
     [ADR_PATH]: '# ADR\n\n## 決策\n\n## 已知限制\n',
+    // PR A3 P0 起 progress.md 不在 EXPECTED_ADR_REFS 內,T8 仍要讀得到它
+    '.claude/memory/progress.md': 'entry\n',
   };
   for (const [rel, n] of EXPECTED_ADR_REFS) {
     if (rel === '.github/workflows/ci.yml') continue; // 已在 CI_TEMPLATE 內放 2 個
