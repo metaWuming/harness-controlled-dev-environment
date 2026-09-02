@@ -264,6 +264,13 @@ describe('check:adoption e2e', () => {
     expect(r.code).toBe(2);
     expect(r.out).toContain('[fail] A1:');
   });
+  it('adopted 負對照:ci.yml 缺 check:adoption step → exit 2 點名 A7(M10 探針補)', () => {
+    const f = adoptedFiles();
+    f['.github/workflows/ci.yml'] = CI_ADOPTED.replace('        run: npm run check:adoption\n', '');
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code).toBe(2);
+    expect(r.out).toContain('[fail] A7:');
+  });
   it('template 負對照:改了 package name 沒切 mode → exit 2 點名 T2', () => {
     const f = templateFiles();
     f['package.json'] = JSON.stringify({ name: 'my-shop', scripts: {} });

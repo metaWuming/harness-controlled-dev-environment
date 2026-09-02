@@ -528,6 +528,12 @@ describe('runAdoptionChecks(adopted)與 dispatch 表', () => {
     expect(bad.lines[0]).toBe('ADOPTED_MODE — NOT_READY (1 failures):');
     expect(bad.ready).toBe(false);
   });
+  it('A7 在 adopted dispatch 內:ci.yml 缺 check:adoption 行 → NOT_READY 點名 A7(M10 探針補)', () => {
+    const io = adoptedIo({ files: { '.github/workflows/ci.yml': CI_OK.replace('        run: npm run check:adoption\n', '') } });
+    const r = runAdoptionChecks(ADOPTED_CFG, io);
+    expect(r.ready).toBe(false);
+    expect(ids(r.findings)).toEqual(['A7']);
+  });
   it('adopted 分支不跑 T8/T9(髒 progress 仍 READY);template 分支跑', () => {
     const dirty = adoptedIo({ files: { '.claude/memory/progress.md': '/Users/someone/x' } });
     expect(runAdoptionChecks(ADOPTED_CFG, dirty).ready).toBe(true);
