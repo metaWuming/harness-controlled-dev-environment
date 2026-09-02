@@ -158,7 +158,7 @@ jobs:
       - name: Fetch delivery refs (for TODOS Markers Check)
         # check-todos-markers 用主線分支的 git 史判 PR merge 證據;pull_request event 下
         # checkout 是 detached merge ref,顯式 fetch 建 remote-tracking ref(best-effort:
-        # 分支不存在時略過,腳本會退回 HEAD)
+        # 分支不存在時略過;腳本**絕不退回 HEAD**,沒有受驗的 origin/HEAD 就 exit 2)
         # 🔴 Delivery-branch 白名單:PR event 一律跑;push event 只在**進 delivery branch
         # 之後**跑(此時 PR 已 squash merge、self-PR 引用找得到 merge 證據、不會踩死鎖)。
         # 非 delivery branch 的 push(feature/* fix/* chore/* release/* …)一律 skip——
@@ -173,8 +173,11 @@ jobs:
         # `git remote set-head` 讓 origin/HEAD 指向 default,check-todos-markers 走
         # origin/HEAD 唯一權威來源、不再無條件 resolve master/trunk 造成 legacy branch
         # 假通過。額外 delivery branch 導入者透過 env `DELIVERY_REFS` 加(見 script)。
+        # P2#2:DELIVERY_REFS 每條須為 `origin/<harness.config deliveryBranches 內的分支>` 且為受驗 origin/HEAD 的祖先;
+        # origin/HEAD 目標本身也須正規、可解、已宣告。任何拒絕 → 印原因碼、exit 2;無 fallback(見 scripts/lib/delivery-refs.ts)。
         # env 傳 default_branch(不用 shell string interpolation),避免罕見的
-        # branch 名含 shell metacharacter 情境;若 set-head 失敗仍有 env 提供 fallback。
+        # branch 名含 shell metacharacter 情境。⚠️ set-head 失敗 = 沒有權威 base → 兩個 gate exit 2,
+        # env DELIVERY_REFS 救不了(P2#2 起 env 候選必須是受驗 base 的祖先)。
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |

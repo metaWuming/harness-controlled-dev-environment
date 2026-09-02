@@ -75,6 +75,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 // 批 10 P2-1:MARKER_SELF_PR 驗證抽到 shared lib、兩 script 共用單一入口(擋跨檔漂移)
 import { acknowledgeSelfPr } from "./lib/marker-self-pr";
+import { formatRejections, resolveDeliveryRefsFromRepo } from "./lib/delivery-refs";
 
 // ───────────────────────────────────────── constants
 
@@ -114,8 +115,6 @@ export const SYNTAX_EXEMPT_FILES = [
   "tests/check-todos-markers.test.ts",
   "tests/check-no-source-terms.test.ts",
 ];
-/** delivery ref 解析用的字元白名單(shell metacharacter / option injection 防護)。 */
-const SAFE_REF_RE = /^[A-Za-z0-9_./-]+$/;
 /**
  * 兩條 pattern 走「context-aware 例外」:命中後,若 hit line 內的 PR 號全部
  * ∈ allowedPrs(本 repo 已 merge 的 PR 號集合)則放行;否則擋。
@@ -527,72 +526,6 @@ export function validateBaseline(
 }
 
 /**
- * 解 delivery refs 清單(round 2 P1-1 修法)。
- *
- * 舊版用 `git log --all` 掃所有 refs → 未合併 feature branch 的 subject 也被算入
- * allowedPrs(例:draft PR branch subject `feat (井號+31)`,PR 尚未 merge、但 31
- * 被算入 → 引用 `PR 井號+31` 誤放行)。
- *
- * 新版對齊 `scripts/check-todos-markers.ts` 的 `buildMergedPrSet` 邏輯:
- *   ①origin/HEAD 偵測到的當前 default branch(涵蓋 main / master / trunk rename)
- *   ②env `DELIVERY_REFS`(逗號分隔;固定 ref 名、不支援 glob)
- *   ③fallback:①②都空 → `origin/develop`(GitFlow 慣例)
- *   ④last-resort:①②③都空 → 本地 `main` / `develop`(離線開發環境)
- *
- * 每條 ref 都經 SAFE_REF_RE 白名單 + `git rev-parse --verify --quiet` 存在檢查,
- * 擋 shell metacharacter / option injection(`--all` / `;pwd`)。
- */
-function buildDeliveryRefs(root: string): string[] {
-  const refs: string[] = [];
-  const seen = new Set<string>();
-  const resolves = (r: string): boolean => {
-    if (!SAFE_REF_RE.test(r)) return false;
-    try {
-      execFileSync(
-        "git",
-        ["-C", root, "rev-parse", "--verify", "--quiet", r],
-        { stdio: "pipe" }
-      );
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  const push = (r: string) => {
-    if (!r || seen.has(r)) return;
-    if (!resolves(r)) return;
-    seen.add(r);
-    refs.push(r);
-  };
-
-  try {
-    const def = execFileSync(
-      "git",
-      ["-C", root, "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"],
-      { encoding: "utf-8", stdio: "pipe" }
-    )
-      .trim()
-      .replace("refs/remotes/", "");
-    if (def) push(def);
-  } catch {
-    /* origin/HEAD 未設 → 走 fallback */
-  }
-
-  const extras = (process.env["DELIVERY_REFS"] ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  for (const r of extras) push(r);
-
-  if (refs.length === 0) push("origin/develop");
-  if (refs.length === 0) {
-    push("main");
-    push("develop");
-  }
-  return refs;
-}
-
-/**
  * 建立 allowedPrs set,並回報 delivery merged 唯一數與 self-PR env acknowledge 狀態
  *(僅供診斷輸出用、不做決策——見下方契約段)。
  *
@@ -604,7 +537,7 @@ function buildDeliveryRefs(root: string): string[] {
  *    `allowedPrs.size ≤ mergedCount + selfPrCount`(collision 時 <、其餘 =)。
  *
  * 兩來源:
- *   1) delivery refs(buildDeliveryRefs 四條 fallback)的 git log subject 抽出
+ *   1) delivery refs(scripts/lib/delivery-refs.ts 共用契約:受驗 origin/HEAD + 已宣告且為祖先的 env 候選;無 fallback)的 git log subject 抽出
  *      canonical squash 尾綴 / merge subject 開頭的 PR 號——「本 repo 已 merge」
  *   2) env `MARKER_SELF_PR`(sprint 內 self-reference 死鎖解法,批 8 Phase B):
  *      本 PR 尚未 squash merge 前,**diff 內(工作樹追蹤檔)/ 文件 blob(git
@@ -633,7 +566,15 @@ function loadAllowedPrs(root: string): {
   mergedCount: number;
   selfPrCount: number;
 } {
-  const refs = buildDeliveryRefs(root);
+  // P2#2:交付 ref 的來源與驗證抽到 shared lib(scripts/lib/delivery-refs.ts),與 check-todos-markers
+  // 共用單一契約(受驗 origin/HEAD base + env 候選須為已宣告交付分支且為 base 祖先;無 fallback)。
+  // 任何拒絕都不靜默:印原因碼、exit 2。**只動 allowedPrs 來源這道縫,掃描語意不變。**
+  const resolved = resolveDeliveryRefsFromRepo(root);
+  if (!resolved.ok) {
+    console.error(formatRejections(resolved.rejections));
+    process.exit(2);
+  }
+  const refs = resolved.refs;
   const prs =
     refs.length === 0
       ? new Set<number>()

@@ -46,10 +46,11 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 - **工時**:2-3h
 - **交付**:PR A2 —— 走第二個方向:G2 / G4 搬到 `scripts/lib/template-governance.ts`,由 `npm run check:adoption` 只在 `scripts/harness.config.json` 宣告 `mode: "template"` 時執行(T9 / T8);vitest 刪除兩條;mode 是顯式靜態宣告、無 runtime 判別式(mutation M12–M14 行為級證據)
 
-### 🟡 `DELIVERY_REFS=HEAD` 可從環境變數還原「未合併分支進 allowlist」
+### ✅ `DELIVERY_REFS=HEAD` 可從環境變數還原「未合併分支進 allowlist」(PR #48)
 - **來源**:2026-09-01 PR A1.1 Step 5 r3 I9(confidence 6)
 - **內容**:`DELIVERY_REFS` 只過 `SAFE_REF_RE` + `rev-parse --verify`(option injection 已擋住),但 `HEAD` 或任何 feature branch 名都解得開。在 feature branch 上設 `DELIVERY_REFS=HEAD`,未 merge commit 的 subject 就進了 `allowedPrs` —— round 2 P1-1 的修法可被整條還原,目前無守門。
 - **工時**:1-2h
+- **交付**:`scripts/lib/delivery-refs.ts` 共用契約(supervisor rev 4):origin/HEAD 權威 base 與 env 候選走同一支 `validateRef`(形狀 / 存在 / 正規 / 祖先 / 宣告在 `deliveryBranches`);`HEAD`、本地分支、未合併 `origin/feature/x`、未宣告分支一律拒絕、印原因碼、exit 2;移除 fallback ③④。兩支 checker 只接線;`check-no-source-terms.ts` 掃描語意 0 diff。lib 單測 19 條(每原因碼各一)+ 兩 consumer 行為級負對照 + 探針 `delivery-refs.json` 8 條
 
 ### ✅ mutation spec 漂移無 CI 守門(PR #47)
 - **來源**:2026-09-01 PR A1.1 Step 5 r2 I16(confidence 6);A1.1 內實際發生過一次(M14 隨串流改寫失效、M23 隨編碼釘法插入失效)
@@ -59,6 +60,12 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 - **交付**:`scripts/check-mutation-specs.ts` + CI step「Mutation Spec Drift Check」(CTRL-CI-013)。只複用 `mutate.ts` 純函式(`checkTarget` / `parseSpecs` / `applyMutation`);spec 檔與目標檔都先經 `checkTarget` 取 bytes 再解析(supervisor plan rev 2 P1:tracked spec 換 symlink → exit 2,外部檔不成為輸入)。exit 1 = 漂移 / 2 = 無法判定。24 條測試(含 10 條真 CLI e2e)+ 自身探針 `mutation-spec-drift.json` 6 條
 
 ## P3
+
+### 🟢 P2#2 Step 5 defer 集合(delivery-refs 契約邊角,9 條 INFORMATIONAL conf 5–9)
+- **來源**:2026-09-03 PR P2#2 Step 5 worktree 審 r1–r2;0 CRITICAL 未修
+- **內容**:①**env `DELIVERY_REFS` 在祖先契約下是空操作**——通過驗證的候選必是 base 祖先、`git log` 集合 ⊆ base,加不進任何新 PR 號;通道只剩「驗證會不會拒絕」(conf 9;待 supervisor 決定:登錄為已知限制、或整個移除以縮攻擊面);②`ci.yml` 第 59 行與 Fetch step 註解仍寫「GitFlow 導入者覆蓋 env 常數即可 / env 能加交付分支」,新契約下 `origin/develop` 非 base 祖先 → 永久 exit 2(conf 9);③`check-no-source-terms.ts` 新 `process.exit(2)` 在 `main()` mkdtemp 之後,`finally` 清理不跑、本機反覆失敗會留 `cnst-*` 目錄(conf 9;修法:把 `loadAllowedPrs` 移到 pattern file 建立前、或改回傳值);④`merge-base --is-ancestor` exit 128(未 fetch / shallow)與 1(真非祖先)同判 `ref.nonancestor`,診斷誤導(conf 6);⑤tag 同名 `origin/main` 讓兩 gate 對所有 PR exit 2(fail-closed 型 DoS,非繞過;conf 6);⑥`ci.yml` 的 `develop` fetch 是死步驟(conf 6);⑦`harnessConfigJson` 在兩個測試檔逐字兩份,schema 升版要改兩處(conf 6);⑧無 base 時 env 候選借用 `ref.nonancestor` 原因碼、語意不精確(conf 5);⑨`LESSONS.md` / `docs/OVERVIEW.md` 仍寫四條來源與舊 env 語意(conf 5;LESSONS 屬治理內容需完整 SOP)
+- **方向**:① 先問 supervisor;②⑥⑨ 一起收(docs,0.5h);③ 0.5h;④⑧ 一起(原因碼細分,0.5h);其餘逐條 0.5h
+- **工時**:合計 2–3h
 
 ### 🟢 P2#3 Step 5 defer 集合(check-mutation-specs 邊角,15 條 INFORMATIONAL conf ≤8)
 - **來源**:2026-09-02 PR P2#3 Step 5 worktree 審 r1–r2;0 CRITICAL 未修

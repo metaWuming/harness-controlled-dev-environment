@@ -1,0 +1,50 @@
+[
+  {
+    "file": "scripts/lib/delivery-refs.ts",
+    "find": "    if (git(['merge-base', '--is-ancestor', fullRef, opts.mustBeAncestorOf]) === null) {",
+    "replace": "    if (false) {",
+    "label": "DR-M1 拿掉祖先檢查 → 未合併 origin 分支進 allowedPrs;兩個 consumer 的 ref.nonancestor e2e + lib 單測轉紅"
+  },
+  {
+    "file": "scripts/lib/delivery-refs.ts",
+    "find": "  if (canon !== fullRef) {",
+    "replace": "  if (false) {",
+    "label": "DR-M2 拿掉正規比對(base 與 env 共用)→ 本地同名 ref 遮蔽不再被抓;noncanonical 單測與 e2e 轉紅"
+  },
+  {
+    "file": "scripts/lib/delivery-refs.ts",
+    "find": "  return { ok: rejections.length === 0, refs: rejections.length === 0 ? refs : [], rejections };",
+    "replace": "  return { ok: true, refs, rejections: [] };",
+    "label": "DR-M3 REJECT 改靜默 skip(拒絕不再回報、能解的 ref 照用)→ 所有負對照轉紅"
+  },
+  {
+    "file": "scripts/check-todos-markers.ts",
+    "find": "    console.error(formatRejections(resolved.rejections));\n    process.exit(2);",
+    "replace": "    console.error(formatRejections(resolved.rejections));",
+    "label": "DR-M4 check-todos-markers 遇 REJECT 不 exit 2 → todos e2e 的 exit 2 斷言轉紅"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "    console.error(formatRejections(resolved.rejections));\n    process.exit(2);",
+    "replace": "    console.error(formatRejections(resolved.rejections));",
+    "label": "DR-M5 check-no-source-terms 遇 REJECT 不 exit 2 → nst e2e 的 exit 2 斷言轉紅"
+  },
+  {
+    "file": "scripts/lib/delivery-refs.ts",
+    "find": "  if (!opts.declared.includes(name)) {",
+    "replace": "  if (false) {",
+    "label": "DR-M6 拿掉共用 validateRef 的 deliveryBranches 成員檢查(base 與 env 同一支)→ ref.undeclared 與 base.undeclared 的 lib 單測 + 兩個 consumer e2e 轉紅"
+  },
+  {
+    "file": "scripts/lib/delivery-refs.ts",
+    "find": "  const target = git(['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD']);",
+    "replace": "  const target = git(['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD']) ?? 'refs/remotes/origin/main';",
+    "label": "DR-M7 沒 origin/HEAD 時猜 base 為 origin/main(fallback 復活)→ base.missing 單測轉紅"
+  },
+  {
+    "file": "scripts/lib/delivery-refs.ts",
+    "find": "    const r = validateRef(git, target, { kind: 'base', declared });",
+    "replace": "    const r = remoteBranchName(target) === null ? validateRef(git, target, { kind: 'base', declared }) : null;",
+    "label": "DR-M8 base 跳過正規 / 存在 / 宣告驗證(只看形狀)→ base.undeclared / base.noncanonical / base.unresolvable 轉紅"
+  }
+]
