@@ -58,10 +58,14 @@ npx tsx scripts/mutate.ts --file src/example.ts \
   做 mutation,驗 `tests/check-doc-size.test.ts` 有守得住那條不變量。這是範例,
   你的專案 mutation spec 依業務需求另外寫。
 - `source-term-diff-scan.json` — 本模板自身的 29 條探針,守 `check-no-source-terms.ts`
-- `adoption-readiness.json` — PR A2 的 16 條探針,守 `check-adoption-readiness.ts` /
-  `lib/harness-config.ts` / `lib/template-governance.ts`(loader fail-closed、mode dispatch、
-  A3 / A4 / A5 / A7 規則、字面分支名文法;M12–M14 由 e2e 行為級證據殺)
   的 history diff scan(patch 提取 / 路徑解析 / hit framing / 批次邊界 / 長行處理)。
   高風險車道的覆蓋率佐證就是它:`npx tsx scripts/mutate.ts --spec scripts/mutations/source-term-diff-scan.json`。
+- `adoption-readiness.json` — PR A2 的 16 條 + PR A3 的 4 條(M15–M18),共 20 條探針,守 `check-adoption-readiness.ts` /
+  `lib/harness-config.ts` / `lib/template-governance.ts`(loader fail-closed、mode dispatch、
+  A3 / A4 / A5 / A7 規則、字面分支名文法;M12–M14 由 e2e 行為級證據殺)
+- `control-catalog.json` — PR A3 的 14 條探針,守 `lib/control-catalog.ts`(loader 形狀與一致性)與
+  `check-control-catalog.ts`(路徑 tracked、ci.yml 雙向鎖 3b / 3c / 3e、無名 step、巢狀 name: 不算、引號還原、渲染一致、exit 契約)
+- `baseline-governance.json` — PR A3 的 11 條探針,守 `check-baseline-governance.ts`(allowlist、祖先 / 方向檢查、
+  promotion 豁免讀 merge-base、ls-tree 失敗不當 absent、argv 與 env 契約、exit 契約)
   **spec 的 `find` 是原始碼逐字樣本**——改到那些行就要同步改 spec,否則 mutate 會以
   「樣本沒對上」exit 2(fail-closed,不會靜默通過)。

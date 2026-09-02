@@ -207,6 +207,8 @@ codebase 裡兩種寫法打架時,選一個(通常選較新 / 測試較多的),�
 
 **例外**(不走流程):trivial 改(typo / 單行 rename / 純格式整理)— 直接 commit
 
+各道控制措施的強度分級(hard / soft / manual / advisory / periodic)、bypass 與證據以 `docs/CONTROL-CATALOG.md` 為正本,本檔不重列。
+
 ---
 
 ## Part 3:何時可以放寬規則
@@ -272,7 +274,7 @@ codebase 裡兩種寫法打架時,選一個(通常選較新 / 測試較多的),�
 
 <!-- 填:你的分支策略與合併策略。check:adoption 會驗:`scripts/harness.config.json` 宣告的每個
 protectedBranches / deliveryBranches 都以反引號出現在本節(例:`main` = 正式 / `develop` = 開發主線;feature/xxx、fix/xxx),
-且至少一行寫明合併策略(squash / merge commit / rebase,例:feature→develop squash;develop→main merge commit)。
+且以反引號提到 `scripts/harness.config.json` 宣告的 `mergeStrategy` 值(例:feature→develop `squash`;develop→main merge commit)。
 填完把這整段註解刪掉。 -->
 
 ---

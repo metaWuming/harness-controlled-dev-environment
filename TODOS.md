@@ -59,11 +59,18 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 
 ## P3
 
+### 🟢 A3 Step 5 defer 集合(control catalog / baseline governance 邊角,21 條 INFORMATIONAL conf ≤7)
+- **來源**:2026-09-03 PR A3 Step 5 worktree 審 r1–r5;0 CRITICAL 未修
+- **內容**:①模板自身 ci.yml 三處 `if:` 行含 develop、對 template config(deliveryBranches main)不合,A5.ci.if 只在 adopted 跑(conf 6);②`PR #___` 佔位 TODOS Markers Check 不抓,靠 Step 6 補(conf 6);③`repoFilePathViolation` 放行 `|` 與反引號(conf 4);④單一 `mergeStrategy` 表達不了雙階段策略(conf 3);⑤template 遺產舊值解不開視為首次設定,把全史掃描縮成 cutover(刻意,Owner PR 授權)(conf 4);⑥tab 縮排讓 keyIndent 撞更深 `name:`(YAML 禁止 tab)(conf 3);⑦同 item 兩個直屬 `name:` 後者覆蓋(parser 會拒)(conf 3);⑧`steps: [{…}]` 非空 flow sequence 不算區塊(假紅)(conf 3);⑨回灌 PR(main → develop)SKIPPED 訊息措辭反向(conf 2);⑩`protectedBranches` 集合擴大無任何 gate 警示,promotion 豁免健全性依賴人審 + branch protection(GOV-005 advisory)(conf 6);⑪steps 混合縮排(不合法 YAML)靜默漏抓(conf 4);⑫引號跳脫其餘形狀(`\\`、`\t`、`"x" # c "d"`)fail-closed 假紅(conf 5);⑬舊值 null 時 OK 行寫「見 info」但無 info(conf 7);⑭`config.head.invalid` / `config.base.invalid` 兩條 UNDETERMINED 丟掉 infoLines(conf 6);⑮UNCHANGED + info 與 `directionChecked` 文字無測試斷言(conf 5);⑯–㉑r1 其餘:`--root` dynamic import 已在檔頭標明、mutate spec 每個突變跑全套 vitest 超 10 分鐘(建議 `--cmd` 縮到相關測試檔或拆 spec)、`mutate.ts` 被 SIGTERM 砍不還原(已在 P3 defer 集合)、CTRL-CI-009 notes 限制 1 敘述、check:catalog 錯誤訊息對 `steps: # 註解` 已修、E-self 在本 repo 合法推進 baseline 後跳過(已實作)
+- **方向**:⑩ 是唯一結構性項目——在 `check:adoption` 或獨立 gate 對「`protectedBranches` 集合相對 merge-base 擴大」印 warn 並要求 PR 描述說明(Milestone C governance verification 一併看);⑬⑭⑮ 一起收(0.5h);其餘逐條 0.5h
+- **工時**:⑩ 1–2h;其餘逐條 0.5h
+
 ### 🟢 A2 Step 5 defer 集合(check:adoption 邊角,17 條 INFORMATIONAL conf ≤6)
 - **來源**:2026-09-02 PR A2 Step 5 worktree 審 r1(10 條)/ r2(1 條)/ r3(6 條);0 CRITICAL
 - **內容**:①`checkCiRunsAdoption` 只比對 `run:` 行,step 加 `if: false` / `continue-on-error` 仍過(conf 5);②字面分支名文法比 `git check-ref-format --branch` 寬(`main.`、`a/.b`、`feat/x.lock/y` 通過;fail-closed 方向,4 來源都得含它才 READY)(conf 5);③`parsePart4` 逐行找 `### 4.x` 先於註解剝除,HTML 註解內假標題可覆蓋真段(conf 5);④4.5 路徑放行 `isDir` 讓 `` `..` `` / `` `.` `` 過(conf 4);⑤`PLACEHOLDER_RE` 不含 `?` / `無` / `unknown`(conf 4);⑥hook 檔 CRLF 讓 A5 regex `;;$` 找到 0 → 假紅(conf 4);⑦`--root` dynamic import 會執行該 root 的 `cso-trigger.config.ts`(等同跑對方 npm scripts;檔頭應標明)(conf 3);⑧4.3 反引號計數不辨 fenced code(conf 3);⑨HTML 註解剝除 regex 不辨 markdown code 邊界,code block 內 `<!--` … `-->` 會吞掉真引用(conf 4);⑩A6.claude.link 仍是子字串比對、比 codex 側寬(conf 4);⑪–⑯4.6 合併策略關鍵字檢查:`merge-commit-sha` / `mergecommit` 命中(conf 6)、`ff-only` 在 URL / 檔名內命中(conf 5)、否定句「不要用 no-ff」通過(conf 5)、`fast-forwarded` / `rebases` / 雙空白不過(conf 4)、錯誤訊息與 CLAUDE.md / ADOPTION 未列 ff 系寫法(conf 4)、正對照未覆蓋 `merge-commit` 連字分支(conf 2)
 - **方向**:4.6 那組是「關鍵字存在」檢查的固有邊界,不要再打補丁——若要收,改成要求採用者在 harness.config 宣告 `mergeStrategy` 枚舉值、4.6 只驗有沒有以反引號提到它(A3 catalog 時一併評估);其餘逐條 0.5–1h
 - **工時**:逐條 0.5–1h;4.6 改宣告式約 2h
+- **交付(部分,PR A3)**:⑪–⑯(4.6 那組)—— `harness.config.json` schemaVersion 2 加必要欄位 `mergeStrategy`,4.6 改驗「以反引號提到宣告值」、關鍵字 regex 整段刪除;①–⑩ 仍 pending
 
 ### 🟢 `grep.column=true` 時 `git grep -z` 是三個 NUL,顯示會錯位
 - **來源**:2026-09-01 PR A1.1 Step 5 r3 I11(confidence 8)
@@ -82,6 +89,25 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 - **工時**:逐條 0.5-2h
 
 ## P3
+
+### ✅ long-lived pre-baseline branch merge grandfathered false positive(PR #44)
+- **來源**:PR A1 sprint entry(`.claude/memory/progress-archive/progress-2026-08.md`「2026-08-29 ① PR A1」):
+  「R7 剩一條 P2 false positive(long-lived pre-baseline branch merge 誤紅 cleanup PR),Owner 拍板 A defer 給 A3」;
+  ADR〈已知限制〉第 3 條。本條由上述已 commit 證據重建(PR A3 P3b),未取用任何未 commit 內容
+- **內容**:`--first-parent` 語意下,pre-baseline 建立的長命分支合併後做清理,對 pre-baseline parent 的 diff 把
+  grandfathered 標為 add → 阻擋合法 cleanup PR(誤紅、非漏抓)
+- **交付**:PR A3 —— **不修掃描器**(混合掃描策略屬架構級變更);ADR 新增〈長命 pre-baseline 分支的清理程序〉
+  (rebase 到 post-baseline / 走獨立 baseline PR 受 CTRL-CI-012 守門 / admin override 留紀錄),登錄 control catalog
+  CTRL-GOV-003(manual-mandatory)
+
+### ✅ baseline 治理旁路(同 PR 內把 baseline 往前推洗白 forbidden)(PR #44)
+- **來源**:PR A1 sprint entry(同上):「Step 5 adversarial-reviewer … conf ≥ 6 一條(治理旁路)defer 給 A3」;
+  ADR〈已知限制〉第 2 條。由已 commit 證據重建(PR A3 P3b)
+- **內容**:一個 PR 同時改 baseline 到 PR tip、中間 commit 加 forbidden、後續刪 → `baseline..HEAD` 幾近空、
+  current tree 乾淨 → gate 假綠;原本只靠 Owner review、machine face 零守門
+- **交付**:PR A3 —— `scripts/check-baseline-governance.ts` + CI step「Baseline Governance Check」(CTRL-CI-012,
+  pull_request only):baseline 值改變時 PR 只准動 config / ADR / bookkeeping allowlist,新值須為 merge-base 祖先
+  (不得指向 PR 內 commit)且為舊值後裔;16 條 e2e + 7 條探針
 
 ### ✅ buildDeliveryRefs 前三條 fallback 路徑 e2e 覆蓋 (#33)
 - **來源**:2026-08-28 批 7 Step 5 F2(adversarial-reviewer,confidence 7);TODOS 措辭原寫「check-todos-markers」但正確目標是 `scripts/check-no-source-terms.ts`(D0 修正)

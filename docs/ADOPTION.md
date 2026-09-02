@@ -12,7 +12,8 @@ type: guide
 
 ## 0. 宣告模式(先做這個,其他步驟才有機器驗證)
 
-- [ ] 開 `scripts/harness.config.json`:`mode` 改成 `"adopted"`、`projectId` 改成你的 slug
+- [ ] 開 `scripts/harness.config.json`(schemaVersion **2**):`mode` 改成 `"adopted"`、`projectId` 改成你的 slug、
+      `mergeStrategy` 選 `squash` / `merge-commit` / `rebase` / `fast-forward`(§4.6 要以反引號提到它)
       (小寫英數與 `-`,不得含 template / placeholder / project)、`protectedBranches` /
       `deliveryBranches` 對齊你的分支策略、`requiredAgentAdapters` 宣告你會用的 agent
       (v1 認得 `claude` / `codex`)、`githubGovernanceRequired` 需要 CODEOWNERS 時設 true
@@ -44,7 +45,7 @@ type: guide
 - [ ] §4.3 Health Stack:反引號 `npm run <script>` ≥3 個、每個存在於 package.json、含 typecheck / lint / test
 - [ ] §4.4 部署資訊:staging / production
 - [ ] §4.5 禁區清單:≥2 個 bullet、每個 bullet 用反引號寫實際存在的檔或目錄
-- [ ] §4.6 Git 規範:config 宣告的每個分支名以反引號出現、寫明 squash / merge commit / rebase
+- [ ] §4.6 Git 規範:config 宣告的每個分支名以反引號出現、以反引號提到宣告的 `mergeStrategy` 值(關鍵字散文不算)
 
 ## 2.5 思考力道與 agent 定義
 
@@ -69,6 +70,13 @@ type: guide
       `harness.config.json` 宣告的 mode 分支,**不需再手動取消註解**:adopted mode 下它斷言
       每條 pattern 對得到 repo 真實檔案,防路徑表隨重構漂移;template 分支那一條會顯示 skipped、屬設計
 - [ ] 之後**每次新增安全敏感模組,同步更新路徑表**(machine 判定是下限不是上限)
+
+## 3.5 Control catalog:你自己加的 CI step 要登錄
+
+- [ ] 每個非 setup 的 ci.yml step 都要在 `scripts/control-catalog.json` 有一條 `hard-automated` control(`ciStep` 逐字等於
+      step 名);環境準備 step 列進 `ciSetupSteps`。**每個 step 都必須有單行 `name:`**(無名 step 或 `name: |` 會被
+      `check:catalog` 擋)。改完 JSON 跑 `npm run catalog:render`,不要手改 `docs/CONTROL-CATALOG.md`
+- [ ] 沒有對應測試的 control 用 `"tested": ["untested"]` 誠實標;`check:catalog` 綠 = 登錄與 CI 雙向對應
 
 ## 4. 本機 git hooks
 
@@ -109,6 +117,13 @@ type: guide
       `pull_request:` 各自的 `branches: [...]` 行,都必須等於 config 的 `protectedBranches`(多一個、
       少一個都紅;push 清單裡只允許 `feature/**` 這一個 glob,其他 glob 一律擋)
 - [ ] 同一 workflow 的 `Adoption Readiness Check` step(`npm run check:adoption`)要保留,恰 1 行
+- [ ] 三處 delivery-branch 的 `if:` 行(Fetch delivery refs / TODOS Markers / Source-term)在 adopted mode 會被 A5.ci.if 驗:
+      必須逐字等於 `if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)`
+      再對 `deliveryBranches` 每個 b 接 ` || github.ref == 'refs/heads/<b>'`。出廠 ci.yml 含 `develop`——要嘛把 `develop` 列進
+      `deliveryBranches`,要嘛從三行拿掉
+- [ ] `Baseline Governance Check` step(pull_request only)要保留:同 repo PR 會帶 `--head`,保護分支之間的 promotion PR
+      (例 develop → main)依你宣告的 `protectedBranches` 明文跳過;fork PR 不帶 `--head`。⚠️ 這個豁免只在所有
+      `protectedBranches` 都真的開了 branch protection / ruleset(必須經 PR、不得直接 push)時成立
 - [ ] 用 Next.js+Prisma → 照 `stack/nextjs-prisma/README.md` 把 L2 層裝上
       (ESLint AST 規則 + migration 守衛 + CI 片段)
 - [ ] `Source-term scan` step:本模板用它防「來源專案識別詞」殘留。

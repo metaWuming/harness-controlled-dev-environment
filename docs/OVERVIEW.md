@@ -90,7 +90,7 @@ Harness 元件分兩個方向（Fowler / Böckeler 2026-04 框架）：
 - **前饋 Guides**（Feed-forward）：在 AI 行動**之前**引導它、提高第一次就做對的機率
 - **回饋 Sensors**（Feedback）：在 AI 行動**之後**偵測錯誤、讓它自我修正
 
-本模板內建 **13 道 gates**、分四組（依觸發時機由早到晚）：
+本模板內建 **13 道 gates**、分四組（依觸發時機由早到晚）。⚠️ 這 13 道**不全是 hard gate**——CI 硬擋、可 `--no-verify` 的本機 hook、人守的 SOP、advisory、週期治理混在同一張表；每道的強度分級 / trigger / bypass / 證據 / 測試狀態以 [CONTROL-CATALOG.md](CONTROL-CATALOG.md)〈依強度分級〉為正本（由 `scripts/control-catalog.json` 渲染、`npm run check:catalog` 驗一致與 CI 雙向對應）。本節與 README 的 13 道是概念層敘述，不重列 gate 契約。
 
 ```mermaid
 flowchart LR
@@ -345,7 +345,7 @@ flowchart TD
    - 來源三選一：既有缺陷 / 漏改 consumer / baseline 後引入
    - **行為級 / 散文級**二分（散文級照抄替換句、不燒確認輪）
 
-**壓輪數三條紀律**（極重要、SOP L181-219 詳述）：
+**壓輪數三條紀律**（極重要、SOP〈壓輪數的三條紀律〉詳述）：
 1. **行為 vs 散文二分校準表**（8 條實例 + fail-open 紀律）
 2. **「自檢一遍」加硬成三句**：
    - 新機制 → 跑 mutation 探針
@@ -414,7 +414,7 @@ flowchart TD
 
 ### 節奏分層
 
-SOP 對節奏也有分層規劃（`plan-mode-checklist.md` L496-548）：
+SOP 對節奏也有分層規劃（`plan-mode-checklist.md` 〈節奏分層 — per-change / 里程碑 / 階段〉）：
 - **A. 里程碑 / EPIC**：三層安全審分工
 - **B. 階段占位**：驗證 / 部署階段
 - **C. 除錯入口**
@@ -422,7 +422,7 @@ SOP 對節奏也有分層規劃（`plan-mode-checklist.md` L496-548）：
 
 ### 例外：不走完整流程的情境
 
-`docs-only` 判準（`plan-mode-checklist.md` L41-46 三條）+ 完整 SOP 硬條件清單（L48-60）決定該不該走完整 7 步。以下可跳（但**觸 🔴 條件即失格**：spec / 安全 / 治理 / 守門 / CI）：
+`docs-only` 判準（`plan-mode-checklist.md` 〈適用範圍 — 完整 SOP vs docs-only〉 三條）+ 完整 SOP 硬條件清單（〈適用範圍 — 完整 SOP vs docs-only〉）決定該不該走完整 7 步。以下可跳（但**觸 🔴 條件即失格**：spec / 安全 / 治理 / 守門 / CI）：
 - typo 修正
 - 顯而易見的單行修改
 - 純粹格式整理
@@ -446,7 +446,7 @@ SOP 對節奏也有分層規劃（`plan-mode-checklist.md` L496-548）：
 | ⑧ | CSO 觸發 | `scripts/check-cso-trigger.ts` + `cso-trigger.config.ts` + `mutate.ts` + `mutations/` | 人工在 Step 4.5 執行 |
 | ⑨ | 視覺關 | gstack `/design-review`（外部） | — |
 | ⑩ | 第二道 review + worktree | `.claude/agents/adversarial-reviewer.md` + `scripts/check-bookkeeping-commit.ts` | — |
-| ⑪ | CI 常駐 | `.github/workflows/ci.yml` 全檔 | 8 個 step |
+| ⑪ | CI 常駐 | `.github/workflows/ci.yml` 全檔 | 每個 step 逐條登錄於 [CONTROL-CATALOG.md](CONTROL-CATALOG.md)〈hard-automated〉（數量不在此寫死） |
 | ⑫ | 週健檢 | `scripts/weekly-health-check.ts` + `npm run health:weekly` → `.claude/memory/health-history/` | — |
 | ⑬ | 季 retro | `.claude/memory/LESSONS-archive/` + `progress-archive/` | — |
 
@@ -570,21 +570,9 @@ L2 加持（Next.js + Prisma）：4 支自訂 AST rule：
 - `DELIVERY_REFS = origin/${default_branch}`
 - `MARKER_SELF_PR = ${{ github.event.pull_request.number }}`
 
-八個 step（依序）：
-
-| Step | 做什麼 | 供應鏈守衛 |
-|---|---|---|
-| Checkout | actions/checkout SHA-pinned `3d3c42e5...` | ✅ |
-| Secret scan (gitleaks) | 全史掃、pinned binary + sha256 校驗 | ✅ |
-| Setup Node | actions/setup-node SHA-pinned `820762786...` | ✅ |
-| Typecheck / Lint | `tsc --noEmit` / `eslint` | — |
-| Npm audit | `--audit-level=high` 硬 gate | — |
-| Doc references check | `check-doc-refs.ts` 驗檔案引用完整 | — |
-| Doc size check | `check-doc-size.ts` 防記憶檔膨脹 | — |
-| Fetch delivery refs | fetch default_branch + develop（belt-and-suspenders） | — |
-| TODOS Markers Check | `check-todos-markers.ts` 驗完成宣稱有 PR merge 證據 | — |
-| Source-term scan | `check-no-source-terms.ts` 去識別化守衛 | — |
-| Test (vitest) | `npx vitest run` | — |
+CI step 逐條登錄於 [CONTROL-CATALOG.md](CONTROL-CATALOG.md)〈hard-automated〉（正本 `scripts/control-catalog.json`，
+`npm run check:catalog` 驗每個 step 與 catalog 雙向一一對應）；本節不重列 step 清單與數量，避免漂移。供應鏈守衛：
+`actions/checkout` / `actions/setup-node` SHA-pinned、gitleaks pinned binary + sha256 校驗。
 
 #### ⑫ 週健檢
 
@@ -630,7 +618,7 @@ flowchart LR
 
 **Schema**：pre-merge（批 8 定型）— 排除 PR 號 / squash SHA / CI 狀態（post-merge 才知）。
 
-**Entry 範本**（`progress.md` 檔頭 L56-72）：
+**Entry 範本**（`progress.md` 檔頭 〈Entry 格式範本〉）：
 - 緣起 / 改動 / 審查 / 驗證 / 教訓 / 下一棒候選 / check:claims 處置
 - Cost field：rounds / P1 / P2 / Step5 獨立發現
 - 量測三項：model + effort / baseline SHA / 來源分佈
@@ -639,13 +627,13 @@ flowchart LR
 
 ### `.claude/memory/LESSONS.md` — 教訓庫
 
-**Schema**（L46-64）：情境 / 錯誤 / 根因 / 避免 / 相關檔案。
+**Schema**（〈教訓格式範本〉）：情境 / 錯誤 / 根因 / 避免 / 相關檔案。
 
 **教訓升級階梯 4 階**（見第五節）。
 
 **新 session 開局必讀**（AI 每次啟動先讀）。
 
-**「流程/工具」段**收「已 port 的跨專案教訓」（如批 5 「call site 必須另守」被 port 進 SOP L215）。
+**「流程/工具」段**收「已 port 的跨專案教訓」（如批 5 「call site 必須另守」被 port 進 SOP〈壓輪數的三條紀律〉⑶）。
 
 ### `TODOS.md` — 工作追蹤 SSOT
 
@@ -665,7 +653,7 @@ flowchart LR
 
 ### 為何三檔一起 pre-merge
 
-批 5 教訓（進 SOP L215）：
+批 5 教訓（進 SOP〈壓輪數的三條紀律〉⑶）：
 > BACKLOG / TODOS 標「刀 X ✅」的 bookkeeping 必須併進該刀 feature branch、跟 progress entry 走同一輪 CI
 
 否則會踩「每 sprint 收尾多 1 支 PR + 1 輪 CI 純浪費」的坑。
@@ -676,7 +664,7 @@ flowchart LR
 
 ### 核心原則
 
-**Effort 是成本桿、不是品質旋鈕**（`docs/EFFORT.md` L14-19）。
+**Effort 是成本桿、不是品質旋鈕**（`docs/EFFORT.md` 〈為什麼要分層〉）。
 
 - Opus 5 支持「較低 effort 的 fast pass」— 但**只支持模型單 pass 準確度**
 - **不等於**「輪數由 effort 決定」（不同 finding 需要的 fix round 由 finding 性質決定、不由 effort）
@@ -702,7 +690,7 @@ flowchart LR
 
 ### Sweep（比對數據）三項人工填
 
-Progress entry 內的量測段（`docs/EFFORT.md` L34-72）：
+Progress entry 內的量測段（`docs/EFFORT.md` 〈要做 sweep，先量對東西〉）：
 1. **Model + Effort**（如 `claude-opus-4-7 medium`）
 2. **Baseline SHA**（review 起點）
 3. **來源分佈**（既有缺陷 / 漏改 consumer / baseline 後引入）
@@ -715,7 +703,7 @@ Progress entry 內的量測段（`docs/EFFORT.md` L34-72）：
 
 ### 六個外部工具對照
 
-`docs/DEGRADATION.md` L14-23：
+`docs/DEGRADATION.md` 〈對照表〉：
 
 | 外部工具 | 用途 | 降級路徑 |
 |---|---|---|
@@ -726,7 +714,7 @@ Progress entry 內的量測段（`docs/EFFORT.md` L34-72）：
 | **`/skill` 生態** | 各種可選增強 | 全 optional、不用不影響骨架 |
 | **Claude Code subagent** | Step 5 adversarial-reviewer | 手動貼 diff 給另一 session |
 
-⚠️ **「書面降級、未實測」**（`DEGRADATION.md` L12）— 需要時要親自跑一遍驗證是否真能替代。
+⚠️ **「書面降級、未實測」**（`DEGRADATION.md` 〈外部依賴降級路徑〉）— 需要時要親自跑一遍驗證是否真能替代。
 
 ### 不變骨架六條
 
@@ -741,7 +729,7 @@ Progress entry 內的量測段（`docs/EFFORT.md` L34-72）：
 
 ### gstack 定位聲明
 
-`docs/DEGRADATION.md` L36-40：**gstack 是第三方 skill 套件、模板不包含**。模板骨架 100% 獨立於 gstack。
+`docs/DEGRADATION.md` 〈gstack 定位聲明〉：**gstack 是第三方 skill 套件、模板不包含**。模板骨架 100% 獨立於 gstack。
 
 ---
 
@@ -752,7 +740,7 @@ Progress entry 內的量測段（`docs/EFFORT.md` L34-72）：
 **問題**：`scripts/deny-terms.txt` 用純 regex 擋 `PR #[0-9]`（防來源專案識別詞洩漏）、但**無法區分**「來源專案 PR」vs「本 repo self-PR」。
 
 **四階**：
-- **第 1 次**（LESSONS L71-91、2026-08-27）：test fixture 需要範例引用格式 → workaround「已交付」占位
+- **第 1 次**（LESSONS 〈[2026-08-27] self-PR # citation 三處撞去識別化 denylist:test fixture / TODOS 補號 / CI push event〉、2026-08-27）：test fixture 需要範例引用格式 → workaround「已交付」占位
 - **第 2 次**：TODOS 補完工引用 → workaround `(#N)` 括號格式
 - **第 3 次**：CI push event 缺 `MARKER_SELF_PR` → workaround delivery-branch 白名單
 - **第 4 次**（批 7 交付）：**機器化 context-aware checker** — `scripts/check-no-source-terms.ts`：兩條 pattern 命中若引用的 PR 號 ∈ 本 repo delivery refs 已 merge 集合則放行。commit-msg hook 保持嚴格分層。
@@ -764,8 +752,8 @@ Progress entry 內的量測段（`docs/EFFORT.md` L34-72）：
 **問題**：Step 4.5 CSO fail-closed 規則沒考慮**模板 repo 路徑表刻意出廠為空** → 若照字面執行、模板 repo 每個 sprint 都會在 4.5 永久卡死。
 
 **四階**：
-- **第 1 次**（LESSONS L117-138、2026-08-27）：**9 輪 review 都沒抓到**、實際執行才浮現「自我死鎖」
-- **機器化紀律**：在 SOP 內加**「模板 repo 例外條款」**（`plan-mode-checklist.md` L228-233）+ **教訓升成 rule**「新增『必須滿足 X 才能繼續』的 gate 條款、送審前把條款對本 repo 當下狀態實際走一遍」
+- **第 1 次**（LESSONS 〈[2026-08-27] 新 SOP 規則寫完,先拿自己的 repo dogfood 一遍再送審〉、2026-08-27）：**9 輪 review 都沒抓到**、實際執行才浮現「自我死鎖」
+- **機器化紀律**：在 SOP 內加**「模板 repo 例外條款」**（`plan-mode-checklist.md` 〈Step 4.5〉）+ **教訓升成 rule**「新增『必須滿足 X 才能繼續』的 gate 條款、送審前把條款對本 repo 當下狀態實際走一遍」
 
 **教訓的教訓**：Review 都在讀文字、沒有人把規則對「模板 repo 自己」執行。**可執行性缺陷要靠執行才浮現。**
 

@@ -29,7 +29,11 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 export const HARNESS_CONFIG_PATH = 'scripts/harness.config.json';
-export const HARNESS_SCHEMA_VERSION = 1;
+export const HARNESS_SCHEMA_VERSION = 2;
+
+/** 合併策略枚舉(PR A3 P5,schemaVersion 2 必要欄位);CLAUDE.md §4.6 必須以反引號提到宣告值。 */
+export const MERGE_STRATEGIES = ['squash', 'merge-commit', 'rebase', 'fast-forward'] as const;
+export type MergeStrategy = (typeof MERGE_STRATEGIES)[number];
 export const TEMPLATE_PROJECT_ID = '__TEMPLATE__';
 
 export type HarnessMode = 'template' | 'adopted';
@@ -40,7 +44,7 @@ export const KNOWN_ADAPTERS = ['claude', 'codex'] as const;
 export type AdapterName = (typeof KNOWN_ADAPTERS)[number];
 
 export interface HarnessConfig {
-  schemaVersion: 1;
+  schemaVersion: 2;
   mode: HarnessMode;
   projectId: string;
   templatePackageName: string;
@@ -48,6 +52,7 @@ export interface HarnessConfig {
   deliveryBranches: string[];
   requiredAgentAdapters: AdapterName[];
   githubGovernanceRequired: boolean;
+  mergeStrategy: MergeStrategy;
 }
 
 /** 允許出現的 key(`_comment` 是純說明,讀了就丟)。其他 key 一律 fail-closed。 */
@@ -60,6 +65,7 @@ const ALLOWED_KEYS = new Set([
   'deliveryBranches',
   'requiredAgentAdapters',
   'githubGovernanceRequired',
+  'mergeStrategy',
   '_comment',
 ]);
 
@@ -72,6 +78,7 @@ const REQUIRED_KEYS = [
   'deliveryBranches',
   'requiredAgentAdapters',
   'githubGovernanceRequired',
+  'mergeStrategy',
 ] as const;
 
 export const LITERAL_BRANCH_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
@@ -151,7 +158,8 @@ export function parseHarnessConfig(text: string): HarnessConfig {
   }
 
   if (obj.schemaVersion !== HARNESS_SCHEMA_VERSION) {
-    fail(`schemaVersion 未知(收到 ${JSON.stringify(obj.schemaVersion)},本 loader 只支援 ${HARNESS_SCHEMA_VERSION})`);
+    const hint = obj.schemaVersion === 1 ? ';schemaVersion 1 → 2 的升級步驟見 docs/MIGRATION.md(加 mergeStrategy 欄位)' : '';
+    fail(`schemaVersion 未知(收到 ${JSON.stringify(obj.schemaVersion)},本 loader 只支援 ${HARNESS_SCHEMA_VERSION}${hint})`);
   }
   const mode = obj.mode;
   if (typeof mode !== 'string' || !(HARNESS_MODES as readonly string[]).includes(mode)) {
@@ -162,6 +170,10 @@ export function parseHarnessConfig(text: string): HarnessConfig {
     fail('templatePackageName 必須是非空字串');
   }
   if (typeof obj.githubGovernanceRequired !== 'boolean') fail('githubGovernanceRequired 必須是 boolean');
+  const mergeStrategy = obj.mergeStrategy;
+  if (typeof mergeStrategy !== 'string' || !(MERGE_STRATEGIES as readonly string[]).includes(mergeStrategy)) {
+    fail(`mergeStrategy 必須是 ${MERGE_STRATEGIES.map((m) => `"${m}"`).join(' | ')}(收到 ${JSON.stringify(mergeStrategy)})`);
+  }
 
   const protectedBranches = assertStringArray(obj, 'protectedBranches');
   protectedBranches.forEach((b, i) => assertLiteralBranchName(b, `protectedBranches[${i}]`));
@@ -189,6 +201,7 @@ export function parseHarnessConfig(text: string): HarnessConfig {
     deliveryBranches,
     requiredAgentAdapters: adapters as AdapterName[],
     githubGovernanceRequired: obj.githubGovernanceRequired,
+    mergeStrategy: mergeStrategy as MergeStrategy,
   };
 }
 

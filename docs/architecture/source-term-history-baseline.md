@@ -134,15 +134,36 @@ CA(context-aware)判定只對「hit 的內容」做 self-PR 放行,所以**內�
 **取內容的方向一律選「多保留」**:留太多最多造成誤擋(看得到、查得出來);
 切太少會讓未知引用消失 → 假放行(看不到、查不出來)。
 
+## 長命 pre-baseline 分支的清理程序
+
+適用:分支從 baseline **之前**分出、在 baseline **之後**才要合併或清理,且它帶著 grandfathered
+的識別詞(對 pre-baseline parent 的 diff 會把 grandfathered 內容標成 add,造成**誤紅、非漏抓**)。
+
+1. **先 rebase 到 post-baseline 主線**(`git rebase <delivery-branch>`),讓每個 commit 相對
+   first parent 的 diff 只含本分支真正的新增行;rebase 後照常開 PR,gate 依 per-commit 語意判定。
+2. rebase 不可行(歷史需保留)時,由 Owner 依〈baseline 變更授權〉推進 baseline —— 那是獨立
+   的 baseline PR,受 CTRL-CI-012 機器守門(只准動 config / 本 ADR / bookkeeping、新值須為
+   merge-base 祖先且為舊值後裔),**不得**與清理 PR 合併在同一支。
+3. 兩條路都走不通 → 在 PR 描述明列誤紅的 hit 與其 grandfathered 來源(rev 前 8 碼),交
+   Owner 用 admin override 合併;這是 CTRL-CI-009 的 bypass 路徑之一,必須留紀錄。
+
+本程序**不修改掃描器**;誤紅方向的限制以程序承接,漏抓方向(第 8 條)另案。
+
 ## 已知限制
 
 1. **diff hit 缺精確 `file:line` attribution** —— hit 只帶 rev 前 8 碼與內容片段。
-   要精確定位需要更完整的 patch 解析。**已指派後續 control catalog 批次處理。**
-2. **同一 PR 內推進 baseline 的治理旁路** —— 上一節的授權規則目前靠人,沒有機器守門。
-   **已指派後續 control catalog 批次處理。**
+   要精確定位需要更完整的 patch 解析。**處置(PR A3):屬診斷精度限制、不影響判定;
+   登錄於 control catalog 的 CTRL-CI-009 `notes`,無排程修復**(改顯示格式會動到 hit
+   framing 契約與既有探針,為診斷精度承擔那個面不划算)。
+2. **同一 PR 內推進 baseline 的治理旁路** —— 上一節的授權規則靠人。**處置(PR A3):
+   由 CTRL-CI-012「Baseline Governance Check」機器守門**(`scripts/check-baseline-governance.ts`,
+   pull_request only):baseline 值改變時,PR 只准動本 config、本 ADR 與 bookkeeping allowlist,
+   且新值必須是 merge-base 的祖先(不得指向本 PR 內任何 commit)並為舊值的真後裔。人工授權段
+   (CTRL-GOV-002)不變。
 3. **long-lived pre-baseline 分支的 cleanup 誤報** —— 在 first-parent 語意下,
-   從 baseline 之前分出、之後才合併的長命分支做清理時可能誤紅。
-   **已指派後續 control catalog 批次處理。**
+   從 baseline 之前分出、之後才合併的長命分支做清理時可能誤紅。**處置(PR A3):不改掃描器**
+   (混合掃描策略是架構級變更);改為明文程序,見下方〈長命 pre-baseline 分支的清理程序〉,
+   登錄為 CTRL-GOV-003(manual-mandatory)。
 4. **全史掃描路徑(baseline 為 null / 下游降級)的 subprocess 成本未最佳化** ——
    該路徑對每個 rev 跑 2-3 次 `git grep`(non-CA、CA,SYNTAX 例外檔存在時再一次)
    加最多 3 次 `cat-file -e`,成本隨歷史線性成長。

@@ -19,7 +19,8 @@ import {
 const REPO = path.resolve(__dirname, '..');
 
 const VALID_TEMPLATE = {
-  schemaVersion: 1,
+  schemaVersion: 2,
+  mergeStrategy: 'squash',
   mode: 'template',
   projectId: TEMPLATE_PROJECT_ID,
   templatePackageName: 'harness-controlled-dev-environment',
@@ -79,8 +80,17 @@ describe('parseHarnessConfig — fail-closed 負對照', () => {
     expect(() => parseHarnessConfig('null')).toThrow(/root/);
     expect(() => parseHarnessConfig('"x"')).toThrow(/root/);
   });
-  it.each([0, 2, '1', null])('schemaVersion 未知:%j', (v) => {
+  it.each([0, 1, 3, '2', null])('schemaVersion 未知:%j', (v) => {
     expect(() => parseHarnessConfig(withField(VALID_TEMPLATE, { schemaVersion: v }))).toThrow(/schemaVersion/);
+  });
+  it('schemaVersion 1 一律拒收(無 fallback)、訊息指向 MIGRATION', () => {
+    expect(() => parseHarnessConfig(withField(VALID_TEMPLATE, { schemaVersion: 1 }))).toThrow(/docs\/MIGRATION\.md/);
+  });
+  it.each(['Squash', 'merge_commit', 'ff', '', null, 1])('mergeStrategy 枚舉外:%j', (m) => {
+    expect(() => parseHarnessConfig(withField(VALID_TEMPLATE, { mergeStrategy: m }))).toThrow(/mergeStrategy/);
+  });
+  it.each(['squash', 'merge-commit', 'rebase', 'fast-forward'])('mergeStrategy 合法 %s', (m) => {
+    expect(parseHarnessConfig(withField(VALID_TEMPLATE, { mergeStrategy: m })).mergeStrategy).toBe(m);
   });
   it.each(['Template', 'adopte', '', 'TEMPLATE', null, 1])('mode 不合法:%j', (m) => {
     expect(() => parseHarnessConfig(withField(VALID_TEMPLATE, { mode: m }))).toThrow(/mode/);
@@ -97,6 +107,7 @@ describe('parseHarnessConfig — fail-closed 負對照', () => {
     'deliveryBranches',
     'requiredAgentAdapters',
     'githubGovernanceRequired',
+    'mergeStrategy',
   ])('缺必要欄位 %s', (k) => {
     expect(() => parseHarnessConfig(without(VALID_TEMPLATE, k))).toThrow(new RegExp(k));
   });

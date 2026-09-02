@@ -143,6 +143,12 @@ jobs:
         # placeholder / 空表 / 骨架 / 缺檔 fail-closed。config 缺或壞 = exit 2。
         run: npm run check:adoption
 
+      - name: Control Catalog Check
+        # PR A3:scripts/control-catalog.json 是控制措施目錄的正本。本 step 驗:每個實作 / 測試路徑
+        # tracked、hard-automated 的 CI step 與本檔 `- name:` 雙向一一對應(setup step 由 JSON 的
+        # ciSetupSteps 明文豁免;新增 step 沒登錄 → 紅)、docs/CONTROL-CATALOG.md 與 JSON 逐位元組一致。
+        run: npm run check:catalog
+
       - name: Fetch delivery refs (for TODOS Markers Check)
         # check-todos-markers 用主線分支的 git 史判 PR merge 證據;pull_request event 下
         # checkout 是 detached merge ref,顯式 fetch 建 remote-tracking ref(best-effort:
@@ -169,6 +175,29 @@ jobs:
           git fetch --no-tags origin "$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH" || echo "note: $DEFAULT_BRANCH ref fetch 略過"
           git remote set-head origin -a || echo "note: origin/HEAD set-head 略過"
           git fetch --no-tags origin develop:refs/remotes/origin/develop || echo "note: develop ref fetch 略過(未採 develop 主線則屬正常)"
+
+      - name: Baseline Governance Check
+        # PR A3(ADR〈已知限制〉第 2 條的機器守門):source-term baseline 值若在本 PR 改變,PR 只准動
+        # config / ADR / bookkeeping allowlist,且新值必須是 merge-base 的祖先(不得指向本 PR 內 commit)並為舊值後裔。
+        # 只在 pull_request 跑(push 到主線時 merge-base == HEAD 會 fail-closed 假紅);base ref 由本 step 自己顯式
+        # fetch(下面 run 的第一行;上一 step 只 fetch default_branch 與 develop,PR base 是其他保護分支時只有這一行有效)
+        # —— fetch 失敗 → ref 不存在 → 腳本 exit 2(fail-closed),不假設 fetch-depth 0 產生 remote ref。
+        # base 用 env 傳、在 run 內引號展開,不做 workflow 表達式的 shell 內插;腳本本身不讀任何 env。
+        # Step 5 r1 C3:base 用 PR 真正的 base 分支(GitFlow 進 develop 的 PR 不能拿 main 當 base);
+        # 同 repo 的 PR 另傳 --head,保護分支之間的 promotion PR(develop → main)由腳本依宣告的
+        # protectedBranches 明文 SKIPPED;fork PR 不傳 --head(fork 分支名可任取,不得拿來當豁免)。
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          git fetch --no-tags origin "$BASE_REF:refs/remotes/origin/$BASE_REF" || echo "note: base ref fetch 略過(下一步 fail-closed)"
+          if [ "$HEAD_SAME_REPO" = "true" ]; then
+            npm run check:baseline-governance -- "--base=origin/$BASE_REF" "--head=$HEAD_REF"
+          else
+            npm run check:baseline-governance -- "--base=origin/$BASE_REF"
+          fi
 
       - name: TODOS Markers Check
         # marker 治理:TODOS.md 完成宣稱(✅/完工)必須引用有 merge 證據的 PR 號,

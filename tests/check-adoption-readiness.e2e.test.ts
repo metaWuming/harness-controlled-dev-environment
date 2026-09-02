@@ -53,6 +53,15 @@ jobs:
     steps:
       # ${ADR_REF}
       # ${ADR_REF}
+      - name: Fetch delivery refs
+        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main'
+        run: git fetch
+      - name: TODOS Markers Check
+        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main'
+        run: npm run check:todos
+      - name: Source-term scan
+        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main'
+        run: npm run check:no-source-terms
       - name: Adoption Readiness Check
         run: npm run check:adoption
 `;
@@ -114,7 +123,7 @@ const CLAUDE_FILLED = `# CLAUDE.md
 
 ### 4.6 Git 規範
 
-- \`main\` 正式、\`develop\` 開發;feature → develop squash
+- \`main\` 正式、\`develop\` 開發;feature → develop \`squash\`
 
 ---
 `;
@@ -123,7 +132,8 @@ function templateFiles(): Record<string, string> {
   const f: Record<string, string> = {
     'package.json': JSON.stringify({ name: 'harness-controlled-dev-environment', scripts: { typecheck: 'x', lint: 'x', test: 'x' } }),
     'scripts/harness.config.json': JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
+      mergeStrategy: 'squash',
       mode: 'template',
       projectId: '__TEMPLATE__',
       templatePackageName: 'harness-controlled-dev-environment',
@@ -137,6 +147,8 @@ function templateFiles(): Record<string, string> {
     'CLAUDE.md': CLAUDE_SKELETON,
     '.github/workflows/ci.yml': CI_TEMPLATE,
     [ADR_PATH]: '# ADR\n\n## 決策\n\n## 已知限制\n',
+    // PR A3 P0 起 progress.md 不在 EXPECTED_ADR_REFS 內,T8 仍要讀得到它
+    '.claude/memory/progress.md': 'entry\n',
   };
   for (const [rel, n] of EXPECTED_ADR_REFS) {
     if (rel === '.github/workflows/ci.yml') continue; // 已在 CI_TEMPLATE 內放 2 個
@@ -149,7 +161,8 @@ function adoptedFiles(): Record<string, string> {
   return {
     'package.json': JSON.stringify({ name: 'my-shop', scripts: { typecheck: 'x', lint: 'x', test: 'x' } }),
     'scripts/harness.config.json': JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
+      mergeStrategy: 'squash',
       mode: 'adopted',
       projectId: 'my-shop',
       templatePackageName: 'harness-controlled-dev-environment',
@@ -210,7 +223,7 @@ describe('check:adoption e2e', () => {
     expect(r.out).not.toMatch(/TEMPLATE_MODE|READY/);
   });
   it('config malformed / mode 拼錯 / schema 未知 → exit 2 帶檔名', () => {
-    for (const bad of ['{', JSON.stringify({ ...JSON.parse(templateFiles()['scripts/harness.config.json']!), mode: 'adopte' }), JSON.stringify({ ...JSON.parse(templateFiles()['scripts/harness.config.json']!), schemaVersion: 2 })]) {
+    for (const bad of ['{', JSON.stringify({ ...JSON.parse(templateFiles()['scripts/harness.config.json']!), mode: 'adopte' }), JSON.stringify({ ...JSON.parse(templateFiles()['scripts/harness.config.json']!), schemaVersion: 3 })]) {
       const f = templateFiles();
       f['scripts/harness.config.json'] = bad;
       const r = run([`--root=${makeRepo(f)}`]);

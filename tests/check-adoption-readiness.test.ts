@@ -22,6 +22,7 @@ import {
   checkTemplatePackageName,
   checkTemplatePart4Skeleton,
   checkTemplateProjectId,
+  expectedCiIfLine,
   extractCiBranches,
   extractPreCommitBranches,
   extractPrePushBranches,
@@ -36,7 +37,8 @@ import { ADR_PATH, EXPECTED_ADR_REFS } from '../scripts/lib/template-governance'
 // ───────────────────────────── fixtures
 
 const TEMPLATE_CFG: HarnessConfig = {
-  schemaVersion: 1,
+  schemaVersion: 2,
+  mergeStrategy: 'squash',
   mode: 'template',
   projectId: '__TEMPLATE__',
   templatePackageName: 'harness-controlled-dev-environment',
@@ -126,7 +128,7 @@ const PART4_FILLED = `
 ### 4.6 Git 規範
 
 - \`main\` = 正式;\`develop\` = 開發主線;feature/xxx
-- feature → develop squash;develop → main merge commit
+- feature → develop \`squash\`;develop → main merge commit
 
 ---
 
@@ -157,6 +159,15 @@ env:
 jobs:
   ci:
     steps:
+      - name: Fetch delivery refs
+        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main'
+        run: git fetch
+      - name: TODOS Markers Check
+        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main'
+        run: npm run check:todos
+      - name: Source-term scan
+        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main'
+        run: npm run check:no-source-terms
       - name: Adoption Readiness Check
         run: npm run check:adoption
 `;
@@ -268,7 +279,8 @@ describe('template mode T1–T9', () => {
         'CLAUDE.md': CLAUDE_TEMPLATE,
         'scripts/lib/destructive-guard.ts': DESTRUCTIVE_TEMPLATE,
         '.github/workflows/ci.yml': CI_OK + `# 見 ${ADR_PATH} 的「決策」\n# 見 ${ADR_PATH} 的「決策」\n`,
-        '.claude/memory/progress.md': 'entry 沒有個人路徑;見 ' + ADR_PATH + ' 的「決策」',
+        // PR A3 P0 起 progress.md 不在 EXPECTED_ADR_REFS 內 → 這裡不得含 ADR 引用
+        '.claude/memory/progress.md': 'entry 沒有個人路徑',
       },
     });
   it('T1 sentinel 正 / 負', () => {
@@ -324,9 +336,9 @@ describe('template mode T1–T9', () => {
     expect(checkTemplateAdrRefs(TEMPLATE_CFG, makeIo({ files: okFiles }))).toEqual([]);
     const extra = { ...okFiles, 'README.md': `見 ${ADR_PATH} 的「決策」` };
     expect(ids(checkTemplateAdrRefs(TEMPLATE_CFG, makeIo({ files: extra })))).toContain('T9');
-    const fewer = { ...okFiles, '.claude/memory/progress.md': 'nothing' };
+    const fewer = { ...okFiles, 'scripts/source-term-baseline.json': 'nothing' };
     expect(ids(checkTemplateAdrRefs(TEMPLATE_CFG, makeIo({ files: fewer })))).toContain('T9');
-    const bare = { ...okFiles, '.claude/memory/progress.md': `見 ${ADR_PATH}` };
+    const bare = { ...okFiles, 'scripts/source-term-baseline.json': `見 ${ADR_PATH}` };
     expect(fails(checkTemplateAdrRefs(TEMPLATE_CFG, makeIo({ files: bare }))).some((f) => f.msg.includes('未以「<穩定標題>」'))).toBe(true);
   });
   it('runAdoptionChecks(template):首行 TEMPLATE_MODE、不含 READY、有 fail 時 ready=false', () => {
@@ -386,15 +398,13 @@ describe('adopted mode A2 Part 4 精確內容', () => {
     const dirTok = PART4_FILLED.replace('`prisma/schema.prisma`', '`scripts/lib/`');
     expect(checkPart4Content(ADOPTED_CFG, withPart4(dirTok))).toEqual([]);
   });
-  it('4.6 負:缺 config 分支名 / 無合併策略詞 / 只有出廠 bullet + 註解', () => {
+  it('4.6 負:缺 config 分支名 / 未以反引號提到宣告的 mergeStrategy / 宣告 merge-commit 但只寫 `squash` / 只有出廠 bullet + 註解;正:反引號提到即過', () => {
     expect(ids(checkPart4Content(ADOPTED_CFG, withPart4(PART4_FILLED.replace('`develop` = 開發主線', 'develop = 開發主線'))))).toContain('A2.4.6');
-    expect(ids(checkPart4Content(ADOPTED_CFG, withPart4(PART4_FILLED.replace('- feature → develop squash;develop → main merge commit\n', ''))))).toContain('A2.4.6');
-    // Step 5 r2 F1 / F2:英文時態 / 複數 / fast-forward 寫法是合法合併策略(不得假紅)
-    for (const ok of ['- feature is squashed into develop', '- use merge commits into main', '- branches are rebased before merge', '- merge_commit only', '- main 只收 ff-only']) {
-      expect(checkPart4Content(ADOPTED_CFG, withPart4(PART4_FILLED.replace('- feature → develop squash;develop → main merge commit\n', ok + '\n'))), ok).toEqual([]);
-    }
-    // Step 5 r1 I4:「Firebase」不是合併策略
-    expect(ids(checkPart4Content(ADOPTED_CFG, withPart4(PART4_FILLED.replace('- feature → develop squash;develop → main merge commit\n', '- 我們用 Firebase 部署\n'))))).toContain('A2.4.6');
+    expect(ids(checkPart4Content(ADOPTED_CFG, withPart4(PART4_FILLED.replace('- feature → develop `squash`;develop → main merge commit\n', ''))))).toContain('A2.4.6');
+    // 沒反引號的散文提及不算(否定句 / URL / 時態變體都不再是本規則要判的事)
+    expect(ids(checkPart4Content(ADOPTED_CFG, withPart4(PART4_FILLED.replace('`squash`', 'squash'))))).toContain('A2.4.6');
+    expect(ids(checkPart4Content({ ...ADOPTED_CFG, mergeStrategy: 'merge-commit' }, withPart4(PART4_FILLED)))).toContain('A2.4.6');
+    expect(checkPart4Content({ ...ADOPTED_CFG, mergeStrategy: 'merge-commit' }, withPart4(PART4_FILLED.replace('`squash`', '`merge-commit`')))).toEqual([]);
     const stock = PART4_FILLED.replace(/### 4\.6 Git 規範[\s\S]*?---/, '### 4.6 Git 規範\n\n- 每完成一個功能模組必須 commit\n\n<!-- 填:你的分支策略 -->\n\n---');
     expect(ids(checkPart4Content(ADOPTED_CFG, withPart4(stock)))).toContain('A2.4.6');
   });
@@ -474,6 +484,19 @@ describe('adopted mode A5 分支政策集合精確相等', () => {
     expect(fails(checkBranchConformance(ADOPTED_CFG, ci("branches: [main, develop, 'feature/**']", 'branches: [main]'))).map((x) => x.id)).toEqual(['A5.ci.pull_request']);
     expect(fails(checkBranchConformance(ADOPTED_CFG, ci("branches: [main, develop, 'feature/**']", 'types: [opened]'))).map((x) => x.id)).toEqual(['A5.ci.pull_request']);
     expect(fails(checkBranchConformance(ADOPTED_CFG, ci("branches: [main, develop, 'feature/**']", 'branches: [main, main, develop]'))).map((x) => x.id)).toEqual(['A5.ci.pull_request.grammar']);
+  });
+  it('A5.ci.if(P4):行數 2 / 4、多一分支、少一分支、順序、default_branch 表達式被改、文法 → 各自 fail', () => {
+    const IF = "        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main'\n";
+    const withIf = (repl: (yml: string) => string) => adoptedIo({ files: { '.github/workflows/ci.yml': repl(CI_OK) } });
+    expect(fails(checkBranchConformance(ADOPTED_CFG, adoptedIo()))).toEqual([]);
+    expect(ids(checkBranchConformance(ADOPTED_CFG, withIf((y) => y.replace(IF, ''))))).toContain('A5.ci.if');
+    expect(ids(checkBranchConformance(ADOPTED_CFG, withIf((y) => y + IF)))).toContain('A5.ci.if');
+    expect(ids(checkBranchConformance(ADOPTED_CFG, withIf((y) => y.replace(IF, IF.replace("'refs/heads/main'", "'refs/heads/main' || github.ref == 'refs/heads/develop'")))))).toContain('A5.ci.if');
+    expect(ids(checkBranchConformance({ ...ADOPTED_CFG, deliveryBranches: ['main', 'develop'] }, adoptedIo()))).toContain('A5.ci.if');
+    expect(ids(checkBranchConformance({ ...ADOPTED_CFG, protectedBranches: ['develop', 'main'], deliveryBranches: ['develop', 'main'] }, withIf((y) => y.replaceAll(IF, IF.replace("'refs/heads/main'", "'refs/heads/main' || github.ref == 'refs/heads/develop'")))))).toContain('A5.ci.if');
+    expect(ids(checkBranchConformance(ADOPTED_CFG, withIf((y) => y.replaceAll(IF, IF.replace('github.event.repository.default_branch', "'main'")))))).toContain('A5.ci.if');
+    expect(ids(checkBranchConformance(ADOPTED_CFG, withIf((y) => y.replaceAll(IF, IF.replace("'refs/heads/main'", "'refs/heads/ma in'")))))).toContain('A5.ci.if.grammar');
+    expect(expectedCiIfLine(['main', 'develop'])).toBe("if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'");
   });
   it('extract 純函式:直接可測', () => {
     expect(extractPreCommitBranches(PRE_COMMIT_OK)).toEqual({ ok: true, names: ['develop', 'main'] });

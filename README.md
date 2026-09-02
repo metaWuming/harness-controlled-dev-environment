@@ -42,7 +42,7 @@ Harness components run in two directions (Fowler / Böckeler):
   gets things right the first time
 - **Feedback sensors** — detect errors *after* it acts, so it can self-correct
 
-The template ships 13 gates in four groups:
+The template ships 13 gates in four groups. **Not all 13 are hard gates**: CI blockers, `--no-verify`-able local hooks, human-run SOP steps, advisory tools and periodic governance sit in the same table. Each gate's strength class, trigger, bypass, evidence and test status is in [`docs/CONTROL-CATALOG.md`](docs/CONTROL-CATALOG.md) (rendered from `scripts/control-catalog.json`; `npm run check:catalog` keeps it consistent with CI):
 
 | Group | Gates |
 |---|---|
@@ -180,7 +180,7 @@ Harness 元件分兩個方向(Fowler / Böckeler 框架):
 - **前饋 Guides**:在 AI 行動**之前**引導它,提高第一次就做對的機率
 - **回饋 Sensors**:在 AI 行動**之後**偵測錯誤,讓它自我修正
 
-模板內建 13 道關卡,分四組:
+模板內建 13 道關卡,分四組。**這 13 道不全是 hard gate**:CI 硬擋、可 `--no-verify` 的本機 hook、人守的 SOP、advisory 工具、週期治理混在同一張表;每道的強度分級 / trigger / bypass / 證據 / 測試狀態以 [`docs/CONTROL-CATALOG.md`](docs/CONTROL-CATALOG.md) 為正本(由 `scripts/control-catalog.json` 渲染、`npm run check:catalog` 驗一致與 CI 雙向對應):
 
 | 組 | 關卡 |
 |---|---|

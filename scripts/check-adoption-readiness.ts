@@ -232,10 +232,10 @@ export function checkPart4Content(cfg: HarnessConfig, io: CheckerIo): Finding[] 
             out.push(fail('A2.4.6', `### 4.6 必須以反引號提到 config 宣告的分支 \`${b}\``));
           }
         }
-        // Step 5 r1 I4:加 \b,否則「Firebase」的子字串 rebase 也算合併策略。
-        // r2 F1 / F2:允許英文時態 / 複數 / 連字(squashed、merge commits、rebased)與 fast-forward 系寫法。
-        if (!bodyLines.some((l) => /\b(squash(ed|es|ing)?|merge[ _-]?commits?|rebas(e|ed|ing)|fast-forward|ff-only|no-ff)\b/i.test(l))) {
-          out.push(fail('A2.4.6', '### 4.6 必須寫明合併策略(squash / merge commit / rebase 至少一個)'));
+        // PR A3 P5:合併策略改宣告式——harness.config.mergeStrategy 是正本,4.6 只驗有沒有以反引號提到它
+        // (A2 Step 5 三輪證明關鍵字 regex 是固有邊界:否定句 / URL / 時態變體都是邊角,不再打補丁)。
+        if (!s.body.includes(`\`${cfg.mergeStrategy}\``)) {
+          out.push(fail('A2.4.6', `### 4.6 必須以反引號提到 harness.config 宣告的合併策略 \`${cfg.mergeStrategy}\``));
         }
         break;
       }
@@ -495,6 +495,35 @@ export function extractCiBranches(src: string): { push: SourceSet; pullRequest: 
   return { push: parse('A5.ci.push', found.push, true), pullRequest: parse('A5.ci.pull_request', found.pull_request, false), pushGlobInfo };
 }
 
+/** A5.ci.if(PR A3 P4):三處 delivery-branch `if:` 行必須逐字等於由 deliveryBranches 導出的期望行。 */
+export const CI_IF_PREFIX = "if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)";
+export const CI_IF_EXPECTED_COUNT = 3;
+export function expectedCiIfLine(deliveryBranches: string[]): string {
+  return CI_IF_PREFIX + deliveryBranches.map((b) => ` || github.ref == 'refs/heads/${b}'`).join('');
+}
+export function extractCiIfLines(yml: string): string[] {
+  return yml
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith("if: github.event_name != 'push'"));
+}
+export function checkCiIfConformance(cfg: HarnessConfig, yml: string): Finding[] {
+  const out: Finding[] = [];
+  const lines = extractCiIfLines(yml);
+  if (lines.length !== CI_IF_EXPECTED_COUNT) {
+    out.push(fail('A5.ci.if', `${CI_YML} 以 \`if: github.event_name != 'push'\` 開頭的行需恰 ${CI_IF_EXPECTED_COUNT} 行(找到 ${lines.length})`));
+  }
+  const expected = expectedCiIfLine(cfg.deliveryBranches);
+  lines.forEach((l, i) => {
+    for (const m of l.matchAll(/== 'refs\/heads\/([^']*)'/g)) {
+      const v = literalBranchNameViolation(m[1]);
+      if (v !== null) out.push(fail('A5.ci.if.grammar', `if 行 #${i + 1} 的 ${JSON.stringify(m[1])} 不是合法字面分支名 — ${v}`));
+    }
+    if (l !== expected) out.push(fail('A5.ci.if', `if 行 #${i + 1} 與 deliveryBranches 導出的期望行不同\n    期望:${expected}\n    實際:${l}`));
+  });
+  return out;
+}
+
 export const checkBranchConformance: Check = (cfg, io) => {
   const out: Finding[] = [];
   const expected = cfg.protectedBranches;
@@ -515,6 +544,7 @@ export const checkBranchConformance: Check = (cfg, io) => {
     consume('A5.ci.push', `${CI_YML} push.branches`, r.push);
     consume('A5.ci.pull_request', `${CI_YML} pull_request.branches`, r.pullRequest);
     for (const g of r.pushGlobInfo) out.push(info('A5.ci.push', `push.branches 含白名單 glob ${JSON.stringify(g)}(不參與集合比對)`));
+    out.push(...checkCiIfConformance(cfg, ci));
   }
   return out;
 };
