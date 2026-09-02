@@ -5,8 +5,9 @@
 // ⚠️ 模板出廠狀態:**路徑表為空**。空表下 `scripts/check-cso-trigger.ts` **fail-closed
 //   輸出 CSO_REQUIRED + exit 2**(2026-08 契約收攏:任何「無法判定」都必須回 2、
 //   包含「尚未導入」)。導入時把你的 repo 內對應五個域的路徑填進來(每域下方有註解掉
-//   的通用範例),然後啟用 tests/check-cso-trigger.test.ts 內註解掉的「路徑表完整性鎖」
-//   測試。填完後空表路徑不再觸發、判定力才生效。
+//   的通用範例)。沒有對應路徑的域在檔尾 CSO_NOT_APPLICABLE 明文宣告 + 理由。
+//   tests/check-cso-trigger.test.ts 檔尾的「路徑表完整性鎖」是 always-on、依
+//   scripts/harness.config.json 宣告的 mode 分支,不需手動啟用(PR A2)。
 //
 // 五個觸發域(語意來源=你的安全信任邊界文件;沒有就先寫一份再填表):
 //   1. 金流       — 付款 / 訂單 / 定價 / 點數 / 折扣 / 庫存資產
@@ -46,3 +47,11 @@ export const CSO_TRIGGER_PATTERNS: { domain: CsoDomain; pattern: RegExp }[] = [
   // { domain: '橫切保守項', pattern: /^prisma\/schema\.prisma$/ },
   // { domain: '橫切保守項', pattern: /^src\/app\/api\/cron\// },
 ];
+
+/**
+ * PR A2:adopted mode 下,**沒有對應路徑的域必須在此明文聲明 + 理由**(reason 去空白
+ * ≥10 字),由 `scripts/check-adoption-readiness.ts` 驗「五域各恰一種處置」:
+ * 有 pattern XOR 在本表。兩者皆有 = 矛盾、皆無 = 未處置,都 fail。
+ * template 出廠為空。`check-cso-trigger.ts` 本身不讀本表(空表 exit 2 契約不變)。
+ */
+export const CSO_NOT_APPLICABLE: { domain: CsoDomain; reason: string }[] = [];

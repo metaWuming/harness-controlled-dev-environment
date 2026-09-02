@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "mode": "template",
+  "projectId": "__TEMPLATE__",
+  "templatePackageName": "harness-controlled-dev-environment",
+  "protectedBranches": ["develop", "main"],
+  "deliveryBranches": ["main"],
+  "requiredAgentAdapters": ["claude"],
+  "githubGovernanceRequired": false,
+  "_comment": "Harness 的 canonical 宣告 config(PR A2)。mode 是「顯式靜態宣告」:template = 本模板 repo 自身;adopted = 已導入的下游專案。沒有自動偵測、沒有預設——缺檔 / 拼錯 / 未知欄位一律 fail-closed。導入時把 mode 改成 adopted、projectId 改成你的 slug、對齊分支與 adapter,然後跑 `npm run check:adoption` 直到 READY(步驟見 docs/ADOPTION.md §0)。schema / loader / 分支名文法定義:scripts/lib/harness-config.ts。"
+}

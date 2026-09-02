@@ -10,6 +10,21 @@ type: guide
 > **還沒建好 repo?** 先看 [`QUICKSTART.md`](QUICKSTART.md) —— 它講「repo 怎麼開、
 > 放哪、第一句話對 AI 說什麼」,那三步做完才輪到本檔。本檔是給 AI 逐項執行的填空清單。
 
+## 0. 宣告模式(先做這個,其他步驟才有機器驗證)
+
+- [ ] 開 `scripts/harness.config.json`:`mode` 改成 `"adopted"`、`projectId` 改成你的 slug
+      (小寫英數與 `-`,不得含 template / placeholder / project)、`protectedBranches` /
+      `deliveryBranches` 對齊你的分支策略、`requiredAgentAdapters` 宣告你會用的 agent
+      (v1 認得 `claude` / `codex`)、`githubGovernanceRequired` 需要 CODEOWNERS 時設 true
+- [ ] **不改 = 停在 template mode**:CI 的 `check:adoption` 只會列出 template exception、
+      **不會替你驗導入**。它刻意不猜 mode——沒有這個檔、或 mode 不明確,一律 exit 2 要求你選
+- [ ] 分支名只接受**字面名**(英數起頭、其餘英數 `.` `_` `/` `-`):不接受 glob(`feature/*`)、
+      ref 形式(`refs/heads/main`、`origin/main`)、空白、引號、`|`;同欄位不得重複(含大小寫差異)
+- [ ] 跑 `npm run check:adoption`。之後每做完下面一節就再跑一次,照輸出逐條修,直到首行是
+      `ADOPTED_MODE — READY`(完成判準見最後一節)
+- [ ] 從 A2 之前的版本升上來的既有專案:拉進更新後會因缺 config 而 exit 2——建立這個檔、
+      明確選 mode,不要抄 template 值敷衍(`projectId` 留 sentinel 會被 A1 擋)
+
 ## 1. 基本識別
 
 - [ ] `LICENSE`:確認 MIT 條款的著作權人改成你(或依需要換 license)
@@ -20,12 +35,16 @@ type: guide
 
 ## 2. CLAUDE.md Part 4(技術上下文)
 
-- [ ] §4.1 技術堆疊:填你的框架 / 語言 / DB / 部署平台
+> `check:adoption`(adopted mode)對 §4.1 / §4.3 / §4.5 / §4.6 有**機器可驗的格式**,每段的
+> `<!-- 填 -->` 註解裡寫了鍵名與範例;填完要把註解整段刪掉(殘留 `<!-- 填` 會被擋)。
+> §4.2 / §4.4 不驗(4.2 純後端可刪、4.4 上線前常無值)。
+
+- [ ] §4.1 技術堆疊:`- 語言：` / `- 框架：` / `- 資料庫：` / `- 部署：` 四行各一、值非 placeholder
 - [ ] §4.2 Design System:填設計 token 來源(純後端專案直接刪本節)
-- [ ] §4.3 Health Stack:對齊你實際的品質閘門指令
+- [ ] §4.3 Health Stack:反引號 `npm run <script>` ≥3 個、每個存在於 package.json、含 typecheck / lint / test
 - [ ] §4.4 部署資訊:staging / production
-- [ ] §4.5 禁區清單:列出 AI 不可擅動的檔案(schema、策略文件、destructive scripts…)
-- [ ] §4.6 Git 規範:填分支策略與合併策略
+- [ ] §4.5 禁區清單:≥2 個 bullet、每個 bullet 用反引號寫實際存在的檔或目錄
+- [ ] §4.6 Git 規範:config 宣告的每個分支名以反引號出現、寫明 squash / merge commit / rebase
 
 ## 2.5 思考力道與 agent 定義
 
@@ -43,8 +62,12 @@ type: guide
 
 - [ ] `scripts/cso-trigger.config.ts`:把你專案的安全敏感路徑填進五域
       (金流 / 個資 / 權限·IDOR·資產轉移 / audit-trail / 橫切保守項)+ 前台敏感進入點
-- [ ] 填完後到 `tests/` 對應測試檔,把「路徑表完整性鎖」測試(註解掉的範本)啟用——
-      它斷言每條 pattern 對得到 repo 真實檔案,防路徑表隨重構漂移
+- [ ] 真的沒有某個域的專案(例如沒有金流)→ 在同檔 `CSO_NOT_APPLICABLE` 明文宣告
+      `{ domain, reason }`(reason 去空白 ≥10 字)。`check:adoption` 驗**五域各恰一種處置**:
+      有 pattern **或** 宣告 N/A,兩者皆有(矛盾)或皆無(未處置)都擋;整體至少要有一條 pattern
+- [ ] 「路徑表完整性鎖」測試(`tests/check-cso-trigger.test.ts` 檔尾)現在是 **always-on**、依
+      `harness.config.json` 宣告的 mode 分支,**不需再手動取消註解**:adopted mode 下它斷言
+      每條 pattern 對得到 repo 真實檔案,防路徑表隨重構漂移;template 分支那一條會顯示 skipped、屬設計
 - [ ] 之後**每次新增安全敏感模組,同步更新路徑表**(machine 判定是下限不是上限)
 
 ## 4. 本機 git hooks
@@ -74,13 +97,18 @@ type: guide
 ## 5. destructive 腳本守衛
 
 - [ ] `scripts/lib/destructive-guard.ts` 頂部常數:`FLAG_ENV` / `CONFIRM_TOKEN` 改成你的專案名
-      (例:`MYAPP_DESTRUCTIVE_OK` / `--confirm=MYAPP-PROD`)
+      (例:`MYAPP_DESTRUCTIVE_OK` / `--confirm=MYAPP-PROD`)。`check:adoption` 在 adopted mode
+      會掃整個檔:出廠的 `PROJECT_DESTRUCTIVE_OK` / `PROJECT-PROD` 字面(含註解裡的)一個都不能留
 - [ ] 之後所有 wipe / cleanup 類腳本都 require 這個 guard
 
 ## 6. CI
 
 - [ ] `.github/workflows/ci.yml`:分支清單對齊你的策略;
-      GitHub repo 設 branch protection(主線要求 CI pass)
+      GitHub repo 設 branch protection(主線要求 CI pass)。`check:adoption` 會驗**四處集合精確相等**:
+      `pre-commit` 的 `case` 行、`pre-push` 的 `refs/heads/… ) _is_protected=1` 行、ci.yml `push:` 與
+      `pull_request:` 各自的 `branches: [...]` 行,都必須等於 config 的 `protectedBranches`(多一個、
+      少一個都紅;push 清單裡只允許 `feature/**` 這一個 glob,其他 glob 一律擋)
+- [ ] 同一 workflow 的 `Adoption Readiness Check` step(`npm run check:adoption`)要保留,恰 1 行
 - [ ] 用 Next.js+Prisma → 照 `stack/nextjs-prisma/README.md` 把 L2 層裝上
       (ESLint AST 規則 + migration 守衛 + CI 片段)
 - [ ] `Source-term scan` step:本模板用它防「來源專案識別詞」殘留。
@@ -119,3 +147,12 @@ type: guide
       override 說明,不要照單全收預設值(2026-08-10 在一個下游專案裝
       [mattpocock/skills](https://github.com/mattpocock/skills) 的 `domain-modeling`
       時踩到,已修正)
+
+## 11. 完成判準(機器出具)
+
+- [ ] `npm run check:adoption` 首行是 `ADOPTED_MODE — READY`、exit 0。這是導入完成的**唯一機器判準**;
+      template mode 的輸出(`TEMPLATE_MODE — adoption checks NOT applied …`)不算完成
+- [ ] `npm test` 全綠(`tests/check-cso-trigger.test.ts` 的 template 分支 1 條 skipped 屬設計)
+- [ ] CI 綠:`Adoption Readiness Check` step 與其他 step 一起
+- [ ] 本 checker 刻意**不解析** shell / YAML 結構、**不偵測**環境、**不接受** env override;任何
+      「無法判定」(config 缺 / 壞、cso config 形狀不對、參數錯)都是 exit 2,不是放行
