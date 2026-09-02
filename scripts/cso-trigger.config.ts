@@ -46,3 +46,11 @@ export const CSO_TRIGGER_PATTERNS: { domain: CsoDomain; pattern: RegExp }[] = [
   // { domain: '橫切保守項', pattern: /^prisma\/schema\.prisma$/ },
   // { domain: '橫切保守項', pattern: /^src\/app\/api\/cron\// },
 ];
+
+/**
+ * PR A2:adopted mode 下,**沒有對應路徑的域必須在此明文聲明 + 理由**(reason 去空白
+ * ≥10 字),由 `scripts/check-adoption-readiness.ts` 驗「五域各恰一種處置」:
+ * 有 pattern XOR 在本表。兩者皆有 = 矛盾、皆無 = 未處置,都 fail。
+ * template 出廠為空。`check-cso-trigger.ts` 本身不讀本表(空表 exit 2 契約不變)。
+ */
+export const CSO_NOT_APPLICABLE: { domain: CsoDomain; reason: string }[] = [];
