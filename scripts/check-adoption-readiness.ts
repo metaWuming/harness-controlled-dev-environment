@@ -232,7 +232,8 @@ export function checkPart4Content(cfg: HarnessConfig, io: CheckerIo): Finding[] 
             out.push(fail('A2.4.6', `### 4.6 必須以反引號提到 config 宣告的分支 \`${b}\``));
           }
         }
-        if (!bodyLines.some((l) => /squash|merge commit|rebase/i.test(l))) {
+        // Step 5 r1 I4:加 \b,否則「Firebase」的子字串 rebase 也算合併策略
+        if (!bodyLines.some((l) => /\b(squash|merge commit|rebase)\b/i.test(l))) {
           out.push(fail('A2.4.6', '### 4.6 必須寫明合併策略(squash / merge commit / rebase 至少一個)'));
         }
         break;
@@ -524,7 +525,8 @@ export const ADAPTER_ASSERTIONS: Record<AdapterName, Check> = {
     const out: Finding[] = [];
     if (!isTracked(io, 'CLAUDE.md')) out.push(fail('A6.claude.file', 'CLAUDE.md 不存在或未被 git 追蹤'));
     const md = io.readText('CLAUDE.md');
-    if (md !== null && !md.includes('.claude/sop/plan-mode-checklist.md')) {
+    // Step 5 r1 I2:只在註解外找,否則 `<!-- 不要讀 …checklist.md -->` 也會過(與 codex 側「整行 @CLAUDE.md」同嚴)
+    if (md !== null && !md.replace(/<!--[\s\S]*?-->/g, '').includes('.claude/sop/plan-mode-checklist.md')) {
       out.push(fail('A6.claude.link', 'CLAUDE.md 必須直接引用 canonical SOP 路徑 .claude/sop/plan-mode-checklist.md'));
     }
     if (!isTracked(io, '.claude/sop/plan-mode-checklist.md')) out.push(fail('A6.claude.sop', '.claude/sop/plan-mode-checklist.md 未被 git 追蹤'));

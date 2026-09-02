@@ -5,8 +5,9 @@
 // ⚠️ 模板出廠狀態:**路徑表為空**。空表下 `scripts/check-cso-trigger.ts` **fail-closed
 //   輸出 CSO_REQUIRED + exit 2**(2026-08 契約收攏:任何「無法判定」都必須回 2、
 //   包含「尚未導入」)。導入時把你的 repo 內對應五個域的路徑填進來(每域下方有註解掉
-//   的通用範例),然後啟用 tests/check-cso-trigger.test.ts 內註解掉的「路徑表完整性鎖」
-//   測試。填完後空表路徑不再觸發、判定力才生效。
+//   的通用範例)。沒有對應路徑的域在檔尾 CSO_NOT_APPLICABLE 明文宣告 + 理由。
+//   tests/check-cso-trigger.test.ts 檔尾的「路徑表完整性鎖」是 always-on、依
+//   scripts/harness.config.json 宣告的 mode 分支,不需手動啟用(PR A2)。
 //
 // 五個觸發域(語意來源=你的安全信任邊界文件;沒有就先寫一份再填表):
 //   1. 金流       — 付款 / 訂單 / 定價 / 點數 / 折扣 / 庫存資產

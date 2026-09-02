@@ -389,6 +389,8 @@ describe('adopted mode A2 Part 4 精確內容', () => {
   it('4.6 負:缺 config 分支名 / 無合併策略詞 / 只有出廠 bullet + 註解', () => {
     expect(ids(checkPart4Content(ADOPTED_CFG, withPart4(PART4_FILLED.replace('`develop` = 開發主線', 'develop = 開發主線'))))).toContain('A2.4.6');
     expect(ids(checkPart4Content(ADOPTED_CFG, withPart4(PART4_FILLED.replace('- feature → develop squash;develop → main merge commit\n', ''))))).toContain('A2.4.6');
+    // Step 5 r1 I4:「Firebase」不是合併策略
+    expect(ids(checkPart4Content(ADOPTED_CFG, withPart4(PART4_FILLED.replace('- feature → develop squash;develop → main merge commit\n', '- 我們用 Firebase 部署\n'))))).toContain('A2.4.6');
     const stock = PART4_FILLED.replace(/### 4\.6 Git 規範[\s\S]*?---/, '### 4.6 Git 規範\n\n- 每完成一個功能模組必須 commit\n\n<!-- 填:你的分支策略 -->\n\n---');
     expect(ids(checkPart4Content(ADOPTED_CFG, withPart4(stock)))).toContain('A2.4.6');
   });
@@ -493,6 +495,8 @@ describe('adopted mode A6 adapter 逐條斷言', () => {
     const untracked = adoptedIo({ tracked: Object.keys(base).filter((k) => k !== 'CLAUDE.md') });
     expect(ids(checkAdapters(ADOPTED_CFG, untracked))).toContain('A6.claude.file');
     expect(ids(checkAdapters(ADOPTED_CFG, adoptedIo({ files: { 'CLAUDE.md': `# x\n${PART4_FILLED}` } })))).toEqual(['A6.claude.link']);
+    // Step 5 r1 I2:路徑只出現在 HTML 註解裡 → 不算直接引用
+    expect(ids(checkAdapters(ADOPTED_CFG, adoptedIo({ files: { 'CLAUDE.md': `# x\n<!-- 不要讀 .claude/sop/plan-mode-checklist.md -->\n${PART4_FILLED}` } })))).toEqual(['A6.claude.link']);
     expect(ids(checkAdapters(ADOPTED_CFG, adoptedIo({ files: { '.claude/settings.json': '{}' } })))).toEqual(['A6.claude.settings']);
     const noSop = adoptedIo({ tracked: Object.keys(base).filter((k) => k !== '.claude/sop/plan-mode-checklist.md') });
     expect(ids(checkAdapters(ADOPTED_CFG, noSop))).toEqual(['A6.claude.sop']);
