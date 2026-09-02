@@ -217,9 +217,10 @@
       "implementation": [
         ".github/workflows/ci.yml",
         "scripts/check-todos-markers.ts",
+        "scripts/lib/delivery-refs.ts",
         "scripts/lib/marker-self-pr.ts"
       ],
-      "locator": "CI step「TODOS Markers Check」;PR event 一律跑、push 只在 delivery branch 跑",
+      "locator": "CI step「TODOS Markers Check」;PR event 一律跑、push 只在 delivery branch 跑;交付 ref 走 lib/delivery-refs 共用契約(受驗 origin/HEAD + 已宣告且為祖先的 env 候選;拒絕 → exit 2)",
       "ciStep": "TODOS Markers Check",
       "owner": "github",
       "failureBehavior": "block",
@@ -227,10 +228,13 @@
       "degradation": "本機 npm run check:todos(需 origin refs)",
       "tested": [
         "unit",
-        "e2e"
+        "e2e",
+        "mutation"
       ],
       "testRefs": [
-        "tests/check-todos-markers.test.ts"
+        "tests/check-todos-markers.test.ts",
+        "tests/delivery-refs.test.ts",
+        "scripts/mutations/delivery-refs.json"
       ],
       "bypass": "admin override;MARKER_SELF_PR 允許同 PR 自我引用(刻意)",
       "notes": "缺 merge 證據 → block;已完工但沒引用 PR 號 → 只 warn(advisory 部分)"
@@ -247,6 +251,7 @@
       "implementation": [
         ".github/workflows/ci.yml",
         "scripts/check-no-source-terms.ts",
+        "scripts/lib/delivery-refs.ts",
         "scripts/deny-terms.txt",
         "scripts/source-term-baseline.json"
       ],
@@ -263,7 +268,9 @@
       ],
       "testRefs": [
         "tests/check-no-source-terms.test.ts",
-        "scripts/mutations/source-term-diff-scan.json"
+        "scripts/mutations/source-term-diff-scan.json",
+        "tests/delivery-refs.test.ts",
+        "scripts/mutations/delivery-refs.json"
       ],
       "bypass": "admin override;baseline 變更走 CTRL-GOV-002(人工授權),機器守門見 ADR 已知限制第 2 條的處置",
       "notes": "已知限制第 1 條:diff hit 缺精確 file:line 屬診斷精度、不影響判定,登錄於此、無排程修復"

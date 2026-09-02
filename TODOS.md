@@ -46,10 +46,11 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 - **工時**:2-3h
 - **交付**:PR A2 —— 走第二個方向:G2 / G4 搬到 `scripts/lib/template-governance.ts`,由 `npm run check:adoption` 只在 `scripts/harness.config.json` 宣告 `mode: "template"` 時執行(T9 / T8);vitest 刪除兩條;mode 是顯式靜態宣告、無 runtime 判別式(mutation M12–M14 行為級證據)
 
-### 🟡 `DELIVERY_REFS=HEAD` 可從環境變數還原「未合併分支進 allowlist」
+### ✅ `DELIVERY_REFS=HEAD` 可從環境變數還原「未合併分支進 allowlist」(PR #___)
 - **來源**:2026-09-01 PR A1.1 Step 5 r3 I9(confidence 6)
 - **內容**:`DELIVERY_REFS` 只過 `SAFE_REF_RE` + `rev-parse --verify`(option injection 已擋住),但 `HEAD` 或任何 feature branch 名都解得開。在 feature branch 上設 `DELIVERY_REFS=HEAD`,未 merge commit 的 subject 就進了 `allowedPrs` —— round 2 P1-1 的修法可被整條還原,目前無守門。
 - **工時**:1-2h
+- **交付**:`scripts/lib/delivery-refs.ts` 共用契約(supervisor rev 4):origin/HEAD 權威 base 與 env 候選走同一支 `validateRef`(形狀 / 存在 / 正規 / 祖先 / 宣告在 `deliveryBranches`);`HEAD`、本地分支、未合併 `origin/feature/x`、未宣告分支一律拒絕、印原因碼、exit 2;移除 fallback ③④。兩支 checker 只接線;`check-no-source-terms.ts` 掃描語意 0 diff。lib 單測 19 條(每原因碼各一)+ 兩 consumer 行為級負對照 + 探針 `delivery-refs.json` 8 條
 
 ### ✅ mutation spec 漂移無 CI 守門(PR #47)
 - **來源**:2026-09-01 PR A1.1 Step 5 r2 I16(confidence 6);A1.1 內實際發生過一次(M14 隨串流改寫失效、M23 隨編碼釘法插入失效)

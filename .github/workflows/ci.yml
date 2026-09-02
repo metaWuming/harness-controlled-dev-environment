@@ -173,6 +173,8 @@ jobs:
         # `git remote set-head` 讓 origin/HEAD 指向 default,check-todos-markers 走
         # origin/HEAD 唯一權威來源、不再無條件 resolve master/trunk 造成 legacy branch
         # 假通過。額外 delivery branch 導入者透過 env `DELIVERY_REFS` 加(見 script)。
+        # P2#2:DELIVERY_REFS 每條須為 `origin/<harness.config deliveryBranches 內的分支>` 且為受驗 origin/HEAD 的祖先;
+        # origin/HEAD 目標本身也須正規、可解、已宣告。任何拒絕 → 印原因碼、exit 2;無 fallback(見 scripts/lib/delivery-refs.ts)。
         # env 傳 default_branch(不用 shell string interpolation),避免罕見的
         # branch 名含 shell metacharacter 情境;若 set-head 失敗仍有 env 提供 fallback。
         env:

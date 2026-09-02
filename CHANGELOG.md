@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### Changed
+- `check:todos` 與 `check:no-source-terms` 的交付 ref 來源改走共用契約 `scripts/lib/delivery-refs.ts`:origin/HEAD 目標須為正規、可解、且宣告在 `harness.config.json` `deliveryBranches` 的 origin 分支;env `DELIVERY_REFS` 每條須為 `origin/<已宣告分支>` 且為 origin/HEAD 祖先。**移除** `origin/develop` 與本地 `main` / `develop` fallback;任何拒絕印原因碼並 exit 2(不再靜默跳過)。兩支 checker 現在**必須**能讀到 `scripts/harness.config.json`。
+
 ### Added
 - `npm run check:mutation-specs` + CI step「Mutation Spec Drift Check」(CTRL-CI-013):對 `scripts/mutations/*.json` 每條探針驗 `find` 樣本仍能在目標原始碼精準對上,不跑 mutation。spec 檔與目標檔都先經 `mutate.ts` 的 `checkTarget` 取 bytes(symlink / 未追蹤 → exit 2 無法判定;內容漂移 → exit 1)。
 

@@ -72,6 +72,7 @@ npx tsx scripts/mutate.ts --file src/example.ts \
   **spec 的 `find` 是原始碼逐字樣本**——改到那些行就要同步改 spec,否則 mutate 會以
   「樣本沒對上」exit 2(fail-closed,不會靜默通過)。
 - `mutation-spec-drift.json` — 6 條探針,守 `check-mutation-specs.ts`(spec 檔與目標檔的可信邊界、DRIFT 判定、exit 0/1/2 契約)
+- `delivery-refs.json` — 8 條探針,守 `lib/delivery-refs.ts` 共用契約(祖先 / 正規 / 宣告三道檢查、拒絕不靜默、無 fallback)與兩個 consumer 的 exit 2 接線
 
 ## CI 守樣本漂移(`npm run check:mutation-specs`)
 
