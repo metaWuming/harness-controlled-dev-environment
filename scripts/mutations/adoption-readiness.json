@@ -1,0 +1,98 @@
+[
+  {
+    "file": "scripts/check-adoption-readiness.ts",
+    "find": "  if (patterns.length === 0) {\n    out.push(fail('A3', '路徑表整體為空",
+    "replace": "  if (patterns.length < 0) {\n    out.push(fail('A3', '路徑表整體為空",
+    "label": "M1 A3:移除「adopted 整體 pattern ≥1」檢查(plan §6 明點)→ A3「整體為空」負對照轉紅"
+  },
+  {
+    "file": "scripts/check-adoption-readiness.ts",
+    "find": "  if (id === TEMPLATE_PROJECT_ID) return [fail('A1'",
+    "replace": "  if (id !== TEMPLATE_PROJECT_ID) return [fail('A1'",
+    "label": "M2 A1:sentinel 判斷反轉 → A1 正負對照 + adopted e2e 轉紅"
+  },
+  {
+    "file": "scripts/lib/harness-config.ts",
+    "find": "export const HARNESS_MODES: readonly HarnessMode[] = ['template', 'adopted'];",
+    "replace": "export const HARNESS_MODES: readonly HarnessMode[] = ['template', 'adopted', 'adopte' as HarnessMode];",
+    "label": "M3 loader:mode 白名單多收 'adopte' → mode 負對照 + e2e 拼錯 case 轉紅"
+  },
+  {
+    "file": "scripts/lib/harness-config.ts",
+    "find": "  if (!existsSync(p)) {\n    fail(",
+    "replace": "  if (!existsSync(p)) {\n    return parseHarnessConfig(JSON.stringify({ schemaVersion: 1, mode: 'template', projectId: '__TEMPLATE__', templatePackageName: 'x', protectedBranches: ['main'], deliveryBranches: ['main'], requiredAgentAdapters: ['claude'], githubGovernanceRequired: false }));\n    fail(",
+    "label": "M4 loader:缺檔改回預設 template(fail-open)→ 缺檔負對照 + e2e 轉紅"
+  },
+  {
+    "file": "scripts/lib/harness-config.ts",
+    "find": "  if (unknown.length > 0) fail(`未知欄位",
+    "replace": "  if (unknown.length > 99) fail(`未知欄位",
+    "label": "M5 loader:刪未知 key 檢查 → 未知欄位負對照轉紅"
+  },
+  {
+    "file": "scripts/check-adoption-readiness.ts",
+    "find": "            if (!have.has(s)) out.push(fail('A2.4.3'",
+    "replace": "            if (false && !have.has(s)) out.push(fail('A2.4.3'",
+    "label": "M6 A2 4.3:不再交叉比對 package.json.scripts → 「引用不存在 script」負對照轉紅"
+  },
+  {
+    "file": "scripts/check-adoption-readiness.ts",
+    "find": "  return DESTRUCTIVE_PLACEHOLDERS.filter((p) => src.includes(p)).map((p) =>",
+    "replace": "  return DESTRUCTIVE_PLACEHOLDERS.filter((p) => p === 'PROJECT-PROD' && src.includes(p)).map((p) =>",
+    "label": "M7 A4:只查 PROJECT-PROD 不查 PROJECT_DESTRUCTIVE_OK → A4 負對照轉紅"
+  },
+  {
+    "file": "scripts/check-adoption-readiness.ts",
+    "find": "  return r.ready ? 0 : 2;",
+    "replace": "  return 0;",
+    "label": "M8 main:有 failure 仍 exit 0 → e2e 負對照(exit 2 斷言)轉紅"
+  },
+  {
+    "file": "scripts/check-adoption-readiness.ts",
+    "find": "  if (extras.length === 0 && missing.length === 0) return [];",
+    "replace": "  if (missing.length === 0) return [];",
+    "label": "M9 A5:集合相等改子集(容許 extras)→ A5 extra 負對照轉紅"
+  },
+  {
+    "file": "scripts/lib/harness-config.ts",
+    "find": "export const LITERAL_BRANCH_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;",
+    "replace": "export const LITERAL_BRANCH_RE = /^\\S+$/;",
+    "label": "M9b loader:字面分支名文法放寬成 /^\\S+$/ → glob / 引號 / 管線負對照轉紅"
+  },
+  {
+    "file": "scripts/check-adoption-readiness.ts",
+    "find": "    if (v !== null) findings.push(fail(`${id}.grammar`",
+    "replace": "    if (v !== null) findings.push(info(`${id}.grammar`",
+    "label": "M9c A5:來源 token 文法不合法降級成 info → 來源側 release/* 負對照轉紅"
+  },
+  {
+    "file": "scripts/check-adoption-readiness.ts",
+    "find": "  checkCiRunsAdoption('A7'),\n  checkGithubGovernance,",
+    "replace": "  checkGithubGovernance,",
+    "label": "M10 dispatch:ADOPTED_CHECKS 拿掉 A7 → A7 負對照轉紅"
+  },
+  {
+    "file": "scripts/check-adoption-readiness.ts",
+    "find": "    if (hasPattern && hasNa) out.push(fail('A3'",
+    "replace": "    if (false && hasPattern && hasNa) out.push(fail('A3'",
+    "label": "M11 A3:XOR 改 OR(容許 pattern + N/A 並存)→ A3 矛盾負對照轉紅"
+  },
+  {
+    "file": "scripts/check-adoption-readiness.ts",
+    "find": "  checkTemplateNoPersonalPaths,\n  checkTemplateAdrRefs,\n];",
+    "replace": "  checkTemplateAdrRefs,\n];",
+    "label": "M12 dispatch:TEMPLATE_CHECKS 拿掉 T8 → E-T8 e2e(行為級)轉紅"
+  },
+  {
+    "file": "scripts/check-adoption-readiness.ts",
+    "find": "  checkGithubGovernance,\n];",
+    "replace": "  checkGithubGovernance,\n  checkTemplateNoPersonalPaths,\n];",
+    "label": "M13 dispatch:ADOPTED_CHECKS 多跑 T8 → E-A-T8 e2e(行為級)轉紅"
+  },
+  {
+    "file": "scripts/lib/template-governance.ts",
+    "find": "    if (text.includes(needle)) out.push(",
+    "replace": "    if (!text.includes(needle)) out.push(",
+    "label": "M14 template-governance:checkNoPersonalPaths 斷言反轉 → E-T8 + 本 repo 自證轉紅"
+  }
+]
