@@ -26,6 +26,7 @@
     "catalog:render": "tsx scripts/render-control-catalog.ts --write",
     "check:catalog": "tsx scripts/check-control-catalog.ts",
     "check:baseline-governance": "tsx scripts/check-baseline-governance.ts",
+    "check:mutation-specs": "tsx scripts/check-mutation-specs.ts",
     "mutate": "tsx scripts/mutate.ts"
   },
   "devDependencies": {
