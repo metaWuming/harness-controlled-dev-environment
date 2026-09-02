@@ -80,6 +80,18 @@ type: note
 - 交接檔:`_handoffs/HANDOFF.md`(本機檔,`.gitignore` 忽略)
 - 暫停點:Milestone A 全部收尾(v0.2.0 + #45 + #46),無在途工作;下一棒由 Codex supervisor(Herdr w2:p8)拍板選 B1 / TODOS P2 / defer 集合
 
+📅 2026-09-02 ③ — **P2#3:mutation spec 樣本漂移 CI 守門(`check:mutation-specs` + CTRL-CI-013)**
+
+> **緣起**:TODOS P2#3(前兩 sprint 內 spec 漂移被 mutate fail-closed 抓 4 次、都在收尾才發現)。supervisor 拍板只做 P2#3、單獨一支 PR;frozen base `7c4f0a35872de42a103d7ca5d9ed14aec53ae7b7`,worktree `feat/mutation-spec-drift-gate`。plan rev 2 通過(rev 1 P1:spec 檔本身要先過 `checkTarget` 再讀 bytes)。
+> **改動**:**10 檔 / 4 commits**(`git diff --name-only base..HEAD | wc -l` / `git rev-list --count`)。`scripts/check-mutation-specs.ts` 只複用 `mutate.ts` 的 `checkTarget` / `parseSpecs` / `applyMutation`:spec 目錄 lstat 非 symlink 且 realpath 等於正規路徑;spec 檔與探針目標都用 checkTarget 回的 bytes 解析;exit 0 全對 / 1 DRIFT / 2 無法判定(untrusted 優先)。CI step「Mutation Spec Drift Check」+ catalog CTRL-CI-013 同 commit(現 31 controls / 17 steps);mutations/README、CHANGELOG [Unreleased]、TODOS P2#3 ✅。
+> **驗證(`f32e512` 實測)**:typecheck / lint / **24 檔 880 passed + 2 skipped**;check:mutation-specs 對本 repo exit 0(7 spec 檔 88 條);catalog / doc-refs / doc-size / todos / no-source-terms / adoption / hooks 全綠;**mutation `mutation-spec-drift.json` 6/6** 綁 `f32e51237e83291fbd2285fdb895e4bfeba72beb`。
+> **審查**:Codex 全範圍 r1 PASS(0 P1/P2,獨立 clone 重跑全部驗證)。Step 5 worktree 審 2 輪:r1 **1 C + 9 I**(C1:`isMain` 未 realpath,經 symlink 目錄呼叫時靜默 exit 0 = 守門自己 fail-open;修成兩邊 realpath + e2e ⑩;順手修 catalog degradation、TODOS 數字、temp dir 洩漏)→ r2 **0 C + 9 I 收斂**(Owner 裁示無 CRITICAL 即停)。defer 合計 15 條進 TODOS P3。
+> **⭐ 教訓**:「fail-closed 守門」自己的入口(`isMain`)沿用 repo 慣例就繼承了 fail-open 形狀——`mutate.ts` / `check-control-catalog.ts` 同款,已登錄不在本 PR 動。新 checker 的第一條探針應該是「腳本根本沒跑」。
+> **check:claims 逐條處置**:9 處命中全留 A(「只有人工重跑」為 TODOS 原文引述;「沒有任何 spec 檔」= length===0 字面;「每一條問題」= 陣列全部;其餘為測試名 / spec label)。
+> 📊 成本:CC ~2.5h / plan 2 rev / Codex 1 輪 / Step 5 2 輪 / mutate 2 輪 / P1 0 / P2 0 / Step5 獨立發現 19(1 CRITICAL、修 4、defer 15)
+> 📐 量測:claude-fable-5-1 effort low;Codex gpt-5.6-terra medium(w2:p8);來源分佈:既有缺陷 1(isMain 慣例)・漏改 consumer 0・baseline 後引入 18
+> **7 步 checklist**:1 ✅ rev 2 / 2 ✅ supervisor APPROVE / 3 ✅ P1–P4 / 4 ✅ Codex PASS / 4.5 ✅ 人工視同高風險(cso 路徑表空),探針 6/6 / 4.6 ✅ 未觸發 / 5 ✅ r2 收斂 / 6-7 待執行
+
 📅 2026-09-02 ② — **git-add-guard:`git add -A` 誤加工具產物的機器化守門(LESSONS ⚠️ 第 ≥4 次 → 升級階梯)**
 
 > **緣起**:Owner 拍板(PR #45 merge 後):把 LESSONS ⚠️ [2026-08-29] 的規則寫進本 repo 並機器化。frozen base `80f76b8`(main = v0.2.0 + #45),直接在主 worktree 開 `feat/git-add-guard`(當時已無其他 worktree、工作樹乾淨)。

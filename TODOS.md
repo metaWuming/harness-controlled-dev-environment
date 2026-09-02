@@ -60,6 +60,12 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 
 ## P3
 
+### 🟢 P2#3 Step 5 defer 集合(check-mutation-specs 邊角,15 條 INFORMATIONAL conf ≤8)
+- **來源**:2026-09-02 PR P2#3 Step 5 worktree 審 r1–r2;0 CRITICAL 未修
+- **內容**:①`mutate.ts` / `check-control-catalog.ts` 的 `isMain` 同款未 realpath,經 symlink 目錄呼叫靜默 exit 0(r1 C1 只修了本 checker;conf 7);②`invokedAsMain` realpath 單邊 fallback 仍可能不等 → 靜默 exit 0,根本解是 isMain false 時印 stderr(conf 7);③`fileURLToPath` 對非 file: URL 在模組頂層 throw(conf 6);④測試手拼 `'file://'+path` 應改 `pathToFileURL`(conf 7);⑤只認小寫 `.json` 且不遞迴,子目錄 / 大寫副檔名 spec 靜默不受守門(conf 8);⑥`checkTarget` nlink 檢查在純讀情境多餘拒判(conf 7);⑦MSD-M1 / M5 實際 kill 機制是 TypeError 走 exit 2,與 label「判 DRIFT / untrusted」不一致(conf 8);⑧catalog CI-013 `implementation` 未列 `scripts/mutate.ts`(邏輯所在;conf 6);⑨README / catalog degradation 的 exit 2 清單漏 root 解析失敗、argv 錯、未預期例外三種(conf 7);⑩`formatReport([])` 回 code 0,純函式對空輸入 fail-open、只靠 listSpecFiles 前置擋(conf 6);⑪`--root` 指外層 repo 子目錄時「repo 內」與「tracked」兩個邊界不同(conf 5);⑫e2e ⑤「外部檔未成為輸入」斷言靠 `not.toContain('對得上')`、fixture 加第二個 spec 就失效(conf 6);⑬`--allow-empty` 多餘(conf 5);⑭spec 帶 UTF-8 BOM 診斷訊息差(conf 5);⑮`PR #___` 佔位靠 Step 6 補號(A3 defer ② 同形;conf 5)
+- **方向**:①② 一起收(三支 checker 抽共用 `invokedAsMain` 到 `scripts/lib/`,isMain false 印一行);⑤⑨⑧ 各 0.5h;其餘逐條 0.5h
+- **工時**:①② 1h;其餘逐條 0.5h
+
 ### 🟢 A3 Step 5 defer 集合(control catalog / baseline governance 邊角,21 條 INFORMATIONAL conf ≤7)
 - **來源**:2026-09-03 PR A3 Step 5 worktree 審 r1–r5;0 CRITICAL 未修
 - **內容**:①模板自身 ci.yml 三處 `if:` 行含 develop、對 template config(deliveryBranches main)不合,A5.ci.if 只在 adopted 跑(conf 6);②`PR #___` 佔位 TODOS Markers Check 不抓,靠 Step 6 補(conf 6);③`repoFilePathViolation` 放行 `|` 與反引號(conf 4);④單一 `mergeStrategy` 表達不了雙階段策略(conf 3);⑤template 遺產舊值解不開視為首次設定,把全史掃描縮成 cutover(刻意,Owner PR 授權)(conf 4);⑥tab 縮排讓 keyIndent 撞更深 `name:`(YAML 禁止 tab)(conf 3);⑦同 item 兩個直屬 `name:` 後者覆蓋(parser 會拒)(conf 3);⑧`steps: [{…}]` 非空 flow sequence 不算區塊(假紅)(conf 3);⑨回灌 PR(main → develop)SKIPPED 訊息措辭反向(conf 2);⑩`protectedBranches` 集合擴大無任何 gate 警示,promotion 豁免健全性依賴人審 + branch protection(GOV-005 advisory)(conf 6);⑪steps 混合縮排(不合法 YAML)靜默漏抓(conf 4);⑫引號跳脫其餘形狀(`\\`、`\t`、`"x" # c "d"`)fail-closed 假紅(conf 5);⑬舊值 null 時 OK 行寫「見 info」但無 info(conf 7);⑭`config.head.invalid` / `config.base.invalid` 兩條 UNDETERMINED 丟掉 infoLines(conf 6);⑮UNCHANGED + info 與 `directionChecked` 文字無測試斷言(conf 5);⑯–㉑r1 其餘:`--root` dynamic import 已在檔頭標明、mutate spec 每個突變跑全套 vitest 超 10 分鐘(建議 `--cmd` 縮到相關測試檔或拆 spec)、`mutate.ts` 被 SIGTERM 砍不還原(已在 P3 defer 集合)、CTRL-CI-009 notes 限制 1 敘述、check:catalog 錯誤訊息對 `steps: # 註解` 已修、E-self 在本 repo 合法推進 baseline 後跳過(已實作)
