@@ -125,23 +125,21 @@ for (const spec of CONSUMERS) {
       }
     });
 
-    it(`#4 indeterminate wrapper → caller exit 2 + stderr 診斷含 [invoked-as-main] / reason`, () => {
+    it(`#4 indeterminate wrapper → 精確驗到 ${spec.label} 自己的 caller exit(2) branch`, () => {
+      // Codex Step 4 round 1 P1 修:label 必須精確對到 spec.label(不再接受任意三個 label),
+      // check-mutation-specs wrapper 已用 2 步 dynamic import 化解 static chain 問題
+      // (詳見 tests/fixtures/invoked-as-main-wrapper/check-mutation-specs-wrapper.mjs 檔頭)。
+      // 這樣 caller-wiring mutant(刪本 script 自己的 else-if indeterminate exit branch)
+      // 才會被 case #4 精確殺到、gate 不會 fail-open。
       const wrapperPath = path.join(WRAPPER_DIR, spec.wrapperName);
       const r = run(wrapperPath, [], { IAM_DANGLING: "1" });
       expect(r.status).toBe(2);
       expect(r.stderr).toContain("[invoked-as-main]");
       expect(r.stderr).toContain("reason=realpath-failed:argv1");
-      // 診斷保持單行(結尾一 \n、內容無其他 \n 在該診斷行內)
+      // 精確 label 斷言:診斷行必須指出**本 script**、不能是 chain 上先觸發的別的 script
       const diagLine = r.stderr.split("\n").find((l) => l.includes("[invoked-as-main]"));
       expect(diagLine).toBeTruthy();
-      // ⚠️ label 斷言的邊界:三 consumer 內部有 static import chain
-      // (check-mutation-specs → mutate);dangling argv1 下,**先被執行到頂層的
-      // module 先觸發 indeterminate branch、process.exit(2)**,後面的頂層根本沒跑。
-      // 因此 label 可能是本 script 或是它 static import 的 script;fail-closed 不變量
-      // (exit 2 + stderr 有診斷)在任一情況都成立,label 具體是誰不是本 case 要鎖的
-      const validLabels = ["mutate", "check-control-catalog", "check-mutation-specs"];
-      const hasSomeLabel = validLabels.some((l) => r.stderr.includes(l));
-      expect(hasSomeLabel).toBe(true);
+      expect(diagLine).toContain(`] ${spec.label} 判定 indeterminate`);
       // main 特徵輸出不該出現(caller exit 2 前 main 未執行)
       if (spec.label === "check-control-catalog") {
         expect(r.stdout).not.toContain("CATALOG_OK");
