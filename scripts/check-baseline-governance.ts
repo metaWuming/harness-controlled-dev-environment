@@ -30,7 +30,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isBookkeepingPath } from './check-bookkeeping-commit';
 import { parseBaselineConfig } from './check-no-source-terms';
-import { literalBranchNameViolation, loadHarnessConfig } from './lib/harness-config';
+import { loadHarnessConfig } from './lib/harness-config';
 
 export const BASELINE_CONFIG = 'scripts/source-term-baseline.json';
 export const BASELINE_ADR = 'docs/architecture/' + 'source-term-history-baseline.md';
@@ -74,14 +74,17 @@ export function evaluateBaselineGovernance(baseRef: string, io: GitIo, opts: Gov
 
   if (!BASE_REF_RE.test(baseRef)) return und('base.shape', `base ref ${JSON.stringify(baseRef)} 形狀不合法`);
   if (opts.headRef !== undefined && opts.headRef !== null) {
-    const v = literalBranchNameViolation(opts.headRef);
-    if (v !== null) return und('head.shape', `head 分支名 ${JSON.stringify(opts.headRef)} 不合法 — ${v}`);
+    // Step 5 r2 C-2:head 是 GitHub 送來的任意合法 git 分支名(可含 # @ + = 非 ASCII),只拿來與 protectedBranches
+    // 做精確相等比對;不套 config 的保守文法(那會讓合法 PR 假紅)。不相等 = 不豁免,照常判定。
     if (!opts.protectedBranches) return und('head.no-policy', '--head 需要 harness.config 的 protectedBranches 才能判定');
     if (opts.protectedBranches.includes(opts.headRef)) {
       return {
         status: 'SKIPPED',
         findings: [],
-        lines: [`BASELINE_GOVERNANCE_SKIPPED — head ${opts.headRef} ∈ protectedBranches:保護分支之間的 promotion PR,其內容進入 ${opts.headRef} 時已逐 PR 受本 gate 檢查(fork PR 不會走到這裡)`],
+        lines: [
+          `BASELINE_GOVERNANCE_SKIPPED — head ${opts.headRef} ∈ protectedBranches:保護分支之間的 promotion PR,其內容進入 ${opts.headRef} 時已逐 PR 受本 gate 檢查(fork PR 不會走到這裡)`,
+          `  [info] 此豁免只在所有 protectedBranches 都真的要求 PR(branch protection / ruleset)時成立;直接 push 到 ${opts.headRef} 不會經過本 gate(I-6)`,
+        ],
       };
     }
   }
@@ -94,9 +97,11 @@ export function evaluateBaselineGovernance(baseRef: string, io: GitIo, opts: Gov
   if (mb === head) return und('merge-base.equals-head', 'merge-base == HEAD(PR 無 commit,或 base 就是 HEAD)→ 無法判定');
 
   const readCfg = (rev: string): { baseline: string | null } | 'absent' | { error: string } => {
-    // Step 5 r1 I7:先用 cat-file -e 區分「該 rev 沒這個檔」與「git 本身失敗」,後者不得被當 absent(否則
-    // 兩端都失敗 → null === null → 假 UNCHANGED)。
-    if (io.git(['cat-file', '-e', `${rev}:${BASELINE_CONFIG}`]) === null) return 'absent';
+    // Step 5 r1 I7 / r2 I-4:用 ls-tree 區分「該 rev 沒這個檔」(exit 0、輸出空)與「git 本身失敗」(exit 非 0,
+    // 例如 rev 解不開、partial clone 缺 object);後者不得被當 absent(否則兩端都失敗 → null === null → 假 UNCHANGED)。
+    const entry = io.git(['ls-tree', rev, '--', BASELINE_CONFIG]);
+    if (entry === null) return { error: `git ls-tree ${rev.slice(0, 12)} -- ${BASELINE_CONFIG} 失敗(rev 解不開或 object 缺失)` };
+    if (entry === '') return 'absent';
     const text = io.git(['show', `${rev}:${BASELINE_CONFIG}`]);
     if (text === null) return { error: `git show ${rev.slice(0, 12)}:${BASELINE_CONFIG} 失敗(檔案存在但讀不到)` };
     try {

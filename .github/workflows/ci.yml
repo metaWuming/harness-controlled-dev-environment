@@ -179,8 +179,9 @@ jobs:
       - name: Baseline Governance Check
         # PR A3(ADR〈已知限制〉第 2 條的機器守門):source-term baseline 值若在本 PR 改變,PR 只准動
         # config / ADR / bookkeeping allowlist,且新值必須是 merge-base 的祖先(不得指向本 PR 內 commit)並為舊值後裔。
-        # 只在 pull_request 跑(push 到主線時 merge-base == HEAD 會 fail-closed 假紅);base ref 依賴上一 step 的
-        # 顯式 fetch —— fetch 失敗 → ref 不存在 → 本 step exit 2(fail-closed),不假設 fetch-depth 0 產生 remote ref。
+        # 只在 pull_request 跑(push 到主線時 merge-base == HEAD 會 fail-closed 假紅);base ref 由本 step 自己顯式
+        # fetch(下面 run 的第一行;上一 step 只 fetch default_branch 與 develop,PR base 是其他保護分支時只有這一行有效)
+        # —— fetch 失敗 → ref 不存在 → 腳本 exit 2(fail-closed),不假設 fetch-depth 0 產生 remote ref。
         # base 用 env 傳、在 run 內引號展開,不做 workflow 表達式的 shell 內插;腳本本身不讀任何 env。
         # Step 5 r1 C3:base 用 PR 真正的 base 分支(GitFlow 進 develop 的 PR 不能拿 main 當 base);
         # 同 repo 的 PR 另傳 --head,保護分支之間的 promotion PR(develop → main)由腳本依宣告的

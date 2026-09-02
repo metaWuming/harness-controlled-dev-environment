@@ -43,6 +43,8 @@ export interface CatalogFinding {
 
 export interface CiStepItem {
   line: number;
+  /** item 自己的 key 欄位縮排(`- ` 後第一個字元的欄位);只有這一層的 `name:` 算 step 名(Step 5 r2 C-1)。 */
+  keyIndent: number;
   name: string | null;
   /** `name: |` / `name: >` / 空值 這類本 checker 不支援的形狀(fail-closed)。 */
   unsupported: string | null;
@@ -89,20 +91,27 @@ export function extractCiSteps(yml: string): CiStepItem[] {
       itemIndent = -1;
     }
     if (stepsIndent < 0) {
-      if (t === 'steps:') stepsIndent = indent;
+      // I-7:`steps:` 後可接註解;`steps: []`(空)也算區塊(0 個 step)
+      if (/^steps:(\s*#.*|\s*\[\s*\])?$/.test(t)) stepsIndent = indent;
       continue;
     }
     if (t === '-' || t.startsWith('- ')) {
       if (itemIndent < 0) itemIndent = indent;
       if (indent === itemIndent) {
         flush();
-        cur = { line: i + 1, name: null, unsupported: null };
         const rest = t.replace(/^-\s*/, '');
+        // key 欄位 = `- ` 與其後空白之後的欄位;`-` 單獨一行時為下一行的縮排(交給後續行判定)
+        const keyIndent = t === '-' ? -1 : indent + (t.length - rest.length);
+        cur = { line: i + 1, keyIndent, name: null, unsupported: null };
         if (/^name:/.test(rest)) setName(rest.slice('name:'.length));
         continue;
       }
     }
-    if (cur && indent > itemIndent && /^name:/.test(t)) setName(t.slice('name:'.length));
+    if (cur && indent > itemIndent) {
+      if (cur.keyIndent < 0) cur.keyIndent = indent; // `-` 單獨一行:第一個子行決定 key 欄位
+      // 🔴 C-1:只有 item 直屬那一層的 `name:` 才是 step 名;`env:` / `with:` / `run: |` 底下更深的 `name:` 一律不算
+      if (indent === cur.keyIndent && /^name:/.test(t)) setName(t.slice('name:'.length));
+    }
   }
   flush();
   return items;

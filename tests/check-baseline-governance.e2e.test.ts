@@ -251,9 +251,13 @@ describe('check:baseline-governance e2e(16 條)', () => {
     r = run([`--root=${f.dir}`, '--base=main', '--head=feature']);
     expect(r.code).toBe(2);
     expect(r.out).toContain('[path.disallowed:scripts/x.ts]');
-    r = run([`--root=${f.dir}`, '--base=main', '--head=dev elop']);
-    expect(r.code).toBe(2);
-    expect(r.out).toContain('[head.shape]');
+    // C-2:任意 git 合法分支名(含 # @ + = 非 ASCII)不得假紅——不相等就不豁免、照常判定
+    for (const h of ['fix/#123', 'user@feat', 'feat+x', 'release=1', '_wip', '中文分支', 'chore(deps)/x']) {
+      r = run([`--root=${f.dir}`, '--base=main', `--head=${h}`]);
+      expect(r.code, h).toBe(2);
+      expect(r.out, h).toContain('[path.disallowed:scripts/x.ts]');
+      expect(r.out, h).not.toContain('head.shape');
+    }
     expect(run([`--root=${f.dir}`, '--base=main', '--head=']).code).toBe(2);
     expect(run([`--root=${f.dir}`, '--base=main', '--head=a', '--head=b']).code).toBe(2);
     const g = fixture(); // 無 harness.config
@@ -291,6 +295,11 @@ describe('check:baseline-governance e2e(16 條)', () => {
     const firstAdd = execFileSync('git', ['-C', REPO, 'log', '--diff-filter=A', '--format=%H', '--', CONFIG], { encoding: 'utf-8' }).trim().split('\n').filter(Boolean).pop() ?? '';
     const head = execFileSync('git', ['-C', REPO, 'rev-parse', 'HEAD'], { encoding: 'utf-8' }).trim();
     if (mode !== 'template' || firstAdd === '' || firstAdd === head) return;
+    // I-5:本 repo 日後合法推進 baseline 後,首次加入 commit 的值就不等於現值,這條自證會在正確行為下轉紅;
+    // 值不同時刻意跳過(那是 Baseline Governance Check 對推進 PR 本身該驗的事,不是自證的職責)。
+    const atBase = execFileSync('git', ['-C', REPO, 'show', `${firstAdd}:${CONFIG}`], { encoding: 'utf-8' });
+    const now = readFileSync(path.join(REPO, CONFIG), 'utf-8');
+    if (JSON.parse(atBase).sourceTermHistoryBaseline !== JSON.parse(now).sourceTermHistoryBaseline) return;
     const r = run([`--base=${firstAdd}`]);
     expect(r.code, ok(r)).toBe(0);
     expect(r.out).toMatch(/^BASELINE_UNCHANGED/);

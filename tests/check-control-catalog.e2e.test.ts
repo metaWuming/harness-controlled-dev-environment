@@ -108,6 +108,11 @@ describe('extractCiSteps(Step 5 r1 C4 / I1)', () => {
     expect(items.map((s) => s.name)).toEqual(['Checkout', 'Typecheck', 'Test (vitest)', null, 'Spaced', 'Later']);
     expect(items.filter((s) => s.name === null).map((s) => s.line)).toHaveLength(1);
   });
+  it('C-1:env: / with: / run: | 底下更深縮排的 name: 不算 step 名;`-` 單獨一行由子行決定 key 欄位;steps: 可接註解', () => {
+    const yml = `jobs:\n  ci:\n    steps: # here\n      - name: Baseline Governance Check\n        env:\n          name: Sneaky\n      - uses: actions/upload-artifact@v4\n        with:\n          name: my-artifact\n      - run: |\n          cat <<EOF\n          name: FromShell\n          EOF\n      -\n        name: Dashed\n        run: x\n`;
+    const items = extractCiSteps(yml);
+    expect(items.map((s) => s.name)).toEqual(['Baseline Governance Check', null, null, 'Dashed']);
+  });
   it('引號剝掉、尾端註解剝掉;`name: |` 標 unsupported;matrix include 的 - name 不算 step;steps 以外的 - name 不算', () => {
     const yml = `jobs:\n  ci:\n    strategy:\n      matrix:\n        include:\n          - name: node22\n    steps:\n      - name: "Lint"\n        run: x\n      - name: 'Typecheck' # c\n      - name: Test (vitest) # trailing\n      - name: |\n          multi\n  other:\n    - name: NotAStep\n`;
     const items = extractCiSteps(yml);
@@ -217,6 +222,13 @@ describe('check:catalog CLI(真 git fixture)', () => {
     r = run([`--root=${makeRepo(baseDoc(), { ci: CI + '      -   name: Extra\n        run: x\n' })}`]);
     expect(r.code).toBe(2);
     expect(codes(r.out)).toContain('ci.step.unregistered:Extra');
+  });
+  it('(C-1) 真實形狀:step 改名並在 env: 放原名 → 反向鎖必須紅(unregistered + ciStep.missing)', () => {
+    const ci = CI.replace('      - name: Test (vitest)\n        run: npx vitest run\n', '      - name: Renamed Away\n        env:\n          name: Test (vitest)\n        run: npx vitest run\n');
+    const r = run([`--root=${makeRepo(baseDoc(), { ci })}`]);
+    expect(r.code).toBe(2);
+    expect(codes(r.out)).toContain('ci.step.unregistered:Renamed Away');
+    expect(codes(r.out)).toContain('catalog.ciStep.missing:CTRL-CI-002:Test (vitest)');
   });
   it('(I1) 引號 / 尾端註解的 name 對得上 catalog → exit 0', () => {
     const ci = CI.replace('- name: Typecheck', '- name: "Typecheck"').replace('- name: Test (vitest)', "- name: 'Test (vitest)' # keep");

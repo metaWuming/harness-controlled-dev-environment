@@ -30,7 +30,7 @@ type: guide
 |---|---|---|
 | `Adoption Readiness Check` | Doc Size Check 之後 | 無 |
 | `Control Catalog Check` | Adoption Readiness Check 之後 | 無 |
-| `Baseline Governance Check` | Fetch delivery refs 之後 | `if: github.event_name == 'pull_request'`;`--base=origin/$DEFAULT_BRANCH` 以 env 引號展開 |
+| `Baseline Governance Check` | Fetch delivery refs 之後 | `if: github.event_name == 'pull_request'`;先 `git fetch origin "$BASE_REF:refs/remotes/origin/$BASE_REF"`,再 `--base=origin/$BASE_REF`(PR 的 base 分支);同 repo PR 另傳 `--head=$HEAD_REF`(`HEAD_SAME_REPO` 為 true 時),fork PR 不傳 |
 
 - 三處 delivery-branch 的 `if:` 行(Fetch delivery refs / TODOS Markers / Source-term)在 adopted mode 會被 A5.ci.if 驗:
   必須逐字等於 `if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)`

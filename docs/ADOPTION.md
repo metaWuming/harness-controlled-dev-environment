@@ -122,7 +122,8 @@ type: guide
       再對 `deliveryBranches` 每個 b 接 ` || github.ref == 'refs/heads/<b>'`。出廠 ci.yml 含 `develop`——要嘛把 `develop` 列進
       `deliveryBranches`,要嘛從三行拿掉
 - [ ] `Baseline Governance Check` step(pull_request only)要保留:同 repo PR 會帶 `--head`,保護分支之間的 promotion PR
-      (例 develop → main)依你宣告的 `protectedBranches` 明文跳過;fork PR 不帶 `--head`
+      (例 develop → main)依你宣告的 `protectedBranches` 明文跳過;fork PR 不帶 `--head`。⚠️ 這個豁免只在所有
+      `protectedBranches` 都真的開了 branch protection / ruleset(必須經 PR、不得直接 push)時成立
 - [ ] 用 Next.js+Prisma → 照 `stack/nextjs-prisma/README.md` 把 L2 層裝上
       (ESLint AST 規則 + migration 守衛 + CI 片段)
 - [ ] `Source-term scan` step:本模板用它防「來源專案識別詞」殘留。

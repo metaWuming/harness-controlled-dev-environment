@@ -76,5 +76,11 @@
     "find": "  if (q) return { name: (q[1] ?? q[3])!, unsupported: null };",
     "replace": "  if (false) return { name: (q[1] ?? q[3])!, unsupported: null };",
     "label": "M13 extractor:不剝引號 → e2e (I1) 轉紅"
+  },
+  {
+    "file": "scripts/check-control-catalog.ts",
+    "find": "      if (indent === cur.keyIndent && /^name:/.test(t)) setName(t.slice('name:'.length));",
+    "replace": "      if (indent >= cur.keyIndent && /^name:/.test(t)) setName(t.slice('name:'.length));",
+    "label": "M14 extractor:接受更深縮排的 name:(env/with 遮蔽)→ e2e (C-1) 轉紅"
   }
 ]
