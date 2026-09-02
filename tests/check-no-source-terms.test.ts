@@ -451,11 +451,14 @@ function makeRepo(opts: {
   /** Step 5 F1:刻意不注入 CA entries,測 startup fail-hard 漂移守門 */
   omitCaAutoInject?: boolean;
   /**
-   * 批 8 Phase A:注入 origin remote,讓 buildDeliveryRefs 三條非 last-resort
-   * fallback 路徑(①origin/HEAD、②DELIVERY_REFS env、③origin/develop)有可測
-   * 目標。每條 push 分支帶「獨立 commit」——local main 不含該 commit,這樣通過與
-   * 否能證明「該路徑真的被走過」;路徑失效時 fallback 到 ④local main 查不到 PR#
-   * → exit 1(路徑破損直接被抓)
+   * 注入 origin remote 上的額外分支(批 8 Phase A 引入;現行契約下用途如下)。
+   * 現行契約(scripts/lib/delivery-refs.ts):交付證據**唯一來源是受驗的 origin/HEAD**;沒有 env、
+   * 沒有 fallback;無 origin / origin/HEAD 未設 → base.missing → exit 2(見 noOrigin 負對照)。
+   * `setHeadTo` 決定 origin/HEAD 指向哪條分支(不設 → makeRepo 預設 set-head main);其他分支上的
+   * 「獨立 commit」(commitSubject 有給)刻意不在 origin/HEAD 內——用來證明它們的 PR # **不會**被算進
+   * allowedPrs(env 被忽略、develop 不再猜);commitSubject 省略 → 分支指在 main tip(相等)。
+   * 【歷史】批 8 時這裡服務「①origin/HEAD ②DELIVERY_REFS env ③origin/develop ④本地 main」四條 fallback,
+   * 後三條已於 #48 與本版移除。
    */
   originRefs?: {
     /** 建 bare origin、每條 push 上去(獨立 commit)*/
@@ -822,22 +825,19 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
 
   // ─────────────────── 批 8 Phase A:buildDeliveryRefs 前三條 fallback 路徑 e2e ───────────────────
   //
-  // 動機:批 7 (#32) Step 5 F2(defer 進 TODOS.md P3)——buildDeliveryRefs 四條
-  // fallback ①origin/HEAD ②DELIVERY_REFS env ③origin/develop ④last-resort 本地 main
-  // 只有 ④ 有 e2e 覆蓋(其他既有 case 全走 ④,因 makeRepo 沒建 origin remote)。
-  // 前三條路徑破損只在特定 CI 場景才顯現——本 sprint 補齊 e2e 覆蓋。
-  //
-  // 每條 case 的設計:目標 PR # 只放在對應 fallback 路徑的分支上、local main 不含。
-  // 若對應路徑失效,fallback 掉到 ④local main → 查不到 PR# → allowedPrs 空 → CA
-  // hit 未知 PR 引用 → exit 1(路徑破損直接被抓)
+  // 現行契約:交付證據唯一路徑 = 受驗的 origin/HEAD(scripts/lib/delivery-refs.ts);無 env、無 fallback。
+  // makeRepo 預設建 bare origin + set-head main,所以既有 case 都走這條路徑;noOrigin 負對照 → base.missing → exit 2。
+  // 以下 case 的設計:目標 PR # 只放在 origin/HEAD 指向的分支(正對照)或刻意放在它之外的分支(負對照:
+  // 該 PR # 不得進 allowedPrs → CA hit 未知引用 → exit 1;或 base 本身不合格 → exit 2)。
+  // 【歷史】批 8 Phase A 時本節覆蓋「①origin/HEAD ②DELIVERY_REFS env ③origin/develop ④本地 main」四條
+  // fallback;②③④ 已於 #48 與本版移除,對應 case 已改寫。
 
   it("🔴 批 8 Phase A A-e1:①origin/HEAD 路徑抓 self-PR → 放行", () => {
     // origin/HEAD 指向 origin/cg-default-sentinel(該分支含 `feat (井號+7)`);
     // local main 無 #7。用 sentinel branch name(非 master / main / trunk 等
     // GitHub 慣例)確保若把 symbolic-ref 動態解析改成硬碼「origin/master」,
     // 此 case 會轉紅——真正守到「跟隨 origin/HEAD」契約(round 1 P2 修法)。
-    // 若 buildDeliveryRefs 路徑 ① 破損(例:symbolic-ref 讀失敗、resolves 誤判),
-    // fallback 到 ④local main 查不到 #7 → 轉紅
+    // 若 origin/HEAD 路徑破損(例:symbolic-ref 讀失敗、驗證誤判)→ exit 2 或查不到 #7 → 轉紅
     const dir = makeRepo({
       deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
       commits: [
