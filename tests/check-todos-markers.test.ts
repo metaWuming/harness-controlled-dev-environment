@@ -461,7 +461,7 @@ describe('check-todos-markers — 端到端(CLI 接線)', () => {
     }
   });
 
-  it('🔴 P2#2 base.undeclared:origin/HEAD 指向正規、可解、未宣告分支;env 空 → exit 2、不放行', () => {
+  it('🔴 P2#2 base.undeclared:origin/HEAD 指向正規、可解、未宣告分支 → exit 2、不放行', () => {
     const dir = makeRepo({
       todosContent: '# TODOS\n\n## P3\n\n### ✅ some completion (#42)\n- done\n',
       extraCommits: [{ message: 'feat: x (#42)' }],
@@ -472,7 +472,7 @@ describe('check-todos-markers — 端到端(CLI 接線)', () => {
     expect(out).toContain('[base.undeclared] refs/remotes/origin/main');
   });
 
-  it('🔴 P2#2 base.missing:無 origin remote → exit 2(本地 main fallback 已移除)', () => {
+  it('🔴 P2#2 base.missing:noOrigin(無 origin remote)→ exit 2(本地 main fallback 已移除)', () => {
     const dir = makeRepo({
       todosContent: '# TODOS\n\n## P3\n\n### ✅ some completion (#42)\n- done\n',
       extraCommits: [{ message: 'feat: x (#42)' }],
@@ -491,7 +491,7 @@ describe('check-todos-markers — 端到端(CLI 接線)', () => {
       todosContent: '# TODOS\n\n## P3\n\n### ✅ some completion (#42)\n- done\n',
     });
     const { code, out } = runChecker(dir);
-    // disposable repo 無 origin remote → buildMergedPrSet 四條 fallback 全空
+    // makeRepo 預設建 origin + set-head main;受驗 origin/HEAD 合格但 log 內無 (#42)
     // → merged set 空 → 有 completionClaim 但 merged.size = 0 → 走 fail-hard
     // 路徑(script L437-439)、exit 1。若 MARKER_SELF_PR call site 破損、
     // 就算 env 傳 42 也不會進 merged set,同樣走 fail-hard。此 case 驗

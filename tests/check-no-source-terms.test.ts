@@ -860,7 +860,7 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     expect(code).toBe(0);
   });
 
-  it("🔴 P2#2 base.undeclared:origin/HEAD 指向正規、可解、但未宣告的分支;env 空 → exit 2、不建 allowedPrs", () => {
+  it("🔴 P2#2 base.undeclared:origin/HEAD 指向正規、可解、但未宣告的分支 → exit 2、不建 allowedPrs", () => {
     const dir = makeRepo({
       deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
       commits: [{ message: "feat (#8)", files: { "src/foo.md": "hello\n" } }],
@@ -886,7 +886,7 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     expect(out).toContain("[base.noncanonical] refs/remotes/origin/main");
   });
 
-  it("🔴 P2#2 base.missing:無 origin remote(fallback ③④ 已移除)→ exit 2,不再用本地 main 充當交付證據", () => {
+  it("🔴 P2#2 base.missing:noOrigin(無 origin remote)→ exit 2,不再用本地 main 充當交付證據", () => {
     const dir = makeRepo({
       deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
       commits: [{ message: "feat (#8)", files: { "src/foo.md": "hello\n" } }],
