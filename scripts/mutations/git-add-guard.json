@@ -1,0 +1,20 @@
+[
+  {
+    "file": "scripts/git-hooks/pre-commit",
+    "find": "if [ -n \"$artifacts\" ]; then",
+    "replace": "if [ -n \"\" ]; then",
+    "label": "GA-M1 pre-commit:工具產物守門整段失效 → 行為級測試轉紅"
+  },
+  {
+    "file": "scripts/git-hooks/code-pattern.sh",
+    "find": "TOOL_ARTIFACT_PATTERN='^\\.codegraph/|^\\.gbrain-source$|^_handoffs/'",
+    "replace": "TOOL_ARTIFACT_PATTERN='^\\.codegraph/'",
+    "label": "GA-M2 SSOT 少列 .gbrain-source / _handoffs → 正對照第二段轉紅"
+  },
+  {
+    "file": "scripts/check-hooks.sh",
+    "find": "[ -n \"$TOOL_ARTIFACT_PATTERN\" ] || fail",
+    "replace": "[ -n \"$TOOL_ARTIFACT_PATTERN\" ] || true || fail",
+    "label": "GA-M3 check-hooks 不再要求 TOOL_ARTIFACT_PATTERN → 負對照轉紅"
+  }
+]

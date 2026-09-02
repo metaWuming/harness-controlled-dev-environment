@@ -142,6 +142,18 @@ describe("check-hooks.sh — 守門腳本自己的 liveness", () => {
     expect(err).toContain("setup-hooks");
   });
 
+  it("SSOT 少了 TOOL_ARTIFACT_PATTERN → exit 1(工具產物守門會靜默失效;錯訊在既有冒煙測試之後)", () => {
+    const dir = makeRepo();
+    writeFileSync(
+      join(dir, "scripts/git-hooks/code-pattern.sh"),
+      "NON_CODE_PATTERN='[.](md|html)$'\nPROTECTED_DOCS='^CLAUDE[.]md$'\n",
+    );
+    const { code, err } = runGate(dir);
+    expect(code).toBe(1);
+    expect(err).not.toMatch(/unbound variable/);
+    expect(err).toContain("沒有定義 TOOL_ARTIFACT_PATTERN");
+  });
+
   it("code-pattern.sh 有語法錯誤(source 失敗)→ exit 1", () => {
     const dir = makeRepo();
     writeFileSync(join(dir, "scripts/git-hooks/code-pattern.sh"), "if [ ; then\n");
@@ -314,5 +326,49 @@ describe("check-hooks.sh — 守門腳本自己的 liveness", () => {
       "逐一人工確認:那一處真的會被 shell 展開嗎?會 → 改成大括號形式(dollar + {var});" +
         "在註解／單引號字串裡、或根本不是 shell 檔 → 這是本掃描已知的誤報,把檔案排除或調整判定。",
     ).toEqual([]);
+  });
+});
+
+// ══════════ pre-commit 行為級測試:TOOL_ARTIFACT_PATTERN 在任何分支都擋(真 git commit)══════════
+describe("pre-commit — 工具產物守門(git add -A 誤加 untracked 的機器化)", () => {
+  function gitc(dir: string, ...a: string[]): { code: number; err: string } {
+    const r = spawnSync("git", ["-C", dir, ...a], { encoding: "utf-8" });
+    return { code: r.status ?? 1, err: r.stderr };
+  }
+  function repoOnFeature(): string {
+    const dir = makeRepo();
+    gitc(dir, "config", "user.email", "t@example.test");
+    gitc(dir, "config", "user.name", "t");
+    writeFileSync(join(dir, "README.md"), "x\n");
+    gitc(dir, "add", "README.md");
+    expect(gitc(dir, "commit", "-q", "-m", "init").code).toBe(0);
+    gitc(dir, "checkout", "-q", "-b", "feature/x");
+    return dir;
+  }
+  it("🔴 feature 分支 stage .codegraph/ 檔 → commit 被擋(exit 1、訊息點名路徑與修法)", () => {
+    const dir = repoOnFeature();
+    mkdirSync(join(dir, ".codegraph"), { recursive: true });
+    writeFileSync(join(dir, ".codegraph/index.db"), "bin");
+    writeFileSync(join(dir, "src.ts"), "export {}\n");
+    gitc(dir, "add", "-f", ".codegraph/index.db", "src.ts"); // -f 模擬 .gitignore 被繞過
+    const r = gitc(dir, "commit", "-q", "-m", "oops");
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("TOOL_ARTIFACT_PATTERN");
+    expect(r.err).toContain(".codegraph/index.db");
+    expect(r.err).toContain("git restore --staged");
+  });
+  it("正對照:feature 分支只 stage 一般檔 → commit 通過;.gbrain-source / _handoffs/ 各自也擋", () => {
+    const dir = repoOnFeature();
+    writeFileSync(join(dir, "src.ts"), "export {}\n");
+    gitc(dir, "add", "src.ts");
+    expect(gitc(dir, "commit", "-q", "-m", "ok").code).toBe(0);
+    for (const rel of [".gbrain-source", "_handoffs/HANDOFF.md"]) {
+      mkdirSync(join(dir, rel.split("/").slice(0, -1).join("/") || "."), { recursive: true });
+      writeFileSync(join(dir, rel), "x");
+      gitc(dir, "add", "-f", rel);
+      const r = gitc(dir, "commit", "-q", "-m", "oops");
+      expect(r.code, rel).toBe(1);
+      gitc(dir, "restore", "--staged", rel);
+    }
   });
 });

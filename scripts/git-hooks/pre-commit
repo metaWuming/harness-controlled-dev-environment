@@ -13,6 +13,8 @@
 #     程式碼 commit 到保護分支沒有正當情境;pre-push 的互動確認是給「push 既有
 #     commit」的罕見情境,commit 當下攔截更早更便宜)
 #   - 例外中的例外:PROTECTED_DOCS(策略／安全／SOP／ADR)雖是 .md 也一樣 block
+#   - **任何分支**:staged 含 TOOL_ARTIFACT_PATTERN(本機 AI / 工具產物,`.codegraph/` 等)
+#     → block(`git add -A` 誤加 untracked 的機器化守門;.gitignore 是第一道、本 hook 是縱深)
 #
 # 覆蓋邊界(誠實揭露):git 只對 `git commit` 跑 pre-commit。
 #   `git merge --no-ff`、`git cherry-pick`、`git revert`、`git am`(走 pre-applypatch)
@@ -36,21 +38,41 @@ HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=scripts/git-hooks/code-pattern.sh
 . "$HOOK_DIR/code-pattern.sh"
 
-# SSOT 必須提供這兩個變數且非空;缺一個就中止(fail-closed)
+# SSOT 必須提供這三個變數且非空;缺一個就中止(fail-closed)
 : "${NON_CODE_PATTERN:?code-pattern.sh 沒有定義 NON_CODE_PATTERN(守門失效,拒絕放行)}"
 : "${PROTECTED_DOCS:?code-pattern.sh 沒有定義 PROTECTED_DOCS(守門失效,拒絕放行)}"
-
-branch="$(git branch --show-current 2>/dev/null || true)"
-
-# 只在保護分支上作用(detached HEAD → branch 為空 → 放行,rebase 等情境不干擾)
-case "$branch" in
-  develop|main) ;;
-  *) exit 0 ;;
-esac
+: "${TOOL_ARTIFACT_PATTERN:?code-pattern.sh 沒有定義 TOOL_ARTIFACT_PATTERN(守門失效,拒絕放行)}"
 
 # staged 檔案清單(--cached = 只看這次 commit 會進去的東西;--no-renames 見檔頭)
 staged="$(git diff --cached --name-only --no-renames)"
 [ -z "$staged" ] && exit 0
+
+# 0) 任何分支:本機 AI / 工具產物不得進 commit(`git add -A` 誤加 untracked 的機器化守門)
+artifacts=$(printf '%s\n' "$staged" | grep -E "$TOOL_ARTIFACT_PATTERN" || true)
+if [ -n "$artifacts" ]; then
+  {
+    echo ""
+    echo "✗ 擋下 commit:staged 含本機工具產物(TOOL_ARTIFACT_PATTERN),多半是 \`git add -A\` / \`git add .\` 掃進來的"
+    echo ""
+    echo "   被擋的檔案:"
+    while IFS= read -r line; do
+      [ -n "$line" ] && echo "     - $line"
+    done <<< "$artifacts"
+    echo ""
+    echo "   → 修法:\`git restore --staged <路徑>\`,之後 \`git add\` 列具體檔名、不用 -A / .(先 \`git status --short\` 看 ?? 行)"
+    echo "   → 這些路徑應在 .gitignore;若你的工具產物不同,改 scripts/git-hooks/code-pattern.sh 的 TOOL_ARTIFACT_PATTERN"
+    echo "   → 緊急逃生:\`git commit --no-verify\`"
+  } >&2
+  exit 1
+fi
+
+branch="$(git branch --show-current 2>/dev/null || true)"
+
+# 以下只在保護分支上作用(detached HEAD → branch 為空 → 放行,rebase 等情境不干擾)
+case "$branch" in
+  develop|main) ;;
+  *) exit 0 ;;
+esac
 
 blocked=""
 

@@ -373,17 +373,20 @@
         "scripts/git-hooks/code-pattern.sh",
         "scripts/setup-hooks.sh"
       ],
-      "locator": "develop / main 上 staged 含 code 或 PROTECTED_DOCS → block;feature/* 放行",
+      "locator": "develop / main 上 staged 含 code 或 PROTECTED_DOCS → block;feature/* 放行;任何分支 staged 含 TOOL_ARTIFACT_PATTERN(本機工具產物,git add -A 誤加)→ block",
       "ciStep": null,
       "owner": "developer",
       "failureBehavior": "block",
       "evidence": "hook stderr;npm run check:hooks 驗 hook 活著",
       "degradation": "沒跑 npm run setup-hooks 就不存在;CI 端由 branch protection 補(未機器驗證)",
       "tested": [
-        "unit"
+        "unit",
+        "e2e",
+        "mutation"
       ],
       "testRefs": [
-        "tests/check-hooks.test.ts"
+        "tests/check-hooks.test.ts",
+        "scripts/mutations/git-add-guard.json"
       ],
       "bypass": "--no-verify;未安裝 hooks",
       "notes": "縱深用;不能假設遠端一定守得住"

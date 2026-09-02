@@ -104,7 +104,7 @@ pattern_output=$(
   bash -c '
     set +u
     . "$1/code-pattern.sh" 2>/dev/null || exit 91
-    printf "__SSOT_SENTINEL_OK__\n%s\n%s\n" "$(printf "%s" "$NON_CODE_PATTERN" | base64 | tr -d "\r\n")" "$(printf "%s" "$PROTECTED_DOCS" | base64 | tr -d "\r\n")"
+    printf "__SSOT_SENTINEL_OK__\n%s\n%s\n%s\n" "$(printf "%s" "$NON_CODE_PATTERN" | base64 | tr -d "\r\n")" "$(printf "%s" "$PROTECTED_DOCS" | base64 | tr -d "\r\n")" "$(printf "%s" "$TOOL_ARTIFACT_PATTERN" | base64 | tr -d "\r\n")"
   ' -- "$RESOLVED" 2>/dev/null
 )
 subshell_ec=$?
@@ -116,6 +116,7 @@ fi
 pattern_sentinel=$(printf '%s\n' "$pattern_output" | sed -n '1p')
 pattern_var1_b64=$(printf '%s\n' "$pattern_output" | sed -n '2p')
 pattern_var2_b64=$(printf '%s\n' "$pattern_output" | sed -n '3p')
+pattern_var3_b64=$(printf '%s\n' "$pattern_output" | sed -n '4p')
 
 if [ "$pattern_sentinel" != "__SSOT_SENTINEL_OK__" ]; then
   fail "code-pattern.sh 提早退出（sentinel 沒印出——可能被人誤貼了 exit / return 語句）"
@@ -130,12 +131,17 @@ PROTECTED_DOCS=$(printf '%s' "$pattern_var2_b64" | base64 -d 2>/dev/null)
 #    偷加了 echo/printf 副作用（會弄亂父端 sed 位置解讀）→ fail-closed。
 #    (變數為空的情境已在上面 [ -n ] 擋掉,不會走到這裡。)
 pattern_nonempty_lines=$(printf '%s\n' "$pattern_output" | grep -c '.' || true)
-if [ "$pattern_nonempty_lines" -gt 3 ]; then
+if [ "$pattern_nonempty_lines" -gt 4 ]; then
   fail "code-pattern.sh 輸出行數異常（$pattern_nonempty_lines 行非空——source 時是否偷做了 echo/printf？）"
 fi
 # 冒煙測試：拿樣本驗 pattern 的方向沒有反過來
 echo "src/x.ts" | grep -qEv "$NON_CODE_PATTERN" || fail "NON_CODE_PATTERN 把 .ts 判成文件（方向反了）"
 echo "docs/x.md" | grep -qE "$NON_CODE_PATTERN" || fail "NON_CODE_PATTERN 把 .md 判成 code（方向反了）"
 echo "CLAUDE.md" | grep -qE "$PROTECTED_DOCS" || fail "PROTECTED_DOCS 對不到 CLAUDE.md"
+# 第三個 SSOT:本機工具產物(pre-commit 任何分支都擋)。放在既有冒煙測試之後,錯訊順序不變。
+TOOL_ARTIFACT_PATTERN=$(printf '%s' "$pattern_var3_b64" | base64 -d 2>/dev/null)
+[ -n "$TOOL_ARTIFACT_PATTERN" ] || fail "code-pattern.sh 沒有定義 TOOL_ARTIFACT_PATTERN（\`git add -A\` 誤加工具產物的守門會靜默失效）"
+echo ".codegraph/index.db" | grep -qE "$TOOL_ARTIFACT_PATTERN" || fail "TOOL_ARTIFACT_PATTERN 對不到 .codegraph/（方向反了）"
+echo "src/x.ts" | grep -qEv "$TOOL_ARTIFACT_PATTERN" || fail "TOOL_ARTIFACT_PATTERN 把 src/x.ts 判成工具產物（方向反了）"
 
-echo "✅ git hooks 活著：core.hooksPath → ${CONFIGURED}（pre-commit + pre-push 存在且可執行；SSOT 兩個 pattern 已載入並通過冒煙測試）"
+echo "✅ git hooks 活著：core.hooksPath → ${CONFIGURED}（pre-commit + pre-push 存在且可執行；SSOT 三個 pattern 已載入並通過冒煙測試）"

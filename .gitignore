@@ -27,3 +27,8 @@ coverage/
 
 # logs
 *.log
+
+# 本機 AI / 工具產物(不進版控;pre-commit 的 TOOL_ARTIFACT_PATTERN 是縱深,這裡是第一道)
+.codegraph/
+.gbrain-source
+_handoffs/
