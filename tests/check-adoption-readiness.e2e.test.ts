@@ -53,6 +53,15 @@ jobs:
     steps:
       # ${ADR_REF}
       # ${ADR_REF}
+      - name: Fetch delivery refs
+        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main'
+        run: git fetch
+      - name: TODOS Markers Check
+        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main'
+        run: npm run check:todos
+      - name: Source-term scan
+        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main'
+        run: npm run check:no-source-terms
       - name: Adoption Readiness Check
         run: npm run check:adoption
 `;

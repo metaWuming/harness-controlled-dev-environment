@@ -94,5 +94,17 @@
     "find": "    if (text.includes(needle)) out.push(",
     "replace": "    if (!text.includes(needle)) out.push(",
     "label": "M14 template-governance:checkNoPersonalPaths 斷言反轉 → E-T8 + 本 repo 自證轉紅"
+  },
+  {
+    "file": "scripts/check-adoption-readiness.ts",
+    "find": "  if (lines.length !== CI_IF_EXPECTED_COUNT) {",
+    "replace": "  if (false) {",
+    "label": "M15 A5.ci.if:行數鎖拿掉 → 行數 2 / 4 負對照轉紅"
+  },
+  {
+    "file": "scripts/check-adoption-readiness.ts",
+    "find": "    if (l !== expected) out.push(fail('A5.ci.if'",
+    "replace": "    if (false) out.push(fail('A5.ci.if'",
+    "label": "M16 A5.ci.if:逐字比對拿掉 → 多 / 少分支、順序、default_branch 表達式負對照轉紅"
   }
 ]

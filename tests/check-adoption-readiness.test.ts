@@ -22,6 +22,7 @@ import {
   checkTemplatePackageName,
   checkTemplatePart4Skeleton,
   checkTemplateProjectId,
+  expectedCiIfLine,
   extractCiBranches,
   extractPreCommitBranches,
   extractPrePushBranches,
@@ -157,6 +158,15 @@ env:
 jobs:
   ci:
     steps:
+      - name: Fetch delivery refs
+        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main'
+        run: git fetch
+      - name: TODOS Markers Check
+        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main'
+        run: npm run check:todos
+      - name: Source-term scan
+        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main'
+        run: npm run check:no-source-terms
       - name: Adoption Readiness Check
         run: npm run check:adoption
 `;
@@ -475,6 +485,19 @@ describe('adopted mode A5 分支政策集合精確相等', () => {
     expect(fails(checkBranchConformance(ADOPTED_CFG, ci("branches: [main, develop, 'feature/**']", 'branches: [main]'))).map((x) => x.id)).toEqual(['A5.ci.pull_request']);
     expect(fails(checkBranchConformance(ADOPTED_CFG, ci("branches: [main, develop, 'feature/**']", 'types: [opened]'))).map((x) => x.id)).toEqual(['A5.ci.pull_request']);
     expect(fails(checkBranchConformance(ADOPTED_CFG, ci("branches: [main, develop, 'feature/**']", 'branches: [main, main, develop]'))).map((x) => x.id)).toEqual(['A5.ci.pull_request.grammar']);
+  });
+  it('A5.ci.if(P4):行數 2 / 4、多一分支、少一分支、順序、default_branch 表達式被改、文法 → 各自 fail', () => {
+    const IF = "        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main'\n";
+    const withIf = (repl: (yml: string) => string) => adoptedIo({ files: { '.github/workflows/ci.yml': repl(CI_OK) } });
+    expect(fails(checkBranchConformance(ADOPTED_CFG, adoptedIo()))).toEqual([]);
+    expect(ids(checkBranchConformance(ADOPTED_CFG, withIf((y) => y.replace(IF, ''))))).toContain('A5.ci.if');
+    expect(ids(checkBranchConformance(ADOPTED_CFG, withIf((y) => y + IF)))).toContain('A5.ci.if');
+    expect(ids(checkBranchConformance(ADOPTED_CFG, withIf((y) => y.replace(IF, IF.replace("'refs/heads/main'", "'refs/heads/main' || github.ref == 'refs/heads/develop'")))))).toContain('A5.ci.if');
+    expect(ids(checkBranchConformance({ ...ADOPTED_CFG, deliveryBranches: ['main', 'develop'] }, adoptedIo()))).toContain('A5.ci.if');
+    expect(ids(checkBranchConformance({ ...ADOPTED_CFG, protectedBranches: ['develop', 'main'], deliveryBranches: ['develop', 'main'] }, withIf((y) => y.replaceAll(IF, IF.replace("'refs/heads/main'", "'refs/heads/main' || github.ref == 'refs/heads/develop'")))))).toContain('A5.ci.if');
+    expect(ids(checkBranchConformance(ADOPTED_CFG, withIf((y) => y.replaceAll(IF, IF.replace('github.event.repository.default_branch', "'main'")))))).toContain('A5.ci.if');
+    expect(ids(checkBranchConformance(ADOPTED_CFG, withIf((y) => y.replaceAll(IF, IF.replace("'refs/heads/main'", "'refs/heads/ma in'")))))).toContain('A5.ci.if.grammar');
+    expect(expectedCiIfLine(['main', 'develop'])).toBe("if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'");
   });
   it('extract 純函式:直接可測', () => {
     expect(extractPreCommitBranches(PRE_COMMIT_OK)).toEqual({ ok: true, names: ['develop', 'main'] });

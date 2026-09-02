@@ -495,6 +495,35 @@ export function extractCiBranches(src: string): { push: SourceSet; pullRequest: 
   return { push: parse('A5.ci.push', found.push, true), pullRequest: parse('A5.ci.pull_request', found.pull_request, false), pushGlobInfo };
 }
 
+/** A5.ci.if(PR A3 P4):三處 delivery-branch `if:` 行必須逐字等於由 deliveryBranches 導出的期望行。 */
+export const CI_IF_PREFIX = "if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)";
+export const CI_IF_EXPECTED_COUNT = 3;
+export function expectedCiIfLine(deliveryBranches: string[]): string {
+  return CI_IF_PREFIX + deliveryBranches.map((b) => ` || github.ref == 'refs/heads/${b}'`).join('');
+}
+export function extractCiIfLines(yml: string): string[] {
+  return yml
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith("if: github.event_name != 'push'"));
+}
+export function checkCiIfConformance(cfg: HarnessConfig, yml: string): Finding[] {
+  const out: Finding[] = [];
+  const lines = extractCiIfLines(yml);
+  if (lines.length !== CI_IF_EXPECTED_COUNT) {
+    out.push(fail('A5.ci.if', `${CI_YML} 以 \`if: github.event_name != 'push'\` 開頭的行需恰 ${CI_IF_EXPECTED_COUNT} 行(找到 ${lines.length})`));
+  }
+  const expected = expectedCiIfLine(cfg.deliveryBranches);
+  lines.forEach((l, i) => {
+    for (const m of l.matchAll(/== 'refs\/heads\/([^']*)'/g)) {
+      const v = literalBranchNameViolation(m[1]);
+      if (v !== null) out.push(fail('A5.ci.if.grammar', `if 行 #${i + 1} 的 ${JSON.stringify(m[1])} 不是合法字面分支名 — ${v}`));
+    }
+    if (l !== expected) out.push(fail('A5.ci.if', `if 行 #${i + 1} 與 deliveryBranches 導出的期望行不同\n    期望:${expected}\n    實際:${l}`));
+  });
+  return out;
+}
+
 export const checkBranchConformance: Check = (cfg, io) => {
   const out: Finding[] = [];
   const expected = cfg.protectedBranches;
@@ -515,6 +544,7 @@ export const checkBranchConformance: Check = (cfg, io) => {
     consume('A5.ci.push', `${CI_YML} push.branches`, r.push);
     consume('A5.ci.pull_request', `${CI_YML} pull_request.branches`, r.pullRequest);
     for (const g of r.pushGlobInfo) out.push(info('A5.ci.push', `push.branches 含白名單 glob ${JSON.stringify(g)}(不參與集合比對)`));
+    out.push(...checkCiIfConformance(cfg, ci));
   }
   return out;
 };
