@@ -68,13 +68,13 @@ type: note
 
 <!-- 教訓從這裡開始,新的在最上面 -->
 
-## ⚠️ [2026-08-29] `git add -A` 把 pre-existing untracked 誤加進 commit(跨專案第 ≥4 次踩;本 repo 尚無機器守門)
+## ⚠️ [2026-08-29] `git add -A` 把 pre-existing untracked 誤加進 commit(跨專案第 ≥4 次踩;已機器化:.gitignore + pre-commit TOOL_ARTIFACT_PATTERN)
 
 **情境**
 PR A1 Round 2 fix 收乾,要 commit code + tests。當時工作樹 tracked 檔剛改完、pre-existing untracked 有 `.codegraph/` + `.gbrain-source`(user 工具生成、明確不進版控)。順手打了 `git add -A`,commit 就把 `.codegraph/.gitignore` + `.gbrain-source` 都加進去。
 
 **錯誤/誤判**
-Commit 已建立(sha `2b80764`),違反 plan 明文約束「不 add .codegraph/ / .gbrain-source」。⚠️ 注意:「用具體檔案名、禁 `git add -A`」這條規則**不在**本 repo 的 CLAUDE.md / SOP、也不在全域 CLAUDE.md,只存在另一個專案的 memory——本教訓寫成時誤以為它已是成文規則(docs-only review 抓到,2026-09-03 更正)。發現後立即 `git reset --soft HEAD~1` + `git restore --staged .codegraph .gbrain-source` + 重新 commit(sha `810cbb9`),但 commit 歷史 rewrite 了(feature branch 內部 rewrite 是允許 SOP)。
+Commit 已建立(sha `2b80764`),違反 plan 明文約束「不 add .codegraph/ / .gbrain-source」。⚠️ 注意:「用具體檔案名、禁 `git add -A`」這條規則**不在**本 repo 的 CLAUDE.md / SOP、也不在全域 CLAUDE.md,只存在另一個專案的 memory——本教訓寫成時誤以為它已是成文規則(docs-only review 抓到,2026-09-02 更正)。發現後立即 `git reset --soft HEAD~1` + `git restore --staged .codegraph .gbrain-source` + 重新 commit(sha `810cbb9`),但 commit 歷史 rewrite 了(feature branch 內部 rewrite 是允許 SOP)。
 
 **為什麼會發生**
 連續 commit 節奏中(每輪 review fix 都要 commit)、`-A` 打字快、腦子把「stage 這一輪改動」等同「stage 全部」——沒去看 status 內是否有 untracked。心裡想「只改了 tracked file 應該沒事」——這句話本身就是危險假設,因為 `-A` 對 untracked 有效。
@@ -82,8 +82,8 @@ Commit 已建立(sha `2b80764`),違反 plan 明文約束「不 add .codegraph/ /
 **之後該怎麼避免**
 - **每次 `git add` 前一定先 `git status --short`**,看有無 `??` 前綴的 untracked line。有 → 條列明白要 add 的檔名,不用 `-A`。
 - 覺得 `-A` 順手時,想「我可以列出所有要 add 的檔嗎?」——列不出來就代表根本不知道自己在 add 什麼。
-- 依檔頭升級階梯這已是第 3 次以上,**該機器化**:pre-commit 檢查 diff --cached 是否含 commit 前為 `??` 的路徑 → 擋。截至 A3(PR #44)仍未實作,靠紀律;登錄為待辦。
-- 規則有沒有成文都會踩:高強度 sprint 節奏更容易犯,要更主動 status 檢查;**把規則寫進本 repo CLAUDE.md §4.6 Git 規範**是最便宜的第一步(下一個 governance PR 做)。
+- 依檔頭升級階梯這已是第 3 次以上,**已機器化**(A3 之後的 git-add-guard PR):`.gitignore` 列本機工具產物(第一道:被 ignore 的檔 `-A` 不會碰)+ `code-pattern.sh` 的 `TOOL_ARTIFACT_PATTERN`,pre-commit 在任何分支、任意深度擋(縱深;刪除刻意放行以便清理)。誠實邊界:hook 分不出「故意新增」與「`-A` 掃進來」,只擋宣告的產物 pattern;採用者依自家工具增補。
+- 規則有沒有成文都會踩:高強度 sprint 節奏更容易犯,要更主動 status 檢查;規則已寫進本 repo CLAUDE.md §4.6 Git 規範。
 
 **相關檔案/連結**
 - PR #40 的 commit 清單(GitHub PR 頁;`810cbb9` 是重 commit 後的正確版,只在 PR 頁與本機可查;`2b80764` 已 rewrite 掉,只剩本機 reflog)

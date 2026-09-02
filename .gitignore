@@ -27,3 +27,9 @@ coverage/
 
 # logs
 *.log
+
+# 本機 AI / 工具產物(不進版控;pre-commit 的 TOOL_ARTIFACT_PATTERN 是縱深,這裡是第一道)
+# 刻意不加尾斜線:尾斜線只匹配目錄,symlink 形式的 .codegraph 會漏(Step 5 r2 F2)
+.codegraph
+.gbrain-source
+_handoffs

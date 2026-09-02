@@ -13,10 +13,14 @@
 #     程式碼 commit 到保護分支沒有正當情境;pre-push 的互動確認是給「push 既有
 #     commit」的罕見情境,commit 當下攔截更早更便宜)
 #   - 例外中的例外:PROTECTED_DOCS(策略／安全／SOP／ADR)雖是 .md 也一樣 block
+#   - **任何分支**:staged 含 TOOL_ARTIFACT_PATTERN(本機 AI / 工具產物,`.codegraph/` 等)
+#     → block(`git add -A` 誤加 untracked 的機器化守門;.gitignore 是第一道、本 hook 是縱深)
 #
 # 覆蓋邊界(誠實揭露):git 只對 `git commit` 跑 pre-commit。
 #   `git merge --no-ff`、`git cherry-pick`、`git revert`、`git am`(走 pre-applypatch)
 #   **都不會觸發本 hook**。那幾條路的最後一道是 pre-push 的互動確認(不是硬擋)。
+#   工具產物段只看**這次 staged** 的新增 / 修改:產物若已在 HEAD(先前誤 commit),`git commit --amend`
+#   沒有新 staged 時放行——要清理請 `git rm --cached <路徑>` 再 commit(刪除刻意放行)。
 #   所以本 hook 是「把最常見的那條路做成硬擋」,不是全覆蓋。
 #
 # 🔴 `--no-renames`:`git diff --cached --name-only` 對 rename 只回報**目的路徑** →
@@ -36,21 +40,62 @@ HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=scripts/git-hooks/code-pattern.sh
 . "$HOOK_DIR/code-pattern.sh"
 
-# SSOT 必須提供這兩個變數且非空;缺一個就中止(fail-closed)
+# SSOT 必須提供這三個變數且非空;缺一個就中止(fail-closed)
 : "${NON_CODE_PATTERN:?code-pattern.sh 沒有定義 NON_CODE_PATTERN(守門失效,拒絕放行)}"
 : "${PROTECTED_DOCS:?code-pattern.sh 沒有定義 PROTECTED_DOCS(守門失效,拒絕放行)}"
-
-branch="$(git branch --show-current 2>/dev/null || true)"
-
-# 只在保護分支上作用(detached HEAD → branch 為空 → 放行,rebase 等情境不干擾)
-case "$branch" in
-  develop|main) ;;
-  *) exit 0 ;;
-esac
+: "${TOOL_ARTIFACT_PATTERN:?code-pattern.sh 沒有定義 TOOL_ARTIFACT_PATTERN(守門失效,拒絕放行)}"
 
 # staged 檔案清單(--cached = 只看這次 commit 會進去的東西;--no-renames 見檔頭)
 staged="$(git diff --cached --name-only --no-renames)"
 [ -z "$staged" ] && exit 0
+
+# 0) 任何分支:本機 AI / 工具產物不得進 commit(`git add -A` 誤加 untracked 的機器化守門)
+#    🔴 `-z` NUL 分隔逐筆讀(Step 5 C1 + Codex P1):`--name-only` 預設會把非 ASCII / TAB / LF / 控制字元
+#       檔名印成帶引號的 C-style 跳脫(`".codegraph/\t..."`),pattern 對不上開頭的引號 → 靜默放行;
+#       `-c core.quotePath=false` 只解高位元非 ASCII,控制字元照樣被 quote。只有 `-z` 給原始位元組。
+#       用 `read -r -d ''` 逐筆處理(不經 `$(...)`,避免 NUL 被 shell 丟掉);每筆單獨餵 grep(stdin,
+#       路徑不會被當成選項)。
+#    🔴 `--diff-filter=d`(Step 5 C2):排除刪除——「把誤入版控的產物 `git rm --cached` 掉」正是本規則
+#       最該放行的修復路徑;rename-out 的 delete 端同理。只在本段排除,下面 default-deny 段維持原樣。
+#    🔴 先落地到暫存檔、git 失敗就 exit 1(Step 5 r3 F2):`< <(git …)` 的子程序 exit 非 0 不觸發 set -e,
+#       迴圈會看到 0 筆 → 靜默放行(fail-open)。寫檔 + `|| exit` 才是 fail-closed。
+artifact_list="$(mktemp "${TMPDIR:-/tmp}/pre-commit-artifacts.XXXXXX")" || exit 1
+trap 'rm -f "$artifact_list"' EXIT
+git diff --cached --name-only -z --no-renames --diff-filter=d > "$artifact_list" || {
+  echo "✗ pre-commit:git diff --cached -z 失敗,無法判定工具產物 → 拒絕放行(fail-closed)" >&2
+  exit 1
+}
+artifacts=""
+while IFS= read -r -d '' artifact_path; do
+  if printf '%s' "$artifact_path" | grep -qE "$TOOL_ARTIFACT_PATTERN"; then
+    artifacts="${artifacts}${artifacts:+
+}${artifact_path}"
+  fi
+done < "$artifact_list"
+if [ -n "$artifacts" ]; then
+  {
+    echo ""
+    echo "✗ 擋下 commit:staged 含本機工具產物(TOOL_ARTIFACT_PATTERN),多半是 \`git add -A\` / \`git add .\` 掃進來的"
+    echo ""
+    echo "   被擋的檔案:"
+    while IFS= read -r line; do
+      [ -n "$line" ] && echo "     - $line"
+    done <<< "$artifacts"
+    echo ""
+    echo "   → 修法:\`git restore --staged <路徑>\`(新增 / 修改)之後 \`git add\` 列具體檔名、不用 -A / .(先 \`git status --short\` 看 ?? 行)"
+    echo "   → 這些路徑應在 .gitignore;若你的工具產物不同,改 scripts/git-hooks/code-pattern.sh 的 TOOL_ARTIFACT_PATTERN"
+    echo "   → 緊急逃生:\`git commit --no-verify\`"
+  } >&2
+  exit 1
+fi
+
+branch="$(git branch --show-current 2>/dev/null || true)"
+
+# 以下只在保護分支上作用(detached HEAD → branch 為空 → 放行,rebase 等情境不干擾)
+case "$branch" in
+  develop|main) ;;
+  *) exit 0 ;;
+esac
 
 blocked=""
 
