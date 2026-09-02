@@ -113,7 +113,7 @@ export function validateRef(git: GitRunner, fullRef: string, opts: ValidateOpts)
     return {
       code: code('noncanonical'),
       input,
-      detail: `origin/${name} 正規解析為 ${canon ?? '(無)'},不是 ${fullRef}(本地同名 ref 遮蔽?)`,
+      detail: `origin/${name} 正規解析為 ${canon || '(無 / 歧義)'},不是 ${fullRef}(本地同名 branch 或 tag 遮蔽?)`,
     };
   }
   if (opts.mustBeAncestorOf !== undefined) {

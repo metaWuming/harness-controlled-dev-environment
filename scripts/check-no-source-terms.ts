@@ -115,7 +115,6 @@ export const SYNTAX_EXEMPT_FILES = [
   "tests/check-todos-markers.test.ts",
   "tests/check-no-source-terms.test.ts",
 ];
-/** delivery ref 解析用的字元白名單(shell metacharacter / option injection 防護)。 */
 /**
  * 兩條 pattern 走「context-aware 例外」:命中後,若 hit line 內的 PR 號全部
  * ∈ allowedPrs(本 repo 已 merge 的 PR 號集合)則放行;否則擋。
