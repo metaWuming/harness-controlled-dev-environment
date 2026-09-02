@@ -166,6 +166,10 @@ describe('check:baseline-governance e2e(16 條)', () => {
     const r = run([`--root=${f.dir}`], { BASELINE_BASE: 'main', DELIVERY_REFS: 'main' });
     expect(r.code).toBe(2);
     expect(r.err).toMatch(/--base=<ref> 必填/);
+    // env 不得影響 base 的解析:給一個解不開的 --base、同時 env 指向合法 main → 仍必須 2(BG-M5 探針)
+    const r2 = run([`--root=${f.dir}`, '--base=origin/nope'], { DELIVERY_REFS: 'main', BASELINE_BASE: 'main' });
+    expect(r2.code).toBe(2);
+    expect(r2.out).toContain('[base.unresolvable]');
   });
   it('(10) 重複 --base → exit 2', () => {
     const f = fixture();
