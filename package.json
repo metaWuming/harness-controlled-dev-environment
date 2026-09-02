@@ -1,6 +1,6 @@
 {
   "name": "harness-controlled-dev-environment",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "AI 協作開發的可控安全環境模板(harness template):前饋 Guides + 回饋 Sensors,開箱即用",
   "license": "MIT",
