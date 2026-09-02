@@ -61,6 +61,12 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 
 ## P3
 
+### 🟢 P2#2 Step 5 defer 集合(delivery-refs 契約邊角,9 條 INFORMATIONAL conf 5–9)
+- **來源**:2026-09-03 PR P2#2 Step 5 worktree 審 r1–r2;0 CRITICAL 未修
+- **內容**:①**env `DELIVERY_REFS` 在祖先契約下是空操作**——通過驗證的候選必是 base 祖先、`git log` 集合 ⊆ base,加不進任何新 PR 號;通道只剩「驗證會不會拒絕」(conf 9;待 supervisor 決定:登錄為已知限制、或整個移除以縮攻擊面);②`ci.yml` 第 59 行與 Fetch step 註解仍寫「GitFlow 導入者覆蓋 env 常數即可 / env 能加交付分支」,新契約下 `origin/develop` 非 base 祖先 → 永久 exit 2(conf 9);③`check-no-source-terms.ts` 新 `process.exit(2)` 在 `main()` mkdtemp 之後,`finally` 清理不跑、本機反覆失敗會留 `cnst-*` 目錄(conf 9;修法:把 `loadAllowedPrs` 移到 pattern file 建立前、或改回傳值);④`merge-base --is-ancestor` exit 128(未 fetch / shallow)與 1(真非祖先)同判 `ref.nonancestor`,診斷誤導(conf 6);⑤tag 同名 `origin/main` 讓兩 gate 對所有 PR exit 2(fail-closed 型 DoS,非繞過;conf 6);⑥`ci.yml` 的 `develop` fetch 是死步驟(conf 6);⑦`harnessConfigJson` 在兩個測試檔逐字兩份,schema 升版要改兩處(conf 6);⑧無 base 時 env 候選借用 `ref.nonancestor` 原因碼、語意不精確(conf 5);⑨`LESSONS.md` / `docs/OVERVIEW.md` 仍寫四條來源與舊 env 語意(conf 5;LESSONS 屬治理內容需完整 SOP)
+- **方向**:① 先問 supervisor;②⑥⑨ 一起收(docs,0.5h);③ 0.5h;④⑧ 一起(原因碼細分,0.5h);其餘逐條 0.5h
+- **工時**:合計 2–3h
+
 ### 🟢 P2#3 Step 5 defer 集合(check-mutation-specs 邊角,15 條 INFORMATIONAL conf ≤8)
 - **來源**:2026-09-02 PR P2#3 Step 5 worktree 審 r1–r2;0 CRITICAL 未修
 - **內容**:①`mutate.ts` / `check-control-catalog.ts` 的 `isMain` 同款未 realpath,經 symlink 目錄呼叫靜默 exit 0(r1 C1 只修了本 checker;conf 7);②`invokedAsMain` realpath 單邊 fallback 仍可能不等 → 靜默 exit 0,根本解是 isMain false 時印 stderr(conf 7);③`fileURLToPath` 對非 file: URL 在模組頂層 throw(conf 6);④測試手拼 `'file://'+path` 應改 `pathToFileURL`(conf 7);⑤只認小寫 `.json` 且不遞迴,子目錄 / 大寫副檔名 spec 靜默不受守門(conf 8);⑥`checkTarget` nlink 檢查在純讀情境多餘拒判(conf 7);⑦MSD-M1 / M5 實際 kill 機制是 TypeError 走 exit 2,與 label「判 DRIFT / untrusted」不一致(conf 8);⑧catalog CI-013 `implementation` 未列 `scripts/mutate.ts`(邏輯所在;conf 6);⑨README / catalog degradation 的 exit 2 清單漏 root 解析失敗、argv 錯、未預期例外三種(conf 7);⑩`formatReport([])` 回 code 0,純函式對空輸入 fail-open、只靠 listSpecFiles 前置擋(conf 6);⑪`--root` 指外層 repo 子目錄時「repo 內」與「tracked」兩個邊界不同(conf 5);⑫e2e ⑤「外部檔未成為輸入」斷言靠 `not.toContain('對得上')`、fixture 加第二個 spec 就失效(conf 6);⑬`--allow-empty` 多餘(conf 5);⑭spec 帶 UTF-8 BOM 診斷訊息差(conf 5);⑮`PR #___` 佔位靠 Step 6 補號(A3 defer ② 同形;conf 5)
