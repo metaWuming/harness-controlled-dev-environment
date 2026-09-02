@@ -14,7 +14,7 @@
 - `npm run check:adoption`(`scripts/check-adoption-readiness.ts`)+ CI step「Adoption Readiness Check」:template mode 逐條列 exception、adopted mode 對 placeholder / 空表 / 骨架 / 分支政策不一致 fail-closed;A5.ci.if 驗三處 delivery-branch `if:` 行。
 - `scripts/control-catalog.json`(正本)+ `docs/CONTROL-CATALOG.md`(渲染)+ `npm run check:catalog` + CI step「Control Catalog Check」:30 條控制措施分五級(hard-automated / soft-automated / manual-mandatory / advisory / periodic-governance),ci.yml step 與 catalog 雙向一一對應、渲染逐位元組一致。
 - `npm run check:baseline-governance`(`scripts/check-baseline-governance.ts`)+ CI step「Baseline Governance Check」(pull_request only):source-term baseline 只能在「只動 config + ADR + bookkeeping」的 PR 內往前推到 merge-base 祖先。
-- `scripts/source-term-baseline.json` + canonical ADR `docs/architecture/source-term-history-baseline.md`:history diff scan 的 cutover、三種 repo 情境、baseline 變更授權、已知限制、長命 pre-baseline 分支清理程序。
+- `scripts/source-term-baseline.json` + canonical ADR(`docs/architecture/` 下的 source-term history baseline 決策紀錄;完整路徑由位置＋數量鎖管理,本檔刻意不寫):history diff scan 的 cutover、三種 repo 情境、baseline 變更授權、已知限制、長命 pre-baseline 分支清理程序。
 - `scripts/cso-trigger.config.ts` 的 `CSO_NOT_APPLICABLE`:adopted mode 下沒有路徑的域須明文宣告理由。
 - mutation spec:`scripts/mutations/source-term-diff-scan.json`(29)、`adoption-readiness.json`(20)、`control-catalog.json`(11)、`baseline-governance.json`(7)。
 
