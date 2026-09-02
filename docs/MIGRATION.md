@@ -66,7 +66,8 @@ npm test                         # 全綠;check-cso-trigger 的 template 分支 
 由新到舊逐一 `git revert <sha>`。這會同時還原 loader / checker / CI step / catalog / docs;你自己填的 `harness.config.json`
 與 `CLAUDE.md` Part 4 內容若在 revert 中衝突,保留你的內容但把 config 改回 v1 形狀(刪 `mergeStrategy`、`schemaVersion: 1`)。
 
-**B. 從 0.1 tag 還原 harness 檔(不動你的專案碼)**:
+**B. 從 0.1 的 commit 還原 harness 檔(不動你的專案碼)**:下面的 `v0.1.0` 是 0.1 最後一個主線 commit 的 tag;
+本模板在 Milestone A 之前**沒有打過 tag**,若你的 repo 也沒有,改用 Milestone A 第一支 PR(A1)的 parent SHA(`git log --oneline` 找 A1 squash 的前一個 commit)。
 
 ```bash
 git checkout v0.1.0 -- scripts/lib/harness-config.ts scripts/check-adoption-readiness.ts \
@@ -82,7 +83,7 @@ git rm -q scripts/control-catalog.json docs/CONTROL-CATALOG.md scripts/lib/contr
 npm ci && npm run check:adoption && npm test
 ```
 
-- 路徑 B 的清單以 `git diff --name-only v0.1.0 v0.2.0` 為準(上面是 0.2.0 當下的清單;若你的 repo 在中間自訂過 ci.yml,
+- 路徑 B 的清單以 `git diff --name-only <0.1 commit> v0.2.0` 為準(上面是 0.2.0 當下的清單;若你的 repo 在中間自訂過 ci.yml,
   改用 revert 路徑 A 再手動合併)。
 - 若你在 0.2 上把 baseline 往前推過(受 Baseline Governance Check 守門),回滾後那條守門消失、只剩人工授權——
   回滾前確認 `scripts/source-term-baseline.json` 的值仍是你要的。
