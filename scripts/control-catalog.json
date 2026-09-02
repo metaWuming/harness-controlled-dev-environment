@@ -378,7 +378,7 @@
       "owner": "github",
       "failureBehavior": "block",
       "evidence": "CI check 狀態;本機 npm run check:mutation-specs 印每個 spec 檔的探針數,exit 1 = DRIFT(內容層、改 spec 或碼)/ exit 2 = 無法判定(spec 目錄或檔案不可信、0 個 spec 檔)",
-      "degradation": "無",
+      "degradation": "spec 目錄非真目錄 / 0 個 spec 檔 / spec 檔本身 symlink、未追蹤、非一般檔、hardlink、非 UTF-8 → exit 2(無法判定,不放行)",
       "tested": [
         "unit",
         "e2e",

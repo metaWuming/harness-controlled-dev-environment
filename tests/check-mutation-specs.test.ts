@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { checkSpecFile, formatReport, listSpecFiles, parseRootArg, runCheck, SPEC_DIR } from '../scripts/check-mutation-specs';
+import { checkSpecFile, formatReport, invokedAsMain, listSpecFiles, parseRootArg, runCheck, SPEC_DIR } from '../scripts/check-mutation-specs';
 
 const REPO = path.resolve(__dirname, '..');
 const TSX = path.join(REPO, 'node_modules/.bin/tsx');
@@ -67,7 +67,9 @@ describe('listSpecFiles(目錄邊界)', () => {
     expect(r.specs).toEqual([`${SPEC_DIR}/a.json`, `${SPEC_DIR}/b.json`]);
   });
   it('目錄不存在 / 0 個 spec 檔 → 拒判', () => {
-    expect(listSpecFiles(mkdtempSync(path.join(tmpdir(), 'msd-empty-'))).ok).toBe(false);
+    const empty = realpathSync(mkdtempSync(path.join(tmpdir(), 'msd-empty-')));
+    made.push(empty);
+    expect(listSpecFiles(empty).ok).toBe(false);
     const r = listSpecFiles(makeRepo({ noDir: true }));
     expect(r.ok).toBe(false);
     expect(r.reason).toContain('沒有任何 spec 檔');
@@ -148,6 +150,18 @@ describe('formatReport / parseRootArg', () => {
     expect(parseRootArg(['--root=/x', '--root=/y'])).toMatchObject({ ok: false });
     expect(parseRootArg(['--all'])).toMatchObject({ ok: false });
   });
+  it('invokedAsMain:兩邊 realpath 後比對;argv[1] 缺 → false', () => {
+    const dir = makeRepo();
+    const real = path.join(dir, 'a.ts');
+    writeFileSync(real, '');
+    symlinkSync(dir, path.join(dir, 'link'));
+    const viaLink = path.join(dir, 'link', 'a.ts');
+    const url = 'file://' + real;
+    expect(invokedAsMain(url, viaLink)).toBe(true);
+    expect(invokedAsMain(url, real)).toBe(true);
+    expect(invokedAsMain(url, path.join(dir, 'b.ts'))).toBe(false);
+    expect(invokedAsMain(url, undefined)).toBe(false);
+  });
   it('root 不存在 → code 2', () => {
     expect(runCheck(path.join(tmpdir(), 'msd-does-not-exist-' + Date.now())).code).toBe(2);
   });
@@ -207,5 +221,13 @@ describe('CLI e2e(真子程序、真 git fixture)', () => {
   });
   it('⑨ 本 repo 自身 → exit 0(gate 上線不會立刻紅)', () => {
     expect(run([]).code).toBe(0);
+  });
+  it('⑩ 經 symlink 目錄呼叫腳本 → main 仍執行(argv 錯要 exit 2,不得靜默 exit 0)', () => {
+    const linkDir = path.join(realpathSync(mkdtempSync(path.join(tmpdir(), 'msd-link-'))), 'repo');
+    made.push(path.dirname(linkDir));
+    symlinkSync(REPO, linkDir);
+    const r = spawnSync(TSX, [path.join(linkDir, 'scripts/check-mutation-specs.ts'), '--bogus'], { cwd: REPO, encoding: 'utf-8' });
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain('參數錯誤');
   });
 });
