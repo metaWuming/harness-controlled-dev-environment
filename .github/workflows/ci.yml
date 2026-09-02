@@ -176,7 +176,7 @@ jobs:
         # PR A3(ADR〈已知限制〉第 2 條的機器守門):source-term baseline 值若在本 PR 改變,PR 只准動
         # config / ADR / bookkeeping allowlist,且新值必須是 merge-base 的祖先(不得指向本 PR 內 commit)並為舊值後裔。
         # 只在 pull_request 跑(push 到主線時 merge-base == HEAD 會 fail-closed 假紅);base ref 由本 step 自己顯式
-        # fetch(下面 run 的第一行;上一 step 只 fetch default_branch 與 develop,PR base 是其他保護分支時只有這一行有效)
+        # fetch(下面 run 的第一行;上一 step 只 fetch default_branch,PR base 是其他保護分支時只有這一行有效)
         # —— fetch 失敗 → ref 不存在 → 腳本 exit 2(fail-closed),不假設 fetch-depth 0 產生 remote ref。
         # base 用 env 傳、在 run 內引號展開,不做 workflow 表達式的 shell 內插;腳本本身不讀任何 env。
         # Step 5 r1 C3:base 用 PR 真正的 base 分支(GitFlow 進 develop 的 PR 不能拿 main 當 base);
@@ -238,10 +238,9 @@ jobs:
         # deliveryBranches 靜態宣告承接(擋兩處值漂,
         # 批 9 Step 5 F-round23-4)。
         #
-        # 🔴 批 10 D0 policy A:workflow-level env 只 default_branch、不含 develop。
-        # 批 7 R3-4 曾在此 step 加 `,origin/develop` 解 GitFlow-only PR 誤擋,但
-        # 批 9 Codex round 2 抓到「main-only 專案 legacy develop 誤放行」反面問題——
-        # 跨兩 step 相反選擇是 pre-existing 兩難,Owner 批 10 拍板 A(見檔頭註解)。
+        # 【歷史】批 10 D0 policy A:當時的 workflow-level env 只 default_branch、不含 develop(批 7 曾在此 step
+        # 加 `,origin/develop`、批 9 抓到 legacy develop 誤放行的反面問題,Owner 拍板 A)。該 env 現已整個移除;
+        # 交付證據只來自受驗 origin/HEAD(= GitHub default branch),沒有任何加 develop 的通道。
         #
         # 🔴 批 8 Phase B:MARKER_SELF_PR 解 sprint 內 self-reference 死鎖。
         # 完整契約與範圍見 scripts/check-no-source-terms.ts 的 loadAllowedPrs
