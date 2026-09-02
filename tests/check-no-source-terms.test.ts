@@ -459,7 +459,7 @@ function makeRepo(opts: {
    */
   originRefs?: {
     /** 建 bare origin、每條 push 上去(獨立 commit)*/
-    branches: Array<{ name: string; commitSubject: string }>;
+    branches: Array<{ name: string; commitSubject?: string }>;
     /** 若給,pushes 後 `git remote set-head origin <name>` 讓 ①路徑抓得到 */
     setHeadTo?: string;
   };
@@ -469,6 +469,13 @@ function makeRepo(opts: {
    * patch producer 的 command-local flag 壓得過使用者設定。
    */
   gitConfig?: Record<string, string>;
+  /**
+   * P2#2:預設 fixture 會①寫 scripts/harness.config.json(deliveryBranches 預設 ['main'])
+   * ②建 bare origin、push main、`remote set-head origin main`,讓 checker 走受驗的
+   * origin/HEAD 路徑(fallback ③④ 已移除)。`noOrigin` 只給「無 origin」負對照用。
+   */
+  noOrigin?: boolean;
+  deliveryBranches?: string[];
 }): string {
   const wrap = mkdtempSync(join(tmpdir(), "cnst-e2e-"));
   created.push(wrap);
@@ -496,6 +503,7 @@ function makeRepo(opts: {
     finalDeny.join("\n") + "\n",
     "utf-8"
   );
+  writeFileSync(join(dir, "scripts/harness.config.json"), harnessConfigJson(opts.deliveryBranches ?? ["main"]) + "\n", "utf-8");
   git("add", "-A");
   git("commit", "-qm", "init: deny-terms.txt");
 
@@ -557,6 +565,11 @@ function makeRepo(opts: {
       // 該 case 想測的 PR #)→ push 上 origin 作 `refs/heads/${b.name}` →
       // 回 main → 刪 temp。刪 temp 後,那個獨立 commit 只留在 origin/${b.name}
       // 上、local main 不含 → 若對應 fallback 路徑失效,ε local main 查不到 PR#
+      if (b.commitSubject === undefined) {
+        // P2#2:不加獨立 commit → 該分支 tip == main tip(是 origin/main 的祖先,相等也算)
+        git("push", "-q", "origin", `main:refs/heads/${b.name}`);
+        continue;
+      }
       git("checkout", "-q", "-b", `_push_${b.name}`);
       git("commit", "--allow-empty", "-qm", b.commitSubject);
       git("push", "-q", "origin", `_push_${b.name}:refs/heads/${b.name}`);
@@ -566,16 +579,43 @@ function makeRepo(opts: {
     // fetch 把 push 過去的分支拉回 local 作 remote-tracking ref(origin/xxx)
     git("fetch", "-q", "origin");
     if (opts.originRefs.setHeadTo) {
-      // 顯式設 origin/HEAD → 讓 buildDeliveryRefs 的 ①路徑
+      // 顯式設 origin/HEAD → 讓 delivery-refs 的受驗 base 路徑
       // (symbolic-ref refs/remotes/origin/HEAD)抓得到
       git("remote", "set-head", "origin", opts.originRefs.setHeadTo);
     }
   }
+  if (!opts.noOrigin) {
+    // P2#2 預設:main 推上 origin 並設 origin/HEAD=main(originRefs 已設 setHeadTo 者不覆蓋)
+    if (!opts.originRefs) {
+      const originDir = join(wrap, "origin.git");
+      execFileSync("git", ["init", "--bare", "-q", originDir], { stdio: "ignore" });
+      git("remote", "add", "origin", originDir);
+    }
+    git("push", "-q", "origin", "main:refs/heads/main");
+    git("fetch", "-q", "origin");
+    if (!opts.originRefs?.setHeadTo) git("remote", "set-head", "origin", "main");
+  }
   return dir;
 }
 
+function harnessConfigJson(deliveryBranches: readonly string[]): string {
+  // P2#2:交付 ref 契約讀 harness.config.json 的 deliveryBranches(靜態宣告);fixture 預設只宣告 main
+  return JSON.stringify({
+    schemaVersion: 2,
+    mode: "template",
+    projectId: "__TEMPLATE__",
+    templatePackageName: "harness-controlled-dev-environment",
+    // loader 要求 deliveryBranches ⊆ protectedBranches
+    protectedBranches: [...deliveryBranches],
+    deliveryBranches: [...deliveryBranches],
+    requiredAgentAdapters: ["claude"],
+    githubGovernanceRequired: false,
+    mergeStrategy: "squash",
+  });
+}
+
 function runChecker(cwd: string, envOverride?: Record<string, string>): { code: number; out: string } {
-  // 從 parent env 移除可能影響 buildDeliveryRefs / MARKER_SELF_PR 判定的變數,
+  // 從 parent env 移除可能影響 delivery-refs / MARKER_SELF_PR 判定的變數,
   // 讓每個 e2e case 從乾淨基線起跑;需要時透過 envOverride 顯式加回。避免
   // 宿主 shell / 外層 CI 洩漏這兩個 env 進 checker、跨 case 污染測試結果
   const baseEnv: NodeJS.ProcessEnv = { ...process.env };
@@ -807,6 +847,8 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
         branches: [{ name: "cg-default-sentinel", commitSubject: "feat (#7)" }],
         setHeadTo: "cg-default-sentinel",
       },
+      // P2#2:權威 base 也受驗——origin/HEAD 指向的分支必須宣告在 deliveryBranches
+      deliveryBranches: ["cg-default-sentinel"],
       workingTree: {
         "docs/note.md": "see " + PREF_PR + "7 via origin/HEAD path\n",
       },
@@ -817,63 +859,128 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     expect(code).toBe(0);
   });
 
-  it("🔴 批 8 Phase A A-e2:②DELIVERY_REFS env 逗號分隔多 ref 各自抓 self-PR → 放行", () => {
-    // 不設 origin/HEAD(①路徑失敗);envOverride DELIVERY_REFS 傳逗號分隔兩 ref:
-    // origin/release-line-a(含 `feat (井號+8)`)+ origin/release-line-b(含
-    // `feat (井號+18)`);工作樹同時引用 #8 + #18。若 `.split(",")` 弱化成
-    // 「整串當單一 ref」,整串 `origin/release-line-a,origin/release-line-b`
-    // 不 resolve → fallback 到 ③④、都查不到 #8/#18 → 轉紅(round 1 P2 修法:
-    // 原本只傳單一 ref 守不到 split + trim + multi-ref union 語意)。
-    // 若 buildDeliveryRefs 路徑 ② 破損(例:漏 process.env 讀取、split 邏輯錯),
-    // fallback 掉到 ③origin/develop 不存在 → ④local main 查不到 #8/#18 → 轉紅
+  it("🔴 批 8 Phase A A-e2(P2#2 改寫):②DELIVERY_REFS 逗號分隔多 ref,已宣告且為 origin/HEAD 祖先 → 接受、放行;去重、trim", () => {
+    // origin/HEAD=main(含 `feat (井號+8)`);release-line-a / release-line-b 都指在 main tip
+    // (commitSubject 省略 → 祖先且相等)、且宣告在 deliveryBranches。env 兩側空白 + 重複 → 仍 exit 0。
+    // 若 split / trim / 宣告或祖先判定壞掉 → 任一候選被拒 → exit 2(不再是靜默 fallback)
     const dir = makeRepo({
       deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
-      commits: [
-        { message: "init: no PR # on local main", files: { "src/foo.md": "hello\n" } },
-      ],
-      originRefs: {
-        branches: [
-          { name: "release-line-a", commitSubject: "feat (#8)" },
-          { name: "release-line-b", commitSubject: "feat (#18)" },
-        ],
-        // setHeadTo 不設 → ①路徑失敗
-      },
-      workingTree: {
-        "docs/note.md":
-          "see " + PREF_PR + "8 in ref a and " + PREF_PR + "18 in ref b\n",
-      },
+      commits: [{ message: "feat (#8)", files: { "src/foo.md": "hello\n" } }],
+      originRefs: { branches: [{ name: "release-line-a" }, { name: "release-line-b" }] },
+      deliveryBranches: ["main", "release-line-a", "release-line-b"],
+      workingTree: { "docs/note.md": "see " + PREF_PR + "8 in main\n" },
     });
-    // 逗號分隔:一項含尾隨空白、另一項含前導空白 → 驗 .trim() 語意兩側都守
-    // (round 2 P2 修法:原本只中間有空白 → 只守到 trimStart / trimEnd 之一)
     const { code, out } = runChecker(dir, {
-      DELIVERY_REFS: "origin/release-line-a ,  origin/release-line-b",
+      DELIVERY_REFS: "origin/release-line-a ,  origin/release-line-b,origin/release-line-a",
     });
     expect(out).toContain("self-PR 引用放行");
     expect(out).toContain("✅ 去識別化掃描全數通過");
     expect(code).toBe(0);
   });
 
-  it("🔴 批 8 Phase A A-e3:③origin/develop fallback 路徑抓 self-PR → 放行", () => {
-    // 不設 origin/HEAD、無 envOverride;origin/develop 含 `feat (井號+9)`;
-    // local main 無 #9。若 buildDeliveryRefs 路徑 ③ 破損(例:硬碼字串打錯、
-    // fallback 順序變),掉到 ④local main 查不到 #9 → 轉紅
+  it("🔴 P2#2 ref.nonancestor:env 指向已宣告、正規、可解、但含未合併 commit 的 origin 分支 → exit 2、不放行", () => {
+    // release-line-a 從 main tip 多一個獨立 commit `feat (井號+8)` → 不是 origin/main 的祖先。
+    // 舊契約會把 #8 放進 allowedPrs(這正是 P2#2 的洞);新契約 → [ref.nonancestor]、exit 2
     const dir = makeRepo({
       deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
-      commits: [
-        { message: "init: no PR # on local main", files: { "src/foo.md": "hello\n" } },
-      ],
-      originRefs: {
-        branches: [{ name: "develop", commitSubject: "feat (#9)" }],
-        // setHeadTo 不設 → ①路徑失敗
-      },
-      workingTree: {
-        "docs/note.md": "see " + PREF_PR + "9 via origin/develop path\n",
-      },
+      commits: [{ message: "init: no PR # on main", files: { "src/foo.md": "hello\n" } }],
+      originRefs: { branches: [{ name: "release-line-a", commitSubject: "feat (#8)" }] },
+      deliveryBranches: ["main", "release-line-a"],
+      workingTree: { "docs/note.md": "see " + PREF_PR + "8 in unmerged line\n" },
+    });
+    const { code, out } = runChecker(dir, { DELIVERY_REFS: "origin/release-line-a" });
+    expect(code).toBe(2);
+    expect(out).toContain("[ref.nonancestor] origin/release-line-a");
+    expect(out).not.toContain("self-PR 引用放行");
+  });
+
+  it("🔴 P2#2 ref.undeclared:env 指向正規、可解、是 origin/HEAD 祖先、但未宣告的 origin 分支 → exit 2", () => {
+    // 祖先與宣告是兩道獨立假設:release 指在 main tip(祖先成立),但 deliveryBranches 只有 main
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [{ message: "feat (#8)", files: { "src/foo.md": "hello\n" } }],
+      originRefs: { branches: [{ name: "release" }] },
+      workingTree: { "docs/note.md": "see " + PREF_PR + "8\n" },
+    });
+    const { code, out } = runChecker(dir, { DELIVERY_REFS: "origin/release" });
+    expect(code).toBe(2);
+    expect(out).toContain("[ref.undeclared] origin/release");
+    expect(out).not.toContain("allowedPrs:");
+  });
+
+  it("🔴 P2#2 base.undeclared:origin/HEAD 指向正規、可解、但未宣告的分支;env 空 → exit 2、不建 allowedPrs", () => {
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [{ message: "feat (#8)", files: { "src/foo.md": "hello\n" } }],
+      originRefs: { branches: [{ name: "trunk", commitSubject: "feat (#9)" }], setHeadTo: "trunk" },
+      deliveryBranches: ["main"],
+      workingTree: { "docs/note.md": "see " + PREF_PR + "9\n" },
     });
     const { code, out } = runChecker(dir);
-    expect(out).toContain("self-PR 引用放行");
-    expect(out).toContain("✅ 去識別化掃描全數通過");
-    expect(code).toBe(0);
+    expect(code).toBe(2);
+    expect(out).toContain("[base.undeclared] refs/remotes/origin/trunk");
+    expect(out).not.toContain("allowedPrs:");
+  });
+
+  it("🔴 P2#2 base.noncanonical:本地 ref `refs/heads/origin/main` 遮蔽 origin/main → exit 2", () => {
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [{ message: "feat (#8)", files: { "src/foo.md": "hello\n" } }],
+      workingTree: { "docs/note.md": "see " + PREF_PR + "8\n" },
+    });
+    execFileSync("git", ["branch", "origin/main"], { cwd: dir, stdio: "ignore" });
+    const { code, out } = runChecker(dir);
+    expect(code).toBe(2);
+    expect(out).toContain("[base.noncanonical] refs/remotes/origin/main");
+  });
+
+  it("🔴 P2#2 base.missing:無 origin remote(fallback ③④ 已移除)→ exit 2,不再用本地 main 充當交付證據", () => {
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [{ message: "feat (#8)", files: { "src/foo.md": "hello\n" } }],
+      workingTree: { "docs/note.md": "see " + PREF_PR + "8\n" },
+      noOrigin: true,
+    });
+    const { code, out } = runChecker(dir);
+    expect(code).toBe(2);
+    expect(out).toContain("[base.missing]");
+    expect(out).not.toContain("self-PR 引用放行");
+  });
+
+  it("🔴 P2#2 ref.shape:DELIVERY_REFS=HEAD / 本地 feature 名 → exit 2(P2#2 原始漏洞封死)", () => {
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [{ message: "init", files: { "src/foo.md": "hello\n" } }],
+      workingTree: { "docs/note.md": "see " + PREF_PR + "31\n" },
+    });
+    // 本地 feature 分支含未合併的 `(井號+31)`
+    execFileSync("git", ["checkout", "-q", "-b", "feature/x"], { cwd: dir, stdio: "ignore" });
+    execFileSync("git", ["commit", "--allow-empty", "-qm", "feat (#31)"], { cwd: dir, stdio: "ignore" });
+    for (const bad of ["HEAD", "feature/x"]) {
+      const { code, out } = runChecker(dir, { DELIVERY_REFS: bad });
+      expect(code, bad).toBe(2);
+      expect(out).toContain(`[ref.shape] ${bad}`);
+      expect(out).not.toContain("self-PR 引用放行");
+    }
+  });
+
+  it("🔴 批 8 Phase A A-e3(P2#2 改寫):origin/develop 不再是 fallback——未宣告、env 空 → 該分支的 PR # 不進 allowedPrs → exit 1", () => {
+    // origin/HEAD=main(無 #9);origin/develop 含 `feat (井號+9)`。舊契約 ③ 會猜 origin/develop 放行;
+    // 新契約只用受驗 base → #9 未知 → CA hit 擋 → exit 1。同 fixture 用 env 指 origin/develop
+    // → 未合併(非祖先)→ [ref.nonancestor] exit 2
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [{ message: "init: no PR # on local main", files: { "src/foo.md": "hello\n" } }],
+      originRefs: { branches: [{ name: "develop", commitSubject: "feat (#9)" }] },
+      deliveryBranches: ["main", "develop"],
+      workingTree: { "docs/note.md": "see " + PREF_PR + "9 via origin/develop path\n" },
+    });
+    const r1 = runChecker(dir);
+    expect(r1.code).toBe(1);
+    expect(r1.out).not.toContain("self-PR 引用放行");
+    const r2 = runChecker(dir, { DELIVERY_REFS: "origin/develop" });
+    expect(r2.code).toBe(2);
+    expect(r2.out).toContain("[ref.nonancestor] origin/develop");
   });
 
   it("🔴 批 8 Phase A A-e4:所有 delivery ref log 內無 PR # → allowedPrs 空 → CA hit 全擋", () => {
