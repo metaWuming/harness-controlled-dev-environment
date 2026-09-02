@@ -615,7 +615,7 @@ function harnessConfigJson(deliveryBranches: readonly string[]): string {
 }
 
 function runChecker(cwd: string, envOverride?: Record<string, string>): { code: number; out: string } {
-  // 從 parent env 移除可能影響 delivery-refs / MARKER_SELF_PR 判定的變數,
+  // 從 parent env 移除 MARKER_SELF_PR 與(已移除、腳本不再讀的)DELIVERY_REFS,
   // 讓每個 e2e case 從乾淨基線起跑;需要時透過 envOverride 顯式加回。避免
   // 宿主 shell / 外層 CI 洩漏這兩個 env 進 checker、跨 case 污染測試結果
   const baseEnv: NodeJS.ProcessEnv = { ...process.env };
@@ -859,55 +859,6 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     expect(code).toBe(0);
   });
 
-  it("🔴 批 8 Phase A A-e2(P2#2 改寫):②DELIVERY_REFS 逗號分隔多 ref,已宣告且為 origin/HEAD 祖先 → 接受、放行;去重、trim", () => {
-    // origin/HEAD=main(含 `feat (井號+8)`);release-line-a / release-line-b 都指在 main tip
-    // (commitSubject 省略 → 祖先且相等)、且宣告在 deliveryBranches。env 兩側空白 + 重複 → 仍 exit 0。
-    // 若 split / trim / 宣告或祖先判定壞掉 → 任一候選被拒 → exit 2(不再是靜默 fallback)
-    const dir = makeRepo({
-      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
-      commits: [{ message: "feat (#8)", files: { "src/foo.md": "hello\n" } }],
-      originRefs: { branches: [{ name: "release-line-a" }, { name: "release-line-b" }] },
-      deliveryBranches: ["main", "release-line-a", "release-line-b"],
-      workingTree: { "docs/note.md": "see " + PREF_PR + "8 in main\n" },
-    });
-    const { code, out } = runChecker(dir, {
-      DELIVERY_REFS: "origin/release-line-a ,  origin/release-line-b,origin/release-line-a",
-    });
-    expect(out).toContain("self-PR 引用放行");
-    expect(out).toContain("✅ 去識別化掃描全數通過");
-    expect(code).toBe(0);
-  });
-
-  it("🔴 P2#2 ref.nonancestor:env 指向已宣告、正規、可解、但含未合併 commit 的 origin 分支 → exit 2、不放行", () => {
-    // release-line-a 從 main tip 多一個獨立 commit `feat (井號+8)` → 不是 origin/main 的祖先。
-    // 舊契約會把 #8 放進 allowedPrs(這正是 P2#2 的洞);新契約 → [ref.nonancestor]、exit 2
-    const dir = makeRepo({
-      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
-      commits: [{ message: "init: no PR # on main", files: { "src/foo.md": "hello\n" } }],
-      originRefs: { branches: [{ name: "release-line-a", commitSubject: "feat (#8)" }] },
-      deliveryBranches: ["main", "release-line-a"],
-      workingTree: { "docs/note.md": "see " + PREF_PR + "8 in unmerged line\n" },
-    });
-    const { code, out } = runChecker(dir, { DELIVERY_REFS: "origin/release-line-a" });
-    expect(code).toBe(2);
-    expect(out).toContain("[ref.nonancestor] origin/release-line-a");
-    expect(out).not.toContain("self-PR 引用放行");
-  });
-
-  it("🔴 P2#2 ref.undeclared:env 指向正規、可解、是 origin/HEAD 祖先、但未宣告的 origin 分支 → exit 2", () => {
-    // 祖先與宣告是兩道獨立假設:release 指在 main tip(祖先成立),但 deliveryBranches 只有 main
-    const dir = makeRepo({
-      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
-      commits: [{ message: "feat (#8)", files: { "src/foo.md": "hello\n" } }],
-      originRefs: { branches: [{ name: "release" }] },
-      workingTree: { "docs/note.md": "see " + PREF_PR + "8\n" },
-    });
-    const { code, out } = runChecker(dir, { DELIVERY_REFS: "origin/release" });
-    expect(code).toBe(2);
-    expect(out).toContain("[ref.undeclared] origin/release");
-    expect(out).not.toContain("allowedPrs:");
-  });
-
   it("🔴 P2#2 base.undeclared:origin/HEAD 指向正規、可解、但未宣告的分支;env 空 → exit 2、不建 allowedPrs", () => {
     const dir = makeRepo({
       deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
@@ -947,27 +898,9 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     expect(out).not.toContain("self-PR 引用放行");
   });
 
-  it("🔴 P2#2 ref.shape:DELIVERY_REFS=HEAD / 本地 feature 名 → exit 2(P2#2 原始漏洞封死)", () => {
-    const dir = makeRepo({
-      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
-      commits: [{ message: "init", files: { "src/foo.md": "hello\n" } }],
-      workingTree: { "docs/note.md": "see " + PREF_PR + "31\n" },
-    });
-    // 本地 feature 分支含未合併的 `(井號+31)`
-    execFileSync("git", ["checkout", "-q", "-b", "feature/x"], { cwd: dir, stdio: "ignore" });
-    execFileSync("git", ["commit", "--allow-empty", "-qm", "feat (#31)"], { cwd: dir, stdio: "ignore" });
-    for (const bad of ["HEAD", "feature/x"]) {
-      const { code, out } = runChecker(dir, { DELIVERY_REFS: bad });
-      expect(code, bad).toBe(2);
-      expect(out).toContain(`[ref.shape] ${bad}`);
-      expect(out).not.toContain("self-PR 引用放行");
-    }
-  });
-
-  it("🔴 批 8 Phase A A-e3(P2#2 改寫):origin/develop 不再是 fallback——未宣告、env 空 → 該分支的 PR # 不進 allowedPrs → exit 1", () => {
+  it("🔴 批 8 Phase A A-e3(P2#2 改寫):origin/develop 不再是 fallback——該分支的 PR # 不進 allowedPrs → exit 1", () => {
     // origin/HEAD=main(無 #9);origin/develop 含 `feat (井號+9)`。舊契約 ③ 會猜 origin/develop 放行;
-    // 新契約只用受驗 base → #9 未知 → CA hit 擋 → exit 1。同 fixture 用 env 指 origin/develop
-    // → 未合併(非祖先)→ [ref.nonancestor] exit 2
+    // 新契約只用受驗 base → #9 未知 → CA hit 擋 → exit 1
     const dir = makeRepo({
       deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
       commits: [{ message: "init: no PR # on local main", files: { "src/foo.md": "hello\n" } }],
@@ -978,9 +911,28 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     const r1 = runChecker(dir);
     expect(r1.code).toBe(1);
     expect(r1.out).not.toContain("self-PR 引用放行");
-    const r2 = runChecker(dir, { DELIVERY_REFS: "origin/develop" });
-    expect(r2.code).toBe(2);
-    expect(r2.out).toContain("[ref.nonancestor] origin/develop");
+  });
+
+  it("🔴 A-e2'(env 已移除):DELIVERY_REFS 指向含未合併 (#8) 的 origin 分支 → 輸出與 exit 與不設 env 逐位元相同(#8 仍未知、exit 1)", () => {
+    // 舊契約(批 8)會把 origin/release-line-a 的 #8 算進 allowedPrs → 放行;#48 契約會 ref.nonancestor exit 2;
+    // 本契約完全不讀 env:兩次結果相同,且都是「#8 未知 → CA hit 擋 → exit 1」
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [{ message: "init: no PR # on main", files: { "src/foo.md": "hello\n" } }],
+      originRefs: { branches: [{ name: "release-line-a", commitSubject: "feat (#8)" }] },
+      deliveryBranches: ["main", "release-line-a"],
+      workingTree: { "docs/note.md": "see " + PREF_PR + "8 in unmerged line\n" },
+    });
+    const plain = runChecker(dir);
+    const withEnv = runChecker(dir, { DELIVERY_REFS: "origin/release-line-a" });
+    expect(plain.code).toBe(1);
+    expect(withEnv.code).toBe(plain.code);
+    expect(withEnv.out).toBe(plain.out);
+    expect(plain.out).not.toContain("self-PR 引用放行");
+    // 垃圾值也一樣不影響(不會 exit 2、不會被解析)
+    const junk = runChecker(dir, { DELIVERY_REFS: "HEAD,;pwd,origin/nope" });
+    expect(junk.code).toBe(plain.code);
+    expect(junk.out).toBe(plain.out);
   });
 
   it("🔴 批 8 Phase A A-e4:所有 delivery ref log 內無 PR # → allowedPrs 空 → CA hit 全擋", () => {
