@@ -80,6 +80,18 @@ type: note
 - 交接檔:`_handoffs/HANDOFF.md`(本機檔,`.gitignore` 忽略)
 - 暫停點:Milestone A 全部收尾(v0.2.0 + #45 + #46),無在途工作;下一棒由 Codex supervisor(Herdr w2:p8)拍板選 B1 / TODOS P2 / defer 集合
 
+📅 2026-09-03 ② — **移除 `DELIVERY_REFS` env 通道(刻意的行為 / API 移除;交付證據唯一來源 = 受驗 origin/HEAD)**
+
+> **緣起**:(#48) 落地祖先契約後,Step 5 r2 指出 env 通道是空操作(任一合法候選 X:anc(X) ⊆ anc(base),`git log base X` 集合不變);supervisor 拍板方向為移除、另 scope、附證明與回滾。plan 2 rev(rev 1 P2:lib「不讀 env」測試改 save/set/restore 單參數入口)。frozen base `ff4db7d`,worktree `feat/delivery-refs-removal`。
+> **改動**:**15 檔 / 10 commits**(`git diff --name-only base..HEAD | wc -l` / `git rev-list --count`)。lib 刪 env 解析、`SAFE_REF_RE`、`ref.*` 六個原因碼、祖先檢查;`resolveDeliveryRefs(git, declared)` / `resolveDeliveryRefsFromRepo(root)`,`process.env` 0 讀取;兩 consumer 對齊簽章(nst 掃描語意 0 diff,2 個註解 hunk);ci.yml 刪 workflow-level env 與 develop fetch 行;測試:lib 加「不讀 env」等價測試,兩 consumer 加逐位元「env 被忽略」e2e(含垃圾值),刪 env 相關 case;探針刪 DR-M1、加 DR-M9(偷讀 env 當 base);MIGRATION Unreleased breaking 段、CHANGELOG Removed、OVERVIEW、catalog locator、README、TODOS。
+> **驗證(`ce3c44a` 實測)**:typecheck / lint;**25 檔 898 passed + 2 skipped**;check:mutation-specs OK(8 檔 96 條);catalog / doc-refs / doc-size / no-source-terms / adoption / hooks 綠;check:todos 以 MARKER_SELF_PR 綠。**mutation `delivery-refs.json` 8/8** 綁 `bea3b21`(Step 5 r1 在 `1e563eb` 獨立重跑亦 8/8);**`source-term-diff-scan.json` 29/29** 綁 `bea3b21`(其後 4 支 commit 只動測試註解 / 測試名 / 文件)。
+> **審查**:Codex 全範圍 r1 P2(nst fixture 說明仍寫四條 fallback)→ rereview #2 P2(節標題 / A-e4 / makeRepo 註解同類殘留)→ rereview #3 P2(todos 反例註解、測試名「env 空」)→ **rereview #4 PASS**。Step 5 worktree 審 2 輪:r1 **0 C + 7 I**(順手修 5 條文件矛盾:CHANGELOG Changed、ci.yml 兩處、OVERVIEW 標題、MIGRATION、TODOS ④)→ r2 **0 C + 6 I**(又順手修 3 條 MIGRATION 句)→ r3 **2 C + 4 I**(兩條 CRITICAL 都在 r2 新寫的 MIGRATION 句)→ r4 **1 C + 5 I**(仍在 MIGRATION 新句)→ Owner 裁示停止遞迴:**刪掉整段換線 / GitFlow 指引、只留事實**,不再開輪。defer 2 條進 TODOS P3。
+> **⭐ 教訓**:①**移除一個通道時,「說它存在」的每一句話都是 diff 的一部分**——Codex 三輪、Step 5 r1 抓的都是同類殘留(fixture docstring、節標題、反例註解、測試名、CHANGELOG 相鄰條目);移除類 PR 的 P0 要先 `grep -rn <名稱>` 逐處分類「刪 / 改現行 / 標歷史」列進 plan。②**INFORMATIONAL 不修就是不修,文件類尤其不能「順手」**:r1、r2 都是 0 CRITICAL,我順手修文件句,新句子每輪長出新 finding,r3 / r4 的 3 條 CRITICAL 全在我自己新寫的 MIGRATION 指引裡——Owner 已拍板的「無 CRITICAL 即停」我沒守,多燒 3 輪。修法是**刪掉指引**而不是再寫一版。
+> **check:claims 逐條處置**:17 處命中全留 A(「唯一來源」= 契約字面 ×13;「沒有任何救援通道」= ci.yml 事實;「絕不」為既有測試名 / label)。
+> 📊 成本:CC ~4.5h / plan 2 rev / Codex 4 輪 / Step 5 **4 輪**(後 2 輪是自找的)/ mutate 2 輪 / P1 0 / P2 3(全為文件契約漂移)/ Step5 獨立發現 25(3 CRITICAL 全在自己新寫的文件句、修 13、刪段解決 7、defer 2、既登錄 3)
+> 📐 量測:claude-fable-5-1 effort low;Codex gpt-5.6-terra medium(w2:p8);來源分佈:既有缺陷 0・漏改 consumer 8(全為註解 / 文件)・baseline 後引入 17(其中 3 CRITICAL 由 r1 / r2 修法引入)
+> **7 步 checklist**:1 ✅ rev 2 / 2 ✅ supervisor APPROVE / 3 ✅ P1–P4 / 4 ✅ Codex 4 輪 PASS / 4.5 ✅ 人工視同高風險(cso 路徑表空),探針 8/8 + 29/29 / 4.6 ✅ 未觸發 / 5 ✅ r4 後 Owner 裁示收乾 / 6-7 待執行
+
 📅 2026-09-03 ① — **P2#2:`DELIVERY_REFS` 共用政策契約(`lib/delivery-refs.ts`,fail-closed、無 fallback)**
 
 > **緣起**:TODOS P2#2(`DELIVERY_REFS=HEAD` / 本地 feature / 未合併 `origin/feature/x` 都能把未合併 `(#N)` 塞進 allowedPrs)。supervisor 拍板:只准 origin 正規 remote-tracking 交付 ref + 必須是權威 base 祖先 + 綁靜態 `deliveryBranches`(Q1)+ 移除 `origin/develop` / 本地 main fallback(Q2);plan 走 4 rev(rev 2 P1:origin/HEAD 權威 base 本身也受驗;rev 3 P2:`ref.undeclared` 專屬探針;rev 4:`base.unresolvable` 單測)。frozen base `2019f48`,worktree `feat/delivery-refs-remote-only`。
