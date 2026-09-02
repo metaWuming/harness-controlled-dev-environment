@@ -73,7 +73,7 @@ npx tsx scripts/mutate.ts --file src/example.ts \
   「樣本沒對上」exit 2(fail-closed,不會靜默通過)。
 - `mutation-spec-drift.json` — 6 條探針,守 `check-mutation-specs.ts`(spec 檔與目標檔的可信邊界、DRIFT 判定、exit 0/1/2 契約)
 - `delivery-refs.json` — 8 條探針,守 `lib/delivery-refs.ts` 共用契約(受驗 origin/HEAD 的正規 / 存在 / 宣告檢查、拒絕不靜默、無 fallback、**不讀 env**)與兩個 consumer 的 exit 2 接線
-- `invoked-as-main.json` — 5 條探針,守 `lib/invoked-as-main.ts`(discriminated outcome 三態、reporter 對 indeterminate 印診斷 / 對 import 靜默、sanitize 契約、argv1 undefined 走 indeterminate)
+- `invoked-as-main.json` — 8 條探針(全被抓),守 `lib/invoked-as-main.ts` 五態(discriminated outcome 三態、reporter 對 indeterminate 印診斷 / 對 import 靜默、sanitize 契約、argv1 undefined 走 indeterminate)+ 三支 owner-scoped consumer 的 caller-wiring exit(2) branch(mutate / check-control-catalog / check-mutation-specs)
 
 ## CI 守樣本漂移(`npm run check:mutation-specs`)
 
