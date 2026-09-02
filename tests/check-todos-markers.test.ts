@@ -342,6 +342,9 @@ function makeRepo(opts: {
   todosContent: string;
   /** 額外要 commit 的檔案(如生 delivery merged commit fixture) */
   extraCommits?: Array<{ message: string; files?: Record<string, string> }>;
+  /** P2#2:預設寫 harness.config.json(deliveryBranches ['main'])+ 建 bare origin + set-head main;noOrigin 只給負對照 */
+  noOrigin?: boolean;
+  deliveryBranches?: string[];
 }): string {
   const wrap = mkdtempSync(join(tmpdir(), 'ctm-e2e-'));
   created.push(wrap);
@@ -353,6 +356,8 @@ function makeRepo(opts: {
   git('config', 'user.email', 't@example.com');
   git('config', 'user.name', 't');
   writeFileSync(join(dir, 'TODOS.md'), opts.todosContent, 'utf-8');
+  mkdirSync(join(dir, 'scripts'), { recursive: true });
+  writeFileSync(join(dir, 'scripts/harness.config.json'), harnessConfigJson(opts.deliveryBranches ?? ['main']) + '\n', 'utf-8');
   git('add', '-A');
   git('commit', '-qm', 'init: TODOS.md');
   for (const c of opts.extraCommits ?? []) {
@@ -366,7 +371,31 @@ function makeRepo(opts: {
       git('commit', '--allow-empty', '-qm', c.message);
     }
   }
+  if (!opts.noOrigin) {
+    const originDir = join(wrap, 'origin.git');
+    execFileSync('git', ['init', '--bare', '-q', originDir], { stdio: 'ignore' });
+    git('remote', 'add', 'origin', originDir);
+    git('push', '-q', 'origin', 'main:refs/heads/main');
+    git('fetch', '-q', 'origin');
+    git('remote', 'set-head', 'origin', 'main');
+  }
   return dir;
+}
+
+function harnessConfigJson(deliveryBranches: readonly string[]): string {
+  // P2#2:交付 ref 契約讀 harness.config.json 的 deliveryBranches(靜態宣告);fixture 預設只宣告 main
+  return JSON.stringify({
+    schemaVersion: 2,
+    mode: 'template',
+    projectId: '__TEMPLATE__',
+    templatePackageName: 'harness-controlled-dev-environment',
+    // loader 要求 deliveryBranches ⊆ protectedBranches
+    protectedBranches: [...deliveryBranches],
+    deliveryBranches: [...deliveryBranches],
+    requiredAgentAdapters: ['claude'],
+    githubGovernanceRequired: false,
+    mergeStrategy: 'squash',
+  });
 }
 
 function runChecker(cwd: string, envOverride?: Record<string, string>): { code: number; out: string } {
@@ -402,6 +431,67 @@ describe('check-todos-markers — 端到端(CLI 接線)', () => {
     expect(out).toContain('1 個 PR');
     expect(out).toContain('1 個有 merge 證據');
     expect(code).toBe(0);
+  });
+
+  it('🔴 P2#2 正對照:origin/HEAD=main 含 (#42) → 完工宣稱過;env origin/main(已宣告、祖先=相等)也接受', () => {
+    const dir = makeRepo({
+      todosContent: '# TODOS\n\n## P3\n\n### ✅ some completion (#42)\n- done\n',
+      extraCommits: [{ message: 'feat: x (#42)' }],
+    });
+    expect(runChecker(dir).code).toBe(0);
+    expect(runChecker(dir, { DELIVERY_REFS: ' origin/main ' }).code).toBe(0);
+  });
+
+  it('🔴 P2#2 base.undeclared:origin/HEAD 指向正規、可解、未宣告分支;env 空 → exit 2、不放行', () => {
+    const dir = makeRepo({
+      todosContent: '# TODOS\n\n## P3\n\n### ✅ some completion (#42)\n- done\n',
+      extraCommits: [{ message: 'feat: x (#42)' }],
+      deliveryBranches: ['trunk'],
+    });
+    const { code, out } = runChecker(dir);
+    expect(code).toBe(2);
+    expect(out).toContain('[base.undeclared] refs/remotes/origin/main');
+  });
+
+  it('🔴 P2#2 ref.undeclared:env 指向正規、可解、祖先、但未宣告的 origin 分支 → exit 2', () => {
+    const dir = makeRepo({
+      todosContent: '# TODOS\n\n## P3\n\n### ✅ some completion (#42)\n- done\n',
+      extraCommits: [{ message: 'feat: x (#42)' }],
+    });
+    // release 指在 main tip(祖先相等成立),但未宣告
+    execFileSync('git', ['push', '-q', 'origin', 'main:refs/heads/release'], { cwd: dir, stdio: 'ignore' });
+    execFileSync('git', ['fetch', '-q', 'origin'], { cwd: dir, stdio: 'ignore' });
+    const { code, out } = runChecker(dir, { DELIVERY_REFS: 'origin/release' });
+    expect(code).toBe(2);
+    expect(out).toContain('[ref.undeclared] origin/release');
+  });
+
+  it('🔴 P2#2 ref.shape / ref.nonancestor:DELIVERY_REFS=HEAD、本地 feature、未合併 origin/feature/x → exit 2(原始漏洞封死)', () => {
+    const dir = makeRepo({
+      todosContent: '# TODOS\n\n## P3\n\n### ✅ some completion (#42)\n- done\n',
+      deliveryBranches: ['main', 'feature/x'],
+    });
+    const git = (...a: string[]) => execFileSync('git', a, { cwd: dir, stdio: 'ignore' });
+    git('checkout', '-q', '-b', 'feature/x');
+    git('commit', '--allow-empty', '-qm', 'feat: x (#42)');
+    git('push', '-q', 'origin', 'feature/x:refs/heads/feature/x');
+    git('fetch', '-q', 'origin');
+    for (const [bad, code] of [['HEAD', 'ref.shape'], ['feature/x', 'ref.shape'], ['origin/feature/x', 'ref.nonancestor']] as const) {
+      const r = runChecker(dir, { DELIVERY_REFS: bad });
+      expect(r.code, bad).toBe(2);
+      expect(r.out).toContain(`[${code}] ${bad}`);
+    }
+  });
+
+  it('🔴 P2#2 base.missing:無 origin remote → exit 2(本地 main fallback 已移除)', () => {
+    const dir = makeRepo({
+      todosContent: '# TODOS\n\n## P3\n\n### ✅ some completion (#42)\n- done\n',
+      extraCommits: [{ message: 'feat: x (#42)' }],
+      noOrigin: true,
+    });
+    const { code, out } = runChecker(dir);
+    expect(code).toBe(2);
+    expect(out).toContain('[base.missing]');
   });
 
   it('🔴 批 10 P2-2 反例:MARKER_SELF_PR 未設 → self-PR 引用被擋(未 merge 證據)', () => {
