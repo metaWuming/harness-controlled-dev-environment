@@ -16,7 +16,7 @@
 - `npm run check:baseline-governance`(`scripts/check-baseline-governance.ts`)+ CI step「Baseline Governance Check」(pull_request only):source-term baseline 只能在「只動 config + ADR + bookkeeping」的 PR 內往前推到 merge-base 祖先;base 用 PR 的 base 分支;同 repo PR 由 CI 另傳 `--head`,head ∈ merge-base 那側宣告的 `protectedBranches`(promotion PR)→ 明文 SKIPPED;fork PR 永不豁免;任何無法判定(base 解不開 / shallow / config 壞)→ UNDETERMINED exit 2。
 - `scripts/source-term-baseline.json` + canonical ADR(`docs/architecture/` 下的 source-term history baseline 決策紀錄;完整路徑由位置＋數量鎖管理,本檔刻意不寫):history diff scan 的 cutover、三種 repo 情境、baseline 變更授權、已知限制、長命 pre-baseline 分支清理程序。
 - `scripts/cso-trigger.config.ts` 的 `CSO_NOT_APPLICABLE`:adopted mode 下沒有路徑的域須明文宣告理由。
-- mutation spec:`scripts/mutations/source-term-diff-scan.json`(29)、`adoption-readiness.json`(20)、`control-catalog.json`(11)、`baseline-governance.json`(7)。
+- mutation spec:`scripts/mutations/source-term-diff-scan.json`(29)、`adoption-readiness.json`(20)、`control-catalog.json`(14)、`baseline-governance.json`(11)。
 
 ### Changed
 - `check-no-source-terms.ts` history diff scan 由「每 rev 3 次 git show + 3 次 grep」改成分批 producer + 串流分桶;掃描語意與判定不變;13 項輸出格式旗標封閉契約。
