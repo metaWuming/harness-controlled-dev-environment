@@ -42,7 +42,7 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 - **來源**:2026-09-01 PR A1.1 Step 5 r2 I4 / r3 C2(adversarial-reviewer,confidence 7-10)
 - **內容**:`tests/check-doc-refs.test.ts` 的 G2 把 `.claude/memory/progress.md` 與 2026-08 archive 的 ADR 引用數釘成 1、G4 斷言 progress.md 不含 `/Users/`。這兩條是**模板作者的簿記**,卻會隨模板複製、由採用者的 `npm test` 執行:採用者改寫自己的 progress、或在 macOS 寫自己的路徑就紅,而 checker 是綠的。
   A1.1 曾用 runtime 判別式(`isTemplateRepo()`)處理,r3 證明那個做法更糟(對族群判反、同時是一行斷路器、fail-open),已整組移除。G6 已改成靜態的模板出貨路徑前綴清單,G2/G4 尚未處理。
-- **可能方向**:比照 G6 改成靜態清單;或把這類「模板出貨前的自我檢查」移出交付給採用者的測試套件。**不要**再引入 runtime 判別式。
+- **可能方向**:比照 G6 改成靜態清單;或把這類「模板出貨前的自我檢查」移出交付給採用者的測試套件。**不要**再引入 runtime 判別式。(Step 5 r1 I12:上方「G2/G4 尚未處理」是登錄當時的狀態,已由下方交付收掉)
 - **工時**:2-3h
 - **交付**:PR A2 —— 走第二個方向:G2 / G4 搬到 `scripts/lib/template-governance.ts`,由 `npm run check:adoption` 只在 `scripts/harness.config.json` 宣告 `mode: "template"` 時執行(T9 / T8);vitest 刪除兩條;mode 是顯式靜態宣告、無 runtime 判別式(mutation M12–M14 行為級證據)
 
@@ -58,6 +58,12 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 - **工時**:1-2h
 
 ## P3
+
+### 🟢 A2 Step 5 defer 集合(check:adoption 邊角,17 條 INFORMATIONAL conf ≤6)
+- **來源**:2026-09-02 PR A2 Step 5 worktree 審 r1(10 條)/ r2(1 條)/ r3(6 條);0 CRITICAL
+- **內容**:①`checkCiRunsAdoption` 只比對 `run:` 行,step 加 `if: false` / `continue-on-error` 仍過(conf 5);②字面分支名文法比 `git check-ref-format --branch` 寬(`main.`、`a/.b`、`feat/x.lock/y` 通過;fail-closed 方向,4 來源都得含它才 READY)(conf 5);③`parsePart4` 逐行找 `### 4.x` 先於註解剝除,HTML 註解內假標題可覆蓋真段(conf 5);④4.5 路徑放行 `isDir` 讓 `` `..` `` / `` `.` `` 過(conf 4);⑤`PLACEHOLDER_RE` 不含 `?` / `無` / `unknown`(conf 4);⑥hook 檔 CRLF 讓 A5 regex `;;$` 找到 0 → 假紅(conf 4);⑦`--root` dynamic import 會執行該 root 的 `cso-trigger.config.ts`(等同跑對方 npm scripts;檔頭應標明)(conf 3);⑧4.3 反引號計數不辨 fenced code(conf 3);⑨HTML 註解剝除 regex 不辨 markdown code 邊界,code block 內 `<!--` … `-->` 會吞掉真引用(conf 4);⑩A6.claude.link 仍是子字串比對、比 codex 側寬(conf 4);⑪–⑯4.6 合併策略關鍵字檢查:`merge-commit-sha` / `mergecommit` 命中(conf 6)、`ff-only` 在 URL / 檔名內命中(conf 5)、否定句「不要用 no-ff」通過(conf 5)、`fast-forwarded` / `rebases` / 雙空白不過(conf 4)、錯誤訊息與 CLAUDE.md / ADOPTION 未列 ff 系寫法(conf 4)、正對照未覆蓋 `merge-commit` 連字分支(conf 2)
+- **方向**:4.6 那組是「關鍵字存在」檢查的固有邊界,不要再打補丁——若要收,改成要求採用者在 harness.config 宣告 `mergeStrategy` 枚舉值、4.6 只驗有沒有以反引號提到它(A3 catalog 時一併評估);其餘逐條 0.5–1h
+- **工時**:逐條 0.5–1h;4.6 改宣告式約 2h
 
 ### 🟢 `grep.column=true` 時 `git grep -z` 是三個 NUL,顯示會錯位
 - **來源**:2026-09-01 PR A1.1 Step 5 r3 I11(confidence 8)
