@@ -85,7 +85,8 @@ type: guide
 - [ ] `scripts/git-hooks/commit-msg` 擋「commit 訊息含去識別化 denylist 詞」——
       你若照 §6 移除了去識別化 gate,本 hook 會自動 no-op(不必特別處理)
 - [ ] 檢查 `scripts/git-hooks/code-pattern.sh` 的 `TOOL_ARTIFACT_PATTERN`(本機 AI / 工具產物;出廠列 `.codegraph/`、`.gbrain-source`、`_handoffs/`)
-      並依你的工具增補(例:`.aider*`、`.cursor/`),**同一份清單也要放進 `.gitignore`**(第一道;hook 是縱深、任何分支任意深度擋,刪除放行以便清理)
+      並依你的工具增補(例:`.aider*`、`.cursor/`),**同一份清單也要放進 `.gitignore`**(第一道;hook 是縱深、任何分支任意深度擋、檔案 / 目錄 / symlink 皆擋,刪除放行以便清理)。
+      ⚠️ 任意深度表示子目錄同名路徑也擋(例 `docs/_handoffs/README.md`);想刻意進版控的 handoff 範本要改 pattern
 - [ ] 檢查 `scripts/git-hooks/code-pattern.sh` 的 `PROTECTED_DOCS` SSOT
       (pre-commit / pre-push 兩支共用)。預設涵蓋模板實際附帶或最常見的
       `CLAUDE.md` / `.claude/sop/` / `SPEC.md` / `ARCHITECTURE.md` /

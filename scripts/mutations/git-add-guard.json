@@ -7,8 +7,8 @@
   },
   {
     "file": "scripts/git-hooks/code-pattern.sh",
-    "find": "TOOL_ARTIFACT_PATTERN='(^|/)\\.codegraph/|(^|/)\\.gbrain-source(/|$)|(^|/)_handoffs/'",
-    "replace": "TOOL_ARTIFACT_PATTERN='(^|/)\\.codegraph/'",
+    "find": "TOOL_ARTIFACT_PATTERN='(^|/)\\.codegraph(/|$)|(^|/)\\.gbrain-source(/|$)|(^|/)_handoffs(/|$)'",
+    "replace": "TOOL_ARTIFACT_PATTERN='(^|/)\\.codegraph(/|$)'",
     "label": "GA-M2 SSOT 少列 .gbrain-source / _handoffs → 正對照第二段轉紅"
   },
   {
@@ -34,5 +34,11 @@
     "find": "  if printf '%s' \"$artifact_path\" | grep -qE \"$TOOL_ARTIFACT_PATTERN\"; then",
     "replace": "  if printf '%s' \"$artifact_path\" | grep -qE \"^$TOOL_ARTIFACT_PATTERN\"; then",
     "label": "GA-M6 pattern 被錨定回根目錄 → 巢狀路徑測試轉紅"
+  },
+  {
+    "file": "scripts/git-hooks/code-pattern.sh",
+    "find": "TOOL_ARTIFACT_PATTERN='(^|/)\\.codegraph(/|$)|(^|/)\\.gbrain-source(/|$)|(^|/)_handoffs(/|$)'",
+    "replace": "TOOL_ARTIFACT_PATTERN='(^|/)\\.codegraph/|(^|/)\\.gbrain-source(/|$)|(^|/)_handoffs/'",
+    "label": "GA-M7 pattern 退回尾斜線版(symlink 漏)→ symlink 測試轉紅"
   }
 ]

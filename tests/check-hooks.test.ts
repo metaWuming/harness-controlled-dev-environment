@@ -341,7 +341,7 @@ describe("pre-commit — 工具產物守門(git add -A 誤加 untracked 的機�
     gitc(dir, "config", "user.name", "t");
     writeFileSync(join(dir, "README.md"), "x\n");
     // 第一道:.gitignore(與本 repo 相同三條);測試用 `add -f` 就是在模擬「ignore 被繞過」
-    writeFileSync(join(dir, ".gitignore"), ".codegraph/\n.gbrain-source\n_handoffs/\n");
+    writeFileSync(join(dir, ".gitignore"), ".codegraph\n.gbrain-source\n_handoffs\n"); // 無尾斜線:symlink 也 ignore(r2 F2)
     gitc(dir, "add", "README.md", ".gitignore");
     expect(gitc(dir, "commit", "-q", "-m", "init").code).toBe(0);
     gitc(dir, "checkout", "-q", "-b", "feature/x");
@@ -355,10 +355,14 @@ describe("pre-commit — 工具產物守門(git add -A 誤加 untracked 的機�
     for (const rel of [".codegraph/index.db", ".gbrain-source", "_handoffs/x.md"]) {
       expect(gitc(dir, "check-ignore", "-q", rel).code, rel).toBe(0);
     }
+    mkdirSync(join(dir, "_handoffs"), { recursive: true });
+    writeFileSync(join(dir, "_handoffs/x.md"), "x");
     gitc(dir, "add", "-A");
     const staged = spawnSync("git", ["-C", dir, "diff", "--cached", "--name-only"], { encoding: "utf-8" }).stdout;
     expect(staged).not.toContain(".codegraph");
     expect(staged).not.toContain(".gbrain-source");
+    expect(staged).not.toContain("_handoffs");
+    // r2 F2:symlink 形式的 .codegraph 也要被 .gitignore 擋(尾斜線版會漏)
   });
   it("🔴 C1:非 ASCII 與 TAB 控制字元檔名(name-only 會 C-quote)照樣被擋;C2:git rm --cached 清理產物放行;I3:巢狀路徑也擋", () => {
     const dir = repoOnFeature();
@@ -380,6 +384,14 @@ describe("pre-commit — 工具產物守門(git add -A 誤加 untracked 的機�
     expect(r.code).toBe(1);
     expect(r.err).toContain("TOOL_ARTIFACT_PATTERN");
     gitc(dir, "restore", "--staged", ".codegraph/\tctl.db");
+    // r2 F2:symlink 形式的 .codegraph(git add -A 不需 -f 就會 stage,因 .gitignore 尾斜線版不 ignore)→ 必須被擋
+    const symDir = repoOnFeature();
+    spawnSync("ln", ["-s", "/tmp", join(symDir, ".codegraph")]);
+    gitc(symDir, "add", "-A");
+    const symStaged = spawnSync("git", ["-C", symDir, "diff", "--cached", "--name-only"], { encoding: "utf-8" }).stdout;
+    expect(symStaged).not.toContain(".codegraph"); // 第一道:.gitignore(無尾斜線)已擋
+    gitc(symDir, "add", "-f", ".codegraph");
+    expect(gitc(symDir, "commit", "-q", "-m", "symlink").code).toBe(1); // 縱深:pattern (/|$) 擋
     mkdirSync(join(dir, "packages/app/.codegraph"), { recursive: true });
     writeFileSync(join(dir, "packages/app/.codegraph/x"), "bin");
     gitc(dir, "add", "-f", "packages/app/.codegraph/x");
