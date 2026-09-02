@@ -68,13 +68,13 @@ type: note
 
 <!-- 教訓從這裡開始,新的在最上面 -->
 
-## [2026-08-29] `git add -A` 把 pre-existing untracked 誤加進 commit(即使 CLAUDE.md 已明文禁止仍踩)
+## ⚠️ [2026-08-29] `git add -A` 把 pre-existing untracked 誤加進 commit(跨專案第 ≥4 次踩;本 repo 尚無機器守門)
 
 **情境**
 PR A1 Round 2 fix 收乾,要 commit code + tests。當時工作樹 tracked 檔剛改完、pre-existing untracked 有 `.codegraph/` + `.gbrain-source`(user 工具生成、明確不進版控)。順手打了 `git add -A`,commit 就把 `.codegraph/.gitignore` + `.gbrain-source` 都加進去。
 
 **錯誤/誤判**
-Commit 已建立(sha `2b80764`),違反 plan 明文約束「不 add .codegraph/ / .gbrain-source」+ CLAUDE.md 全域規則「用具體檔案名優先於 git add -A」。發現後立即 `git reset --soft HEAD~1` + `git restore --staged .codegraph .gbrain-source` + 重新 commit(sha `810cbb9`),但 commit 歷史 rewrite 了(feature branch 內部 rewrite 是允許 SOP)。
+Commit 已建立(sha `2b80764`),違反 plan 明文約束「不 add .codegraph/ / .gbrain-source」。⚠️ 注意:「用具體檔案名、禁 `git add -A`」這條規則**不在**本 repo 的 CLAUDE.md / SOP、也不在全域 CLAUDE.md,只存在另一個專案的 memory——本教訓寫成時誤以為它已是成文規則(docs-only review 抓到,2026-09-03 更正)。發現後立即 `git reset --soft HEAD~1` + `git restore --staged .codegraph .gbrain-source` + 重新 commit(sha `810cbb9`),但 commit 歷史 rewrite 了(feature branch 內部 rewrite 是允許 SOP)。
 
 **為什麼會發生**
 連續 commit 節奏中(每輪 review fix 都要 commit)、`-A` 打字快、腦子把「stage 這一輪改動」等同「stage 全部」——沒去看 status 內是否有 untracked。心裡想「只改了 tracked file 應該沒事」——這句話本身就是危險假設,因為 `-A` 對 untracked 有效。
@@ -82,19 +82,18 @@ Commit 已建立(sha `2b80764`),違反 plan 明文約束「不 add .codegraph/ /
 **之後該怎麼避免**
 - **每次 `git add` 前一定先 `git status --short`**,看有無 `??` 前綴的 untracked line。有 → 條列明白要 add 的檔名,不用 `-A`。
 - 覺得 `-A` 順手時,想「我可以列出所有要 add 的檔嗎?」——列不出來就代表根本不知道自己在 add 什麼。
-- CI hooks 未來可加 pre-commit 檢查:diff --cached 內若有 `??` 過的路徑 → 擋(但這是治理層 A3 之後的事、目前靠紀律)。
-- 已在 CLAUDE.md 全域「安全底線」寫過同精神規則,踩到說明**規則存在 ≠ 每次都套用**——高強度 sprint 節奏更容易犯,要更主動 status 檢查。
+- 依檔頭升級階梯這已是第 3 次以上,**該機器化**:pre-commit 檢查 diff --cached 是否含 commit 前為 `??` 的路徑 → 擋。截至 A3(PR #44)仍未實作,靠紀律;登錄為待辦。
+- 規則有沒有成文都會踩:高強度 sprint 節奏更容易犯,要更主動 status 檢查;**把規則寫進本 repo CLAUDE.md §4.6 Git 規範**是最便宜的第一步(下一個 governance PR 做)。
 
 **相關檔案/連結**
-- `~/.claude/CLAUDE.md`(全域「安全底線」)
-- PR #40 commit `810cbb9`(重 commit 後的正確版)+ 已 rewrite 掉的 `2b80764`
+- PR #40 的 commit 清單(GitHub PR 頁;`810cbb9` 是重 commit 後的正確版,只在 PR 頁與本機可查;`2b80764` 已 rewrite 掉,只剩本機 reflog)
 
 ---
 
 ## [2026-08-29] Codex CLI `--base` 每輪**固定** vs check:claims `--base` 每輪**推進** — 兩個 base 語意不同
 
 **情境**
-PR A1 Round 3 送 codex review,把 `--base` 設成「上一輪送審前的 HEAD」(round 2 fix 完的 `810cbb9`),想說對齊 SOP 「上一輪送審 HEAD」語意。結果 codex 回:「The requested diff is empty」——因為那個 SHA 就是 current HEAD。
+PR A1 Round 3 送 codex review,把 `--base` 設成 round 2 fix 完的 `810cbb9`(這其實是 **round 3 送審前**的 HEAD,連 check:claims 的「上一輪送審時 HEAD」語意也套錯了),想說對齊 SOP 的 base 語意。結果 codex 回:「The requested diff is empty」——因為那個 SHA 就是 current HEAD。
 
 **錯誤/誤判**
 把 SOP Step 4「送第一輪之前先固定 baseline」的 baseline、跟壓輪數紀律 ⑵ 的 `check:claims --base=<上一輪送審 HEAD>` 混為一談。兩個 base 是不同語意:
