@@ -90,7 +90,7 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 
 ## P3
 
-### ✅ long-lived pre-baseline branch merge grandfathered false positive(PR #___)
+### ✅ long-lived pre-baseline branch merge grandfathered false positive(PR #44)
 - **來源**:PR A1 sprint entry(`.claude/memory/progress-archive/progress-2026-08.md`「2026-08-29 ① PR A1」):
   「R7 剩一條 P2 false positive(long-lived pre-baseline branch merge 誤紅 cleanup PR),Owner 拍板 A defer 給 A3」;
   ADR〈已知限制〉第 3 條。本條由上述已 commit 證據重建(PR A3 P3b),未取用任何未 commit 內容
@@ -100,7 +100,7 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
   (rebase 到 post-baseline / 走獨立 baseline PR 受 CTRL-CI-012 守門 / admin override 留紀錄),登錄 control catalog
   CTRL-GOV-003(manual-mandatory)
 
-### ✅ baseline 治理旁路(同 PR 內把 baseline 往前推洗白 forbidden)(PR #___)
+### ✅ baseline 治理旁路(同 PR 內把 baseline 往前推洗白 forbidden)(PR #44)
 - **來源**:PR A1 sprint entry(同上):「Step 5 adversarial-reviewer … conf ≥ 6 一條(治理旁路)defer 給 A3」;
   ADR〈已知限制〉第 2 條。由已 commit 證據重建(PR A3 P3b)
 - **內容**:一個 PR 同時改 baseline 到 PR tip、中間 commit 加 forbidden、後續刪 → `baseline..HEAD` 幾近空、
