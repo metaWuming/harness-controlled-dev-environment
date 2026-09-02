@@ -71,3 +71,15 @@ npx tsx scripts/mutate.ts --file src/example.ts \
   與 `check-hooks.sh` 對第三個 SSOT 的要求
   **spec 的 `find` 是原始碼逐字樣本**——改到那些行就要同步改 spec,否則 mutate 會以
   「樣本沒對上」exit 2(fail-closed,不會靜默通過)。
+- `mutation-spec-drift.json` — 6 條探針,守 `check-mutation-specs.ts`(spec 檔與目標檔的可信邊界、DRIFT 判定、exit 0/1/2 契約)
+
+## CI 守樣本漂移(`npm run check:mutation-specs`)
+
+CI step「Mutation Spec Drift Check」對本目錄每個 spec 檔的每條探針驗 `find` 樣本**仍能在目標原始碼精準對上**
+(存在、恰一處或已標 `all`、replace 有差)。它**不跑 mutation**,只是 `mutate.ts` 閘② 的前置版:
+對得上不代表探針仍會 kill(那要 Step 4.5 人工跑 mutate 綁 HEAD),對不上則 mutate 必然拒跑。
+- exit **1** = 漂移(內容層):改了那幾行就同步改 spec 的 `find`;JSON / 欄位壞也算這類
+- exit **2** = 無法判定:`scripts/mutations` 不是真目錄、0 個 spec 檔、spec 檔本身是 symlink / 未追蹤 / 非一般檔
+  (spec 檔與目標檔都先經 `mutate.ts` 的 `checkTarget` 取 bytes,再解析——PR 把 tracked spec 換成指向 repo 外的
+  symlink 時,外部檔不會成為 CI 輸入)
+兩者在 CI 都是紅;分開只為診斷語意。

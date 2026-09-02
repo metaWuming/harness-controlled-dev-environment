@@ -51,11 +51,12 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 - **內容**:`DELIVERY_REFS` 只過 `SAFE_REF_RE` + `rev-parse --verify`(option injection 已擋住),但 `HEAD` 或任何 feature branch 名都解得開。在 feature branch 上設 `DELIVERY_REFS=HEAD`,未 merge commit 的 subject 就進了 `allowedPrs` —— round 2 P1-1 的修法可被整條還原,目前無守門。
 - **工時**:1-2h
 
-### 🟡 mutation spec 漂移無 CI 守門
+### ✅ mutation spec 漂移無 CI 守門(PR #___)
 - **來源**:2026-09-01 PR A1.1 Step 5 r2 I16(confidence 6);A1.1 內實際發生過一次(M14 隨串流改寫失效、M23 隨編碼釘法插入失效)
 - **內容**:29 條探針是高風險車道的覆蓋率佐證,但 CI 只跑 `vitest`、不跑 `mutate`。spec 的 `find` 是原始碼逐字樣本,改到那些行就會對不上;`mutate.ts` 對此 fail-closed(exit 2),但**只有人工重跑時才會發現**。
 - **可能方向**:CI 加一支只驗「所有 spec 的 find 樣本仍能在原始碼中找到」的輕量檢查(不跑完整 mutation,避免 CI 時間爆掉)。
 - **工時**:1-2h
+- **交付**:`scripts/check-mutation-specs.ts` + CI step「Mutation Spec Drift Check」(CTRL-CI-013)。只複用 `mutate.ts` 純函式(`checkTarget` / `parseSpecs` / `applyMutation`);spec 檔與目標檔都先經 `checkTarget` 取 bytes 再解析(supervisor plan rev 2 P1:tracked spec 換 symlink → exit 2,外部檔不成為輸入)。exit 1 = 漂移 / 2 = 無法判定。22 條測試(含 7 條真 CLI e2e)+ 自身探針 `mutation-spec-drift.json` 6 條
 
 ## P3
 
