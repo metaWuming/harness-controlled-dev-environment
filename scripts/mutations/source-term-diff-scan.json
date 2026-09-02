@@ -1,0 +1,176 @@
+[
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "        \"-m\",\n        \"--first-parent\",\n",
+    "replace": "        \"-m\",\n",
+    "label": "M1 拿掉 --first-parent → merge 保留 grandfathered 內容會誤觸發(P1zz9)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "  if (!normalizedExcludes.has(path)) out.push(\"main\");",
+    "replace": "  if (false) out.push(\"main\");",
+    "label": "M2 main 桶掃空 → post-baseline 新引入的 forbidden 漏抓(P1c / N1 / E1)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "for (const batch of chunkRevs(revs, batchSize)) {",
+    "replace": "for (const batch of chunkRevs(revs, batchSize).slice(0, 1)) {",
+    "label": "M3 只送第一批 → 批次邊界之後的 rev 漏掃(N2)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "    return [\n      {\n        label: \"史 baseline..HEAD(patch 提取)\",\n        mode: \"strict\",\n        hits: [],\n        rc: 2,\n        framing: \"diff-prefixed\",\n      },\n    ];",
+    "replace": "    return [];",
+    "label": "M4 patch 提取失敗從 scanner error 改成 silent empty → fail-closed 失效(E5)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "  if (!decoded.startsWith(PINNED_DST_PREFIX)) {\n    throw new Error(",
+    "replace": "  if (!decoded.startsWith(PINNED_DST_PREFIX)) {\n    return { kind: \"deleted\" };\n    throw new Error(",
+    "label": "M4b 路徑缺 dst-prefix 不再 throw → 解析失敗被吞(U7)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "    throw new Error(\n      `patch hunk 的新增行無法歸屬到檔案路徑(patch 結構異常):${line.slice(0, 120)}`\n    );",
+    "replace": "    return null;",
+    "label": "M4c 新增行歸屬不明改成靜默略過 → 整段漏掃(U11)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "  if (mb.status !== 0) {",
+    "replace": "  if (false) {",
+    "label": "M5 拿掉 baseline ancestor 檢查 → 治理 fail-closed 失效(P1e;A1 既有錨點)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "  if (syntaxFiles.has(path)) out.push(\"syntax\");",
+    "replace": "  if (false) out.push(\"syntax\");",
+    "label": "M6 syntax 桶不產出 → SYNTAX 例外檔的 non-CA 命中漏抓(E3a)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "\"-aiEH\"",
+    "replace": "\"-iEH\"",
+    "label": "M7 grep 拿掉 -a → 含 NUL byte 的新增行被判 binary 短路(E7 / P1zz8)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "out.push(revs.slice(i, i + size));",
+    "replace": "out.push(revs.slice(i, i + size).slice(1));",
+    "label": "M8 每批丟掉第一個 rev → rev multiset 覆蓋破洞(C2a / C2b)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "        `--src-prefix=${srcPrefix}`,\n        `--dst-prefix=${dstPrefix}`,\n",
+    "replace": "        // mutation: prefix 釘法已移除\n",
+    "label": "M9 拿掉 prefix 釘法 → 使用者 diff.noprefix 會殺掉解析(E6 / C5p)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "  if (rest.startsWith('\"')) {\n    decoded = decodeGitCQuote(rest);",
+    "replace": "  if (rest.startsWith('\"')) {\n    return { kind: \"deleted\" };\n    decoded = decodeGitCQuote(rest);",
+    "label": "M10 C-quoted 檔名 section 被當成刪除 → tab/newline 檔名內容漏掃(E1)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "          throw new Error(`patch 串流的 rev separator 重複:${rev}`);",
+    "replace": "          return;",
+    "label": "M11 separator 重複不再報錯 → 模仿 separator 的 blob 可靜默切錯段(N8b / N8c)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "  if (framing === \"diff-prefixed\") return extractDiffHitContent(raw);",
+    "replace": "  if (framing === \"diff-prefixed\") return parseGrepZLine(raw)?.content ?? extractDiffHitContent(raw);",
+    "label": "M12 diff hit 內容改回用 NUL 框架 parser → 未知 PR 引用被丟掉、洗白假綠(R1P1-a/b/d)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "        stdio: [\"pipe\", fd, \"pipe\"],\n        encoding: \"utf-8\",\n      }\n    );",
+    "replace": "        stdio: [\"pipe\", \"pipe\", \"pipe\"],\n        encoding: \"utf-8\",\n        maxBuffer: 256 * 1024 * 1024,\n      }\n    );\n    if (typeof res.stdout === \"string\") writeFileSync(outPath, res.stdout, \"utf-8\");",
+    "label": "M13 producer 改回有上限的記憶體 buffer → 排除路徑重新進入 bounded buffer(R1P2-b)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "    for (;;) {\n      const n = readSync(fd, buf, 0, buf.length, null);",
+    "replace": "    for (let _once = 0; _once < 1; _once++) {\n      const n = readSync(fd, buf, 0, buf.length, null);",
+    "label": "M14 串流只讀第一塊 → 大 patch 被截斷(R1P2-c / separator 缺 rev)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "  const nul2 = rest.indexOf(\"\\0\");",
+    "replace": "  const nul2 = rest.indexOf(\":\");",
+    "label": "M15 grep -z 內容改回用第一個冒號切 → 冒號前的未知 PR 引用被丟掉(R1P1-e/f)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "  return bucketsOfPath(state.current.path, ex, syn).length === 0;",
+    "replace": "  return false;",
+    "label": "M16 排除路徑的超長新增行不再丟棄 → 回到整行累積(R2P2-a 單行峰值)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "  if (!prefix.startsWith(\"+\")) return true;",
+    "replace": "  if (!prefix.startsWith(\"+\")) return false;",
+    "label": "M17 hunk 內超長刪除行不再丟棄 → 回到整行累積(R2P2-a 單行峰值)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "  return bucketsOfPath(state.current.path, ex, syn).length === 0;",
+    "replace": "  return true;",
+    "label": "M18 被掃路徑的超長行也被丟棄 → 行尾 forbidden 漏掃(R2P2-b)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "const LONG_LINE_PROBE_BYTES = 1 << 20;",
+    "replace": "const LONG_LINE_PROBE_BYTES = Number.MAX_SAFE_INTEGER;",
+    "label": "M21 production 長行門檻調成極大 → 等於撤銷 R2 增量丟棄(S5D2:dropped 變 0)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "const LONG_LINE_PROBE_BYTES = 1 << 20;",
+    "replace": "const LONG_LINE_PROBE_BYTES = 1;",
+    "label": "M22 production 長行門檻調成 1 → 過早丟棄、separator 保護邊界消失(S5D2:dropped 變 2、peak 掉到 1 MiB 以下)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "        \"log.diffMerges=separate\",",
+    "replace": "        \"log.diffMerges=combined\",",
+    "label": "M23 producer 的 log.diffMerges 釘成敵意值 combined → merge commit 變 diff --cc、forbidden 變綠(S5C2 / S5C2b)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "const r = spawnSync(\"git\", [\"-C\", root, \"grep\", \"--color=never\", \"-z\", ...args], {",
+    "replace": "const r = spawnSync(\"git\", [\"-C\", root, \"grep\", \"-z\", ...args], {",
+    "label": "M24 git grep 拿掉 --color=never → color.grep=always 讓 CA 抽到錯號、未知引用假放行(S5R2-C1)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "        \"--no-color\",",
+    "replace": "        \"--color=always\",",
+    "label": "M25 producer 的 --no-color 反轉成 --color=always → ANSI 序列讓 diff 狀態機靜默空轉、連 fail-closed 都沒有(S5R2-I2)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "        \"--no-textconv\",",
+    "replace": "        \"--textconv\",",
+    "label": "M26 producer 的 --no-textconv 反轉成 --textconv → .gitattributes textconv 換掉新增行內容而漏抓(S5R2-I1)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "  const rest = raw.endsWith(\"\\t\") ? raw.slice(0, -1) : raw;",
+    "replace": "  const rest = raw;",
+    "label": "M27 不再先剝尾端 TAB → quoted + 含空白的檔名判成引號未閉合、乾淨 repo 整段 rc=2(S5R2-C2 / E1)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "      \"-C\",\n      root,\n      \"-c\",\n      \"i18n.logOutputEncoding=UTF-8\",\n      \"log\",\n      \"--all\",",
+    "replace": "      \"-C\",\n      root,\n      \"log\",\n      \"--all\",",
+    "label": "M28 commit 訊息掃描拿掉編碼釘法 → i18n.logOutputEncoding 讓整段掃描歸零(S5R3-C1)"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "        \"-c\",\n        \"i18n.logOutputEncoding=UTF-8\",\n        \"log\",",
+    "replace": "        \"log\",",
+    "label": "M29 producer 拿掉編碼釘法 → C5p/C5r 的 argv 契約破口"
+  }
+]

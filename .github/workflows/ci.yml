@@ -13,7 +13,8 @@ name: CI
 #      落地(schemaVersion + SHA);loader 與 validator 在 scripts/check-no-source-terms.ts
 #      (fail-closed on 40-hex / rev-parse / ancestor 三檢查)。
 #   兩者共用 gitleaks binary/CI step 是**巧合**、不是政策合流;文件敘述、修法規範
-#   都要分開對待(見 HARNESS_OPTIMIZATION_IMPLEMENTATION_PLAN.md §5)。
+#   都要分開對待(正本:docs/architecture/source-term-history-baseline.md
+#   「政策邊界:source-term 掃描 vs gitleaks 秘密掃描」)。
 #
 # 本模板無 DB / 無框架 build;若你採 Next.js+Prisma 堆疊,把
 # stack/nextjs-prisma/ci-snippets/prisma-ci-steps.yml 的步驟插進來
@@ -185,7 +186,8 @@ jobs:
         # 去識別化常駐 gate:本模板抽取自私有專案,掃「來源專案識別詞」殘留
         # (working tree + git history)。導入者不需要時可連同 scripts/deny-terms.txt 移除。
         #
-        # 🔴 PR A1(HARNESS_OPTIMIZATION_IMPLEMENTATION_PLAN.md §5):history 掃描
+        # 🔴 PR A1(正本:docs/architecture/source-term-history-baseline.md
+        # 「掃描範圍與三種 repo 情境」):history 掃描
         # 走 **baseline cutover** 語意——scripts/source-term-baseline.json 記錄
         # 主線當下 HEAD SHA,checker 用 `rev-list baseline..HEAD` 只掃 baseline
         # **之後**的歷史;baseline 及更早的去識別化 debt 一律 grandfather(不重寫

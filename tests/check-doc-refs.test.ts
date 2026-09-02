@@ -5,8 +5,16 @@
 //   - extractRefs:@import / markdown link / 純路徑;跳過 fenced code / 外部 / 路由 / 佔位符
 //   - checkRefs:doc-dir vs repo-root 解析、../ 逃出 repo 跳過、gitignored / planned 跳過、缺檔報 violation
 
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { extractRefs, checkRefs, type Ref } from '../scripts/check-doc-refs';
+import {
+  extractPrRefsFromLine,
+  FULL_EXCLUDES,
+  stripExcludeMagic,
+} from '../scripts/check-no-source-terms';
 
 describe('extractRefs', () => {
   it('@import 整行', () => {
@@ -158,5 +166,223 @@ describe('checkRefs', () => {
     expect(checkRefs(refs, 'README.md', existsIn(new Set()))).toEqual([
       { doc: 'README.md', line: 7, type: 'link', rawPath: 'docs/ADOPTION.md' },
     ]);
+  });
+});
+
+// ══════════ PR A1.1 F2:canonical ADR 引用治理(位置 + 數量型守門) ══════════
+//
+// 為什麼放這裡:這是 **doc reference governance**,不是 source-term 掃描行為。
+// `tests/check-no-source-terms.test.ts` 只留掃描行為與效能 / mutation 契約。
+//
+// ⚠️ 字面拆碎(`EXT_PLAN_*`):本檔要斷言「repo 內已無外部私人 plan 的檔名引用」,
+//    若把該檔名整串寫進 source,這個測試自己就會變成一個 hit(自我命中),
+//    只能靠豁免清單繞開 —— 那正是要禁止的做法。改用執行期 concat。
+//    **本測試不使用任何全域 value allowlist 自我豁免。**
+
+const REPO = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+  encoding: 'utf-8',
+}).trim();
+
+/**
+ * canonical ADR 的 repo-relative 路徑。
+ * ⚠️ 同樣拆碎:整串寫進 source 會讓本檔自己變成第 6 個引用點,
+ *    G2 的數量斷言就得靠自我豁免才能過 —— 那正是要禁止的做法。
+ */
+const ADR_PATH = 'docs/architecture/' + 'source-term-history-baseline.md';
+
+/** 外部私人規劃文件的檔名 / 路徑片段(拆碎,避免自我命中)。 */
+const EXT_PLAN_FILE = 'HARNESS_' + 'OPTIMIZATION_' + 'IMPLEMENTATION_' + 'PLAN.md';
+const EXT_PLAN_DIR = 'Documents' + '/Codex';
+
+/**
+ * canonical 引用的**預期位置與數量**。
+ * 改動 = 有意識的治理決定,必須同步改這張表(這正是位置+數量型守門的用意)。
+ */
+const EXPECTED_ADR_REFS: Array<[string, number]> = [
+  ['.github/workflows/ci.yml', 2],
+  ['scripts/source-term-baseline.json', 1],
+  ['tests/check-no-source-terms.test.ts', 1],
+  ['.claude/memory/progress.md', 1],
+  // progress 歸檔是唯讀歷史 snapshot;被搬走的 sprint entry 連同它的引用一起進來。
+  // 這一筆是 archive 動作造成的、有意識登錄的位置(G2 原本就擋下了這個搬移)。
+  ['.claude/memory/progress-archive/progress-2026-08.md', 1],
+];
+const EXPECTED_ADR_REF_TOTAL = 6;
+
+function trackedFiles(): string[] {
+  return execFileSync('git', ['-C', REPO, 'ls-files', '-z'], { encoding: 'utf-8' })
+    .split('\0')
+    .filter(Boolean);
+}
+
+function readTracked(rel: string): string {
+  return fs.readFileSync(path.join(REPO, rel), 'utf-8');
+}
+
+/** 掃全部 tracked 檔的文字內容,回傳 `rel -> 命中次數`(跳過讀不到的二進位檔)。 */
+function countInTracked(needle: string): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const rel of trackedFiles()) {
+    let text: string;
+    try {
+      text = readTracked(rel);
+    } catch {
+      continue;
+    }
+    let n = 0;
+    let i = text.indexOf(needle);
+    while (i !== -1) {
+      n++;
+      i = text.indexOf(needle, i + needle.length);
+    }
+    if (n > 0) out.set(rel, n);
+  }
+  return out;
+}
+
+/** 抽 ADR 的 H2 標題(引用要指到穩定標題,不是章節編號)。 */
+function adrHeadings(): string[] {
+  return readTracked(ADR_PATH)
+    .split('\n')
+    .filter((l) => l.startsWith('## '))
+    .map((l) => l.slice(3).trim());
+}
+
+describe('PR A1.1 F2 — canonical ADR 引用治理', () => {
+  it('🔴 G1:canonical ADR 存在且被 git 追蹤', () => {
+    expect(fs.existsSync(path.join(REPO, ADR_PATH))).toBe(true);
+    expect(trackedFiles()).toContain(ADR_PATH);
+    // 必要段落齊備(F2 要求的治理內容)
+    const h = adrHeadings();
+    for (const need of [
+      '決策',
+      '政策邊界:source-term 掃描 vs gitleaks 秘密掃描',
+      '掃描範圍與三種 repo 情境',
+      'baseline 變更授權',
+      '導入步驟(下游採用者)',
+      '效能與 scale 契約',
+      '已知限制',
+      'Provenance',
+    ]) {
+      expect(h, `ADR 缺必要段落「${need}」`).toContain(need);
+    }
+  });
+
+  it('🔴 G1b:ADR 記錄 provenance(PR 引用 + 首次 baseline SHA)', () => {
+    const text = readTracked(ADR_PATH);
+    // ⚠️ 刻意**不要求**裸的「PR 井號+數字」字面:那是 CA pattern,而 working tree
+    //    掃描不受 baseline 影響 → 下游採用者開箱即被自己的 ADR 擋紅(Step 5 CRITICAL)。
+    //    provenance 改以 repo 既有的「井號」寫法記錄。
+    expect(text).toMatch(/井號\+\d+/);
+    expect(text).toContain('641065227924184b058b3f64c1c9f9971a3a17b4');
+  });
+
+  it('🔴 G2:canonical 引用的位置與數量固定,且每處都指到穩定標題', () => {
+    const hits = countInTracked(ADR_PATH);
+    // 位置 + 數量
+    for (const [rel, n] of EXPECTED_ADR_REFS) {
+      expect(hits.get(rel) ?? 0, `${rel} 的 ADR 引用數`).toBe(n);
+    }
+    const total = [...hits.values()].reduce((a, b) => a + b, 0);
+    expect(total, 'ADR 引用總數(新增引用要同步更新 EXPECTED_ADR_REFS)').toBe(
+      EXPECTED_ADR_REF_TOTAL
+    );
+    expect(
+      EXPECTED_ADR_REFS.reduce((a, [, n]) => a + n, 0),
+      'EXPECTED_ADR_REFS 的列加總要等於總數常數'
+    ).toBe(EXPECTED_ADR_REF_TOTAL);
+    expect([...hits.keys()].sort()).toEqual(
+      EXPECTED_ADR_REFS.map(([r]) => r).sort()
+    );
+
+    // 每一處引用附近(同行或前後 2 行)要出現 ADR 的某個穩定 H2 標題,
+    // 而不是只丟一個裸路徑。標題可能因換行落在鄰行,故取視窗。
+    //
+    // 🔴 Step 5 INFORMATIONAL:錨點必須帶「」括號。ADR 的 H2 之一是**兩個字**的
+    //    「決策」,中文散文裡「治理決策」「拍板決策」隨處可見——只比對裸標題時,
+    //    引用就算改成裸路徑、指錯章節,只要鄰近句子含那兩個字仍會通過,契約
+    //    讀起來比它實際守的強得多。六處引用本來就都寫成「<標題>」,所以連括號
+    //    一起比對不放寬任何既有寫法,只是把漏洞關掉。
+    const headings = adrHeadings();
+    for (const [rel] of EXPECTED_ADR_REFS) {
+      const lines = readTracked(rel).split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        if (!lines[i]!.includes(ADR_PATH)) continue;
+        const win = lines.slice(Math.max(0, i - 2), i + 3).join('\n');
+        expect(
+          headings.some((h) => win.includes(`\u300c${h}\u300d`)),
+          `${rel}:${i + 1} 的 ADR 引用未以「<穩定標題>」形式指到章節`
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('🔴 G3:tracked files 已無外部私人 plan 的檔名 / 路徑引用(0 hit)', () => {
+    expect([...countInTracked(EXT_PLAN_FILE).keys()]).toEqual([]);
+    expect([...countInTracked(EXT_PLAN_DIR).keys()]).toEqual([]);
+  });
+
+  it('🔴 G4:progress.md 不含個人絕對路徑(0 hit)', () => {
+    const text = readTracked('.claude/memory/progress.md');
+    expect(text).not.toContain('/Users/');
+    expect(text).not.toContain('~/Documents');
+  });
+
+  it('🔴 G6:模板出貨的檔不得含任何 PR/pull 引用(下游可攜性)', () => {
+    // 🔴 Step 5 CRITICAL。CA(context-aware)判定靠 allowedPrs 放行,而 allowedPrs
+    //    是**本 repo 的** squash subject 推出來的。任何寫進 tracked 檔的 PR 引用,
+    //    在本 repo 綠、到下游(全新 history、allowedPrs 不含該號)就紅——而且
+    //    **working tree 掃描不受 baseline 影響**,template-fallback 也救不了,
+    //    等於每個採用者開箱即被模板自己的檔擋住。
+    //    所以這裡不是「本 repo 掃得過就好」,而是**數量必須為 0**。
+    //    要寫 PR 號請用 repo 既有的「井號」寫法或「(井號+N)」括號格式。
+    //
+    // ⚠️ **只掃模板出貨的檔,用靜態前綴清單、不做 runtime 判斷**(Step 5 r3)。
+    //    第一版對「全部 tracked 檔」斷言,採用者寫自己的紀錄、引用自家已 merge
+    //    的號就會紅(checker 政策是允許的)—— 守門對象與執行對象錯配。
+    //    第二版改用 runtime 判別式(看 baseline 的 `template:` 前綴)更糟:
+    //    GitHub Template 會把那個檔原樣複製過去,對採用者**判反**;而且它同時
+    //    變成一行就能關掉三條守門的斷路器,關掉時還報 PASS 不是 SKIP。
+    //    靜態清單沒有這兩個問題:它不看環境、關不掉、也不會誤判族群。
+    const TEMPLATE_OWNED_PREFIXES = [
+      'scripts/',
+      'tests/',
+      'docs/',
+      '.github/',
+      '.claude/sop/',
+      'CLAUDE.md',
+      'README.md',
+    ];
+    const ex = new Set(FULL_EXCLUDES.map(stripExcludeMagic));
+    const offenders: string[] = [];
+    for (const rel of trackedFiles()) {
+      if (ex.has(rel)) continue;
+      if (!TEMPLATE_OWNED_PREFIXES.some((pfx) => rel.startsWith(pfx))) continue;
+      let text: string;
+      try {
+        text = readTracked(rel);
+      } catch {
+        continue;
+      }
+      text.split('\n').forEach((line, i) => {
+        if (extractPrRefsFromLine(line).length > 0) {
+          offenders.push(`${rel}:${i + 1}`);
+        }
+      });
+    }
+    expect(offenders, '模板出貨的檔含 PR 引用 → 採用者開箱會被模板的檔擋紅').toEqual([]);
+  });
+
+  it('🔴 G5:docs/architecture 已納入 doc-ref 掃描範圍,且 checker 對本 repo 綠', () => {
+    const src = readTracked('scripts/check-doc-refs.ts');
+    expect(src).toContain("'docs/architecture'");
+    const r = execFileSync(
+      path.join(REPO, 'node_modules/.bin/tsx'),
+      [path.join(REPO, 'scripts/check-doc-refs.ts')],
+      { cwd: REPO, encoding: 'utf-8' }
+    );
+    // 🔴 Step 5 INFORMATIONAL:原本是 toContain('0') —— '0' 在「掃 20 份」「共驗
+    //    268 個」裡都命中,無論結果如何都會過,等於空斷言。改斷言那句結論全文。
+    expect(r).toContain('0 個失效引用');
   });
 });
