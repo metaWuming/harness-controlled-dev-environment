@@ -360,7 +360,7 @@ describe("pre-commit — 工具產物守門(git add -A 誤加 untracked 的機�
     expect(staged).not.toContain(".codegraph");
     expect(staged).not.toContain(".gbrain-source");
   });
-  it("🔴 C1:非 ASCII 檔名(core.quotePath 會加引號)照樣被擋;C2:git rm --cached 清理產物放行;I3:巢狀路徑也擋", () => {
+  it("🔴 C1:非 ASCII 與 TAB 控制字元檔名(name-only 會 C-quote)照樣被擋;C2:git rm --cached 清理產物放行;I3:巢狀路徑也擋", () => {
     const dir = repoOnFeature();
     mkdirSync(join(dir, ".codegraph"), { recursive: true });
     writeFileSync(join(dir, ".codegraph/中文.db"), "bin");
@@ -373,6 +373,13 @@ describe("pre-commit — 工具產物守門(git add -A 誤加 untracked 的機�
     gitc(dir, "rm", "-q", "--cached", ".codegraph/中文.db");
     r = gitc(dir, "commit", "-q", "-m", "cleanup");
     expect(r.code, r.err).toBe(0);
+    // Codex P1:TAB / 控制字元檔名(quotePath=false 仍會 C-quote)也必須擋 —— 只有 -z 給原始位元組
+    writeFileSync(join(dir, ".codegraph/\tctl.db"), "bin");
+    gitc(dir, "add", "-f", ".codegraph/\tctl.db");
+    r = gitc(dir, "commit", "-q", "-m", "ctl");
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("TOOL_ARTIFACT_PATTERN");
+    gitc(dir, "restore", "--staged", ".codegraph/\tctl.db");
     mkdirSync(join(dir, "packages/app/.codegraph"), { recursive: true });
     writeFileSync(join(dir, "packages/app/.codegraph/x"), "bin");
     gitc(dir, "add", "-f", "packages/app/.codegraph/x");

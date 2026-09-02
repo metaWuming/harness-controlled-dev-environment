@@ -50,12 +50,20 @@ staged="$(git diff --cached --name-only --no-renames)"
 [ -z "$staged" ] && exit 0
 
 # 0) 任何分支:本機 AI / 工具產物不得進 commit(`git add -A` 誤加 untracked 的機器化守門)
-#    🔴 `-c core.quotePath=false`(Step 5 C1):預設 quotePath 會把非 ASCII / 控制字元檔名印成帶引號的
-#       八進位跳脫(`".codegraph/\344..."`),`^\.codegraph/` 對不上開頭的引號 → 靜默放行。關掉才是原始路徑。
+#    🔴 `-z` NUL 分隔逐筆讀(Step 5 C1 + Codex P1):`--name-only` 預設會把非 ASCII / TAB / LF / 控制字元
+#       檔名印成帶引號的 C-style 跳脫(`".codegraph/\t..."`),pattern 對不上開頭的引號 → 靜默放行;
+#       `-c core.quotePath=false` 只解高位元非 ASCII,控制字元照樣被 quote。只有 `-z` 給原始位元組。
+#       用 `read -r -d ''` 逐筆處理(不經 `$(...)`,避免 NUL 被 shell 丟掉);每筆單獨餵 grep(stdin,
+#       路徑不會被當成選項)。
 #    🔴 `--diff-filter=d`(Step 5 C2):排除刪除——「把誤入版控的產物 `git rm --cached` 掉」正是本規則
 #       最該放行的修復路徑;rename-out 的 delete 端同理。只在本段排除,下面 default-deny 段維持原樣。
-artifact_staged="$(git -c core.quotePath=false diff --cached --name-only --no-renames --diff-filter=d)"
-artifacts=$(printf '%s\n' "$artifact_staged" | grep -E "$TOOL_ARTIFACT_PATTERN" || true)
+artifacts=""
+while IFS= read -r -d '' artifact_path; do
+  if printf '%s' "$artifact_path" | grep -qE "$TOOL_ARTIFACT_PATTERN"; then
+    artifacts="${artifacts}${artifacts:+
+}${artifact_path}"
+  fi
+done < <(git diff --cached --name-only -z --no-renames --diff-filter=d)
 if [ -n "$artifacts" ]; then
   {
     echo ""

@@ -19,14 +19,20 @@
   },
   {
     "file": "scripts/git-hooks/pre-commit",
-    "find": "artifact_staged=\"$(git -c core.quotePath=false diff --cached --name-only --no-renames --diff-filter=d)\"",
-    "replace": "artifact_staged=\"$(git diff --cached --name-only --no-renames --diff-filter=d)\"",
-    "label": "GA-M4 拿掉 quotePath=false → 非 ASCII 檔名測試轉紅"
+    "find": "done < <(git diff --cached --name-only -z --no-renames --diff-filter=d)",
+    "replace": "done < <(git -c core.quotePath=false diff --cached --name-only --no-renames --diff-filter=d | tr '\\n' '\\0')",
+    "label": "GA-M4 放棄 -z 原始位元組、改回 quotePath=false → TAB 檔名測試轉紅"
   },
   {
     "file": "scripts/git-hooks/pre-commit",
-    "find": "artifact_staged=\"$(git -c core.quotePath=false diff --cached --name-only --no-renames --diff-filter=d)\"",
-    "replace": "artifact_staged=\"$(git -c core.quotePath=false diff --cached --name-only --no-renames)\"",
+    "find": "done < <(git diff --cached --name-only -z --no-renames --diff-filter=d)",
+    "replace": "done < <(git diff --cached --name-only -z --no-renames)",
     "label": "GA-M5 拿掉 --diff-filter=d → rm --cached 清理放行測試轉紅"
+  },
+  {
+    "file": "scripts/git-hooks/pre-commit",
+    "find": "  if printf '%s' \"$artifact_path\" | grep -qE \"$TOOL_ARTIFACT_PATTERN\"; then",
+    "replace": "  if printf '%s' \"$artifact_path\" | grep -qE \"^$TOOL_ARTIFACT_PATTERN\"; then",
+    "label": "GA-M6 pattern 被錨定回根目錄 → 巢狀路徑測試轉紅"
   }
 ]
