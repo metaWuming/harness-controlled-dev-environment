@@ -1,0 +1,154 @@
+// tests/invoked-as-main.e2e.test.ts — 三 consumer 真 CLI 行為 e2e(12 案)
+//
+// 4 場景 × 3 consumer:
+//   #1 direct         — tsx scripts/<name>.ts       → main branch 執行、無 [invoked-as-main] stderr
+//   #2 symlink dir    — tsx <link>/scripts/<name>.ts → 完全等同 #1(兩端 realpath 一致)、無 indeterminate
+//   #3 import 情境    — tsx wrapper.mjs(不設 IAM_DANGLING)→ target 頂層歸 import-or-not-main、完全靜默、無 main output
+//   #4 indeterminate — tsx wrapper.mjs IAM_DANGLING=1 → target 頂層歸 indeterminate、stderr 有 sanitized 診斷、caller exit 2
+//
+// wrapper 檔在 tests/fixtures/invoked-as-main-wrapper/;共用邏輯以 env 差別控制。
+// symlink fixture 自建、不依賴 OS /tmp 是不是 symlink 的巧合(對抗 CI Linux 差異)。
+
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterAll, describe, expect, it } from "vitest";
+
+const REPO = path.resolve(__dirname, "..");
+const TSX = path.join(REPO, "node_modules/.bin/tsx");
+const WRAPPER_DIR = path.join(REPO, "tests/fixtures/invoked-as-main-wrapper");
+
+const tmpDirs: string[] = [];
+afterAll(() => {
+  for (const d of tmpDirs) rmSync(d, { recursive: true, force: true });
+});
+
+function mkSymlinkToRepo(): { linkDir: string; linkedRepo: string } {
+  // 建一個 tmp 目錄,底下放一個 symlink 指到 REPO;不依賴 /tmp 本身是不是 symlink
+  const parent = mkdtempSync(path.join(tmpdir(), "iam-e2e-link-"));
+  tmpDirs.push(parent);
+  const linkedRepo = path.join(parent, "repo-link");
+  symlinkSync(REPO, linkedRepo);
+  return { linkDir: parent, linkedRepo };
+}
+
+type RunResult = { status: number | null; stdout: string; stderr: string };
+
+function run(scriptPath: string, args: string[] = [], env: Record<string, string> = {}): RunResult {
+  const r = spawnSync(TSX, [scriptPath, ...args], {
+    cwd: REPO,
+    encoding: "utf-8",
+    env: { ...process.env, ...env },
+  });
+  return { status: r.status, stdout: r.stdout, stderr: r.stderr };
+}
+
+interface ConsumerSpec {
+  label: string;
+  scriptName: string;
+  wrapperName: string;
+  expectedMainExit: number;
+  expectedMainMatcher: (r: RunResult) => void;
+}
+
+const CONSUMERS: ConsumerSpec[] = [
+  {
+    label: "mutate",
+    scriptName: "mutate.ts",
+    wrapperName: "mutate-wrapper.mjs",
+    expectedMainExit: 2,
+    expectedMainMatcher: (r) => {
+      // mutate.ts 無 args 時 fail-closed exit 2、stderr 印「拒跑」
+      expect(r.stderr).toMatch(/拒跑|工作樹不乾淨|✗/);
+    },
+  },
+  {
+    label: "check-control-catalog",
+    scriptName: "check-control-catalog.ts",
+    wrapperName: "check-control-catalog-wrapper.mjs",
+    expectedMainExit: 0,
+    expectedMainMatcher: (r) => {
+      expect(r.stdout).toContain("CATALOG_OK");
+    },
+  },
+  {
+    label: "check-mutation-specs",
+    scriptName: "check-mutation-specs.ts",
+    wrapperName: "check-mutation-specs-wrapper.mjs",
+    expectedMainExit: 0,
+    expectedMainMatcher: (r) => {
+      expect(r.stdout).toContain("mutation spec 樣本都對得上");
+    },
+  },
+];
+
+for (const spec of CONSUMERS) {
+  describe(`consumer:${spec.label}`, () => {
+    it(`#1 direct 呼叫 → main 執行、exit ${spec.expectedMainExit}、無 [invoked-as-main] stderr`, () => {
+      const scriptPath = path.join(REPO, "scripts", spec.scriptName);
+      const r = run(scriptPath);
+      expect(r.status).toBe(spec.expectedMainExit);
+      spec.expectedMainMatcher(r);
+      expect(r.stderr).not.toContain("[invoked-as-main]");
+      expect(r.stderr).not.toContain("indeterminate");
+    });
+
+    it(`#2 symlink dir 呼叫 → 完全等同 #1(兩端 realpath 一致)、無 indeterminate 診斷`, () => {
+      const { linkedRepo } = mkSymlinkToRepo();
+      const linkedScript = path.join(linkedRepo, "scripts", spec.scriptName);
+      const r = run(linkedScript);
+      expect(r.status).toBe(spec.expectedMainExit);
+      spec.expectedMainMatcher(r);
+      expect(r.stderr).not.toContain("[invoked-as-main]");
+      expect(r.stderr).not.toContain("indeterminate");
+    });
+
+    it(`#3 import 情境 → target import-or-not-main、完全靜默、無 main 特徵輸出`, () => {
+      const wrapperPath = path.join(WRAPPER_DIR, spec.wrapperName);
+      const r = run(wrapperPath); // 不設 IAM_DANGLING
+      // wrapper 自然結束(target main 不執行);exit 應為 0(node 預設)
+      expect(r.status).toBe(0);
+      // 關鍵:reporter 對 import-or-not-main 完全靜默、無 [invoked-as-main] / indeterminate 字樣
+      expect(r.stderr).not.toContain("[invoked-as-main]");
+      expect(r.stderr).not.toContain("indeterminate");
+      // target 頂層 main 未執行的證據:無 main 特徵輸出
+      // (每 consumer 的 main 特徵見 spec.expectedMainMatcher;此處反向斷言)
+      if (spec.label === "check-control-catalog") {
+        expect(r.stdout).not.toContain("CATALOG_OK");
+      }
+      if (spec.label === "check-mutation-specs") {
+        expect(r.stdout).not.toContain("mutation spec 樣本都對得上");
+      }
+      if (spec.label === "mutate") {
+        expect(r.stderr).not.toContain("拒跑");
+      }
+    });
+
+    it(`#4 indeterminate wrapper → caller exit 2 + stderr 診斷含 [invoked-as-main] / reason`, () => {
+      const wrapperPath = path.join(WRAPPER_DIR, spec.wrapperName);
+      const r = run(wrapperPath, [], { IAM_DANGLING: "1" });
+      expect(r.status).toBe(2);
+      expect(r.stderr).toContain("[invoked-as-main]");
+      expect(r.stderr).toContain("reason=realpath-failed:argv1");
+      // 診斷保持單行(結尾一 \n、內容無其他 \n 在該診斷行內)
+      const diagLine = r.stderr.split("\n").find((l) => l.includes("[invoked-as-main]"));
+      expect(diagLine).toBeTruthy();
+      // ⚠️ label 斷言的邊界:三 consumer 內部有 static import chain
+      // (check-mutation-specs → mutate);dangling argv1 下,**先被執行到頂層的
+      // module 先觸發 indeterminate branch、process.exit(2)**,後面的頂層根本沒跑。
+      // 因此 label 可能是本 script 或是它 static import 的 script;fail-closed 不變量
+      // (exit 2 + stderr 有診斷)在任一情況都成立,label 具體是誰不是本 case 要鎖的
+      const validLabels = ["mutate", "check-control-catalog", "check-mutation-specs"];
+      const hasSomeLabel = validLabels.some((l) => r.stderr.includes(l));
+      expect(hasSomeLabel).toBe(true);
+      // main 特徵輸出不該出現(caller exit 2 前 main 未執行)
+      if (spec.label === "check-control-catalog") {
+        expect(r.stdout).not.toContain("CATALOG_OK");
+      }
+      if (spec.label === "check-mutation-specs") {
+        expect(r.stdout).not.toContain("mutation spec 樣本都對得上");
+      }
+    });
+  });
+}
