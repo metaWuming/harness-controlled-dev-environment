@@ -1,0 +1,38 @@
+[
+  {
+    "file": "scripts/check-mutation-specs.ts",
+    "find": "if (!self.ok || !self.original) {",
+    "replace": "if (false) {",
+    "label": "MSD-M1 spec 檔自身 checkTarget 失敗不再判 untrusted → symlink / untracked spec e2e 轉紅"
+  },
+  {
+    "file": "scripts/check-mutation-specs.ts",
+    "find": "if (specs.length === 0) return { ok: false, reason: `${SPEC_DIR} 沒有任何 spec 檔——空表 = 這道閘門形同虛設` };",
+    "replace": "if (false) return { ok: false, reason: `${SPEC_DIR} 沒有任何 spec 檔——空表 = 這道閘門形同虛設` };",
+    "label": "MSD-M2 0 個 spec 檔不再 exit 2 → 空表測試轉紅"
+  },
+  {
+    "file": "scripts/check-mutation-specs.ts",
+    "find": "if (untrusted.length > 0) {",
+    "replace": "if (false) {",
+    "label": "MSD-M3 untrusted 不再優先回 code 2 → formatReport 與 e2e ⑤⑦ 轉紅"
+  },
+  {
+    "file": "scripts/check-mutation-specs.ts",
+    "find": "if (!applied.ok) problems.push(",
+    "replace": "if (false) problems.push(",
+    "label": "MSD-M4 樣本對不上不再記 DRIFT → 改碼 e2e ② 與單測轉紅"
+  },
+  {
+    "file": "scripts/check-mutation-specs.ts",
+    "find": "if (!target.ok || !target.original) {",
+    "replace": "if (false) {",
+    "label": "MSD-M5 目標檔 checkTarget 失敗不再判 DRIFT → 目標缺 / untracked / symlink 單測轉紅"
+  },
+  {
+    "file": "scripts/check-mutation-specs.ts",
+    "find": "return { rel, status: \"drift\", probes: 0, problems: [`spec 檔 ${rel} 解析失敗:${(e as Error).message}`] };",
+    "replace": "return { rel, status: \"untrusted\", probes: 0, problems: [`spec 檔 ${rel} 解析失敗:${(e as Error).message}`] };",
+    "label": "MSD-M6 JSON / schema 壞誤判為 untrusted(exit 2)→ e2e ③ 與單測轉紅"
+  }
+]

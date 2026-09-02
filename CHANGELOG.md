@@ -4,6 +4,11 @@
 每個 milestone 收尾時更新本檔、`package.json` 版本與 `docs/MIGRATION.md`,merge 後由 Owner 打 annotated tag
 (tag 訊息寫 breaking / 導入步驟 / 對應 PR 編號;本檔刻意不寫 PR 編號,避免下游採用者的去識別化掃描把它當未知引用)。
 
+## [Unreleased]
+
+### Added
+- `npm run check:mutation-specs` + CI step「Mutation Spec Drift Check」(CTRL-CI-013):對 `scripts/mutations/*.json` 每條探針驗 `find` 樣本仍能在目標原始碼精準對上,不跑 mutation。spec 檔與目標檔都先經 `mutate.ts` 的 `checkTarget` 取 bytes(symlink / 未追蹤 → exit 2 無法判定;內容漂移 → exit 1)。
+
 ## [0.2.0] — 2026-09-02 — Milestone A:Consistency Foundation
 
 主線可自證、模板／已導入模式不可混淆、所有控制措施標明強度(不變量 I1 / I2 / I3 / I4 / I6)。

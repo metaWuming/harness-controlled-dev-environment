@@ -51,13 +51,20 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 - **內容**:`DELIVERY_REFS` 只過 `SAFE_REF_RE` + `rev-parse --verify`(option injection 已擋住),但 `HEAD` 或任何 feature branch 名都解得開。在 feature branch 上設 `DELIVERY_REFS=HEAD`,未 merge commit 的 subject 就進了 `allowedPrs` —— round 2 P1-1 的修法可被整條還原,目前無守門。
 - **工時**:1-2h
 
-### 🟡 mutation spec 漂移無 CI 守門
+### ✅ mutation spec 漂移無 CI 守門(PR #47)
 - **來源**:2026-09-01 PR A1.1 Step 5 r2 I16(confidence 6);A1.1 內實際發生過一次(M14 隨串流改寫失效、M23 隨編碼釘法插入失效)
 - **內容**:29 條探針是高風險車道的覆蓋率佐證,但 CI 只跑 `vitest`、不跑 `mutate`。spec 的 `find` 是原始碼逐字樣本,改到那些行就會對不上;`mutate.ts` 對此 fail-closed(exit 2),但**只有人工重跑時才會發現**。
 - **可能方向**:CI 加一支只驗「所有 spec 的 find 樣本仍能在原始碼中找到」的輕量檢查(不跑完整 mutation,避免 CI 時間爆掉)。
 - **工時**:1-2h
+- **交付**:`scripts/check-mutation-specs.ts` + CI step「Mutation Spec Drift Check」(CTRL-CI-013)。只複用 `mutate.ts` 純函式(`checkTarget` / `parseSpecs` / `applyMutation`);spec 檔與目標檔都先經 `checkTarget` 取 bytes 再解析(supervisor plan rev 2 P1:tracked spec 換 symlink → exit 2,外部檔不成為輸入)。exit 1 = 漂移 / 2 = 無法判定。24 條測試(含 10 條真 CLI e2e)+ 自身探針 `mutation-spec-drift.json` 6 條
 
 ## P3
+
+### 🟢 P2#3 Step 5 defer 集合(check-mutation-specs 邊角,15 條 INFORMATIONAL conf ≤8)
+- **來源**:2026-09-02 PR P2#3 Step 5 worktree 審 r1–r2;0 CRITICAL 未修
+- **內容**:①`mutate.ts` / `check-control-catalog.ts` 的 `isMain` 同款未 realpath,經 symlink 目錄呼叫靜默 exit 0(r1 C1 只修了本 checker;conf 7);②`invokedAsMain` realpath 單邊 fallback 仍可能不等 → 靜默 exit 0,根本解是 isMain false 時印 stderr(conf 7);③`fileURLToPath` 對非 file: URL 在模組頂層 throw(conf 6);④測試手拼 `'file://'+path` 應改 `pathToFileURL`(conf 7);⑤只認小寫 `.json` 且不遞迴,子目錄 / 大寫副檔名 spec 靜默不受守門(conf 8);⑥`checkTarget` nlink 檢查在純讀情境多餘拒判(conf 7);⑦MSD-M1 / M5 實際 kill 機制是 TypeError 走 exit 2,與 label「判 DRIFT / untrusted」不一致(conf 8);⑧catalog CI-013 `implementation` 未列 `scripts/mutate.ts`(邏輯所在;conf 6);⑨README / catalog degradation 的 exit 2 清單漏 root 解析失敗、argv 錯、未預期例外三種(conf 7);⑩`formatReport([])` 回 code 0,純函式對空輸入 fail-open、只靠 listSpecFiles 前置擋(conf 6);⑪`--root` 指外層 repo 子目錄時「repo 內」與「tracked」兩個邊界不同(conf 5);⑫e2e ⑤「外部檔未成為輸入」斷言靠 `not.toContain('對得上')`、fixture 加第二個 spec 就失效(conf 6);⑬`--allow-empty` 多餘(conf 5);⑭spec 帶 UTF-8 BOM 診斷訊息差(conf 5);⑮`PR #___` 佔位靠 Step 6 補號(A3 defer ② 同形;conf 5)
+- **方向**:①② 一起收(三支 checker 抽共用 `invokedAsMain` 到 `scripts/lib/`,isMain false 印一行);⑤⑨⑧ 各 0.5h;其餘逐條 0.5h
+- **工時**:①② 1h;其餘逐條 0.5h
 
 ### 🟢 A3 Step 5 defer 集合(control catalog / baseline governance 邊角,21 條 INFORMATIONAL conf ≤7)
 - **來源**:2026-09-03 PR A3 Step 5 worktree 審 r1–r5;0 CRITICAL 未修
