@@ -5,18 +5,22 @@
 //   - collectChangedFiles:四源變更面(committed/staged/unstaged/untracked)聯集去重
 //   - config schema:出廠 config 的型別 / 域名合法性(空表也要過)
 //
-// ⚠️ 填完 scripts/cso-trigger.config.ts 路徑表後,請啟用檔尾註解掉的
-//   「路徑表完整性鎖」測試(哨兵檔自比,防路徑表默默失準)。
+// 路徑表完整性鎖(檔尾)是 **always-on**:依 scripts/harness.config.json 宣告的 mode 分支
+//   (PR A2),採用者不需再手動取消註解。
 
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import {
   evaluateCsoTrigger,
   collectChangedFiles,
   CSO_TRIGGER_PATTERNS,
   type CsoDomain,
 } from '../scripts/check-cso-trigger';
+import { CSO_NOT_APPLICABLE } from '../scripts/cso-trigger.config';
+import { checkCsoDomainDisposition } from '../scripts/check-adoption-readiness';
+import { loadHarnessConfig } from '../scripts/lib/harness-config';
 
 // tsx binary + script path 供 argv 白名單子程序測試用
 const SCRIPT = path.resolve(__dirname, '../scripts/check-cso-trigger.ts');
@@ -219,40 +223,43 @@ describe('cso-trigger.config — 出廠 config schema 驗證', () => {
 });
 
 // =====================================================================
-// 路徑表完整性鎖(真檔 SSOT 自比)— 填完 config 後啟用
+// 路徑表完整性鎖(always-on,依宣告 mode 分支)— PR A2
 // =====================================================================
 //
-// 出廠空 config 下此測試必失敗,故以註解形式保留為範本。導入、填完
-// scripts/cso-trigger.config.ts 後:
-//   1. 把 SENTINELS 換成你的 repo 內「路徑表聲稱會命中」的真實代表檔(每域一個)
-//   2. 取消註解啟用
-// 作用:代表檔被改名 / 搬移 → 此測試紅 → 逼人同步更新 CSO_TRIGGER_PATTERNS,
-// 防路徑表默默失準(哨兵檔案級;域內其他單檔漏列仍靠 review 紀律)。
-//
-// import fs from 'node:fs';
-// import path from 'node:path';
-//
-// describe('路徑表完整性鎖(真檔 SSOT 自比)', () => {
-//   const REPO = path.join(__dirname, '..');
-//   // file = 該域路徑表「聲稱會命中」的真實代表檔(換成你的 repo 內實際路徑)
-//   const SENTINELS: { domain: CsoDomain; file: string }[] = [
-//     { domain: '金流', file: 'src/lib/payment/charge.ts' },
-//     { domain: 'PII', file: 'src/lib/auth.ts' },
-//     { domain: '權限/IDOR/資產轉移', file: 'src/middleware.ts' },
-//     { domain: 'audit-trail', file: 'src/lib/audit-log.ts' },
-//     { domain: '橫切保守項', file: 'prisma/schema.prisma' },
-//   ];
-//
-//   it.each(SENTINELS)('$domain 哨兵檔 $file 存在且被路徑表命中', ({ domain, file }) => {
-//     expect(fs.existsSync(path.join(REPO, file))).toBe(true);
-//     const r = evaluateCsoTrigger([file]); // 不注入 → 用真 config
-//     expect(r.matches.some((m) => m.domain === domain && m.file === file)).toBe(true);
-//   });
-//
-//   it('每個域在路徑表中至少有一條 pattern', () => {
-//     const domains = new Set(CSO_TRIGGER_PATTERNS.map((p) => p.domain));
-//     expect(domains).toEqual(
-//       new Set(['金流', 'PII', '權限/IDOR/資產轉移', 'audit-trail', '橫切保守項'])
-//     );
-//   });
-// });
+// 舊版是註解掉的範本、要採用者填完 config 後手動取消註解 —— 沒人會記得。現在依
+// `scripts/harness.config.json` 的顯式 mode 宣告分支(不是偵測):
+//   - adopted:五域各恰一種處置(pattern XOR notApplicable)、每條 pattern 至少命中一個
+//     tracked 檔(防路徑表隨重構默默失準;哨兵檔清單改由 git ls-files 取代)
+//   - template:路徑表與 notApplicable 皆為空(出廠狀態)
+// skip 的那一邊是宣告值決定的,採用者的 `npm test` 會看到 template 分支 1 個 skipped、屬設計。
+
+describe('路徑表完整性鎖(依 harness.config mode 分支)', () => {
+  const REPO = path.join(__dirname, '..');
+  const cfg = loadHarnessConfig(REPO); // 缺檔 / 壞掉 → 這裡直接 throw = 測試紅(fail-closed)
+
+  it('harness.config 可載入且 mode 合法', () => {
+    expect(['template', 'adopted']).toContain(cfg.mode);
+  });
+
+  describe.skipIf(cfg.mode !== 'adopted')('adopted', () => {
+    it('五域各恰一種處置(pattern XOR notApplicable)', () => {
+      expect(checkCsoDomainDisposition(CSO_TRIGGER_PATTERNS, CSO_NOT_APPLICABLE)).toEqual([]);
+    });
+    it('每條 pattern 至少命中一個 tracked 檔', () => {
+      const tracked = execFileSync('git', ['-C', REPO, 'ls-files', '-z'], { encoding: 'utf-8' })
+        .split('\0')
+        .filter(Boolean);
+      for (const { domain, pattern } of CSO_TRIGGER_PATTERNS) {
+        const r = evaluateCsoTrigger(tracked, [{ domain, pattern }]);
+        expect(r.matches.length, `[${domain}] ${pattern} 對不到任何 tracked 檔`).toBeGreaterThan(0);
+      }
+    });
+  });
+
+  describe.skipIf(cfg.mode !== 'template')('template', () => {
+    it('路徑表與 notApplicable 皆為空(出廠狀態)', () => {
+      expect(CSO_TRIGGER_PATTERNS).toEqual([]);
+      expect(CSO_NOT_APPLICABLE).toEqual([]);
+    });
+  });
+});

@@ -171,6 +171,10 @@ describe('checkRefs', () => {
 
 // ══════════ PR A1.1 F2:canonical ADR 引用治理(位置 + 數量型守門) ══════════
 //
+// PR A2:原 G2(引用位置＋數量)與 G4(progress 無個人路徑)是**模板作者的簿記**,已搬到
+// scripts/lib/template-governance.ts,由 `npm run check:adoption` 只在 mode=template 時執行
+// (T9 / T8)。這裡只留對採用者也成立的 G1 / G1b / G3 / G5 / G6;編號刻意不重排。
+//
 // 為什麼放這裡:這是 **doc reference governance**,不是 source-term 掃描行為。
 // `tests/check-no-source-terms.test.ts` 只留掃描行為與效能 / mutation 契約。
 //
@@ -186,28 +190,13 @@ const REPO = execFileSync('git', ['rev-parse', '--show-toplevel'], {
 /**
  * canonical ADR 的 repo-relative 路徑。
  * ⚠️ 同樣拆碎:整串寫進 source 會讓本檔自己變成第 6 個引用點,
- *    G2 的數量斷言就得靠自我豁免才能過 —— 那正是要禁止的做法。
+ *    T9(check:adoption)的數量斷言就得靠自我豁免才能過 —— 那正是要禁止的做法。
  */
 const ADR_PATH = 'docs/architecture/' + 'source-term-history-baseline.md';
 
 /** 外部私人規劃文件的檔名 / 路徑片段(拆碎,避免自我命中)。 */
 const EXT_PLAN_FILE = 'HARNESS_' + 'OPTIMIZATION_' + 'IMPLEMENTATION_' + 'PLAN.md';
 const EXT_PLAN_DIR = 'Documents' + '/Codex';
-
-/**
- * canonical 引用的**預期位置與數量**。
- * 改動 = 有意識的治理決定,必須同步改這張表(這正是位置+數量型守門的用意)。
- */
-const EXPECTED_ADR_REFS: Array<[string, number]> = [
-  ['.github/workflows/ci.yml', 2],
-  ['scripts/source-term-baseline.json', 1],
-  ['tests/check-no-source-terms.test.ts', 1],
-  ['.claude/memory/progress.md', 1],
-  // progress 歸檔是唯讀歷史 snapshot;被搬走的 sprint entry 連同它的引用一起進來。
-  // 這一筆是 archive 動作造成的、有意識登錄的位置(G2 原本就擋下了這個搬移)。
-  ['.claude/memory/progress-archive/progress-2026-08.md', 1],
-];
-const EXPECTED_ADR_REF_TOTAL = 6;
 
 function trackedFiles(): string[] {
   return execFileSync('git', ['-C', REPO, 'ls-files', '-z'], { encoding: 'utf-8' })
@@ -277,55 +266,9 @@ describe('PR A1.1 F2 — canonical ADR 引用治理', () => {
     expect(text).toContain('641065227924184b058b3f64c1c9f9971a3a17b4');
   });
 
-  it('🔴 G2:canonical 引用的位置與數量固定,且每處都指到穩定標題', () => {
-    const hits = countInTracked(ADR_PATH);
-    // 位置 + 數量
-    for (const [rel, n] of EXPECTED_ADR_REFS) {
-      expect(hits.get(rel) ?? 0, `${rel} 的 ADR 引用數`).toBe(n);
-    }
-    const total = [...hits.values()].reduce((a, b) => a + b, 0);
-    expect(total, 'ADR 引用總數(新增引用要同步更新 EXPECTED_ADR_REFS)').toBe(
-      EXPECTED_ADR_REF_TOTAL
-    );
-    expect(
-      EXPECTED_ADR_REFS.reduce((a, [, n]) => a + n, 0),
-      'EXPECTED_ADR_REFS 的列加總要等於總數常數'
-    ).toBe(EXPECTED_ADR_REF_TOTAL);
-    expect([...hits.keys()].sort()).toEqual(
-      EXPECTED_ADR_REFS.map(([r]) => r).sort()
-    );
-
-    // 每一處引用附近(同行或前後 2 行)要出現 ADR 的某個穩定 H2 標題,
-    // 而不是只丟一個裸路徑。標題可能因換行落在鄰行,故取視窗。
-    //
-    // 🔴 Step 5 INFORMATIONAL:錨點必須帶「」括號。ADR 的 H2 之一是**兩個字**的
-    //    「決策」,中文散文裡「治理決策」「拍板決策」隨處可見——只比對裸標題時,
-    //    引用就算改成裸路徑、指錯章節,只要鄰近句子含那兩個字仍會通過,契約
-    //    讀起來比它實際守的強得多。六處引用本來就都寫成「<標題>」,所以連括號
-    //    一起比對不放寬任何既有寫法,只是把漏洞關掉。
-    const headings = adrHeadings();
-    for (const [rel] of EXPECTED_ADR_REFS) {
-      const lines = readTracked(rel).split('\n');
-      for (let i = 0; i < lines.length; i++) {
-        if (!lines[i]!.includes(ADR_PATH)) continue;
-        const win = lines.slice(Math.max(0, i - 2), i + 3).join('\n');
-        expect(
-          headings.some((h) => win.includes(`\u300c${h}\u300d`)),
-          `${rel}:${i + 1} 的 ADR 引用未以「<穩定標題>」形式指到章節`
-        ).toBe(true);
-      }
-    }
-  });
-
   it('🔴 G3:tracked files 已無外部私人 plan 的檔名 / 路徑引用(0 hit)', () => {
     expect([...countInTracked(EXT_PLAN_FILE).keys()]).toEqual([]);
     expect([...countInTracked(EXT_PLAN_DIR).keys()]).toEqual([]);
-  });
-
-  it('🔴 G4:progress.md 不含個人絕對路徑(0 hit)', () => {
-    const text = readTracked('.claude/memory/progress.md');
-    expect(text).not.toContain('/Users/');
-    expect(text).not.toContain('~/Documents');
   });
 
   it('🔴 G6:模板出貨的檔不得含任何 PR/pull 引用(下游可攜性)', () => {
