@@ -176,6 +176,17 @@ jobs:
           git remote set-head origin -a || echo "note: origin/HEAD set-head 略過"
           git fetch --no-tags origin develop:refs/remotes/origin/develop || echo "note: develop ref fetch 略過(未採 develop 主線則屬正常)"
 
+      - name: Baseline Governance Check
+        # PR A3(ADR〈已知限制〉第 2 條的機器守門):source-term baseline 值若在本 PR 改變,PR 只准動
+        # config / ADR / bookkeeping allowlist,且新值必須是 merge-base 的祖先(不得指向本 PR 內 commit)並為舊值後裔。
+        # 只在 pull_request 跑(push 到主線時 merge-base == HEAD 會 fail-closed 假紅);base ref 依賴上一 step 的
+        # 顯式 fetch —— fetch 失敗 → ref 不存在 → 本 step exit 2(fail-closed),不假設 fetch-depth 0 產生 remote ref。
+        # base 用 env 傳、在 run 內引號展開,不做 workflow 表達式的 shell 內插;腳本本身不讀任何 env。
+        if: github.event_name == 'pull_request'
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: npm run check:baseline-governance -- "--base=origin/$DEFAULT_BRANCH"
+
       - name: TODOS Markers Check
         # marker 治理:TODOS.md 完成宣稱(✅/完工)必須引用有 merge 證據的 PR 號,
         # 防打錯號 / 投機性標 ✅。MARKER_SELF_PR 解「同 PR 翻 marker 引用本 PR」死鎖。

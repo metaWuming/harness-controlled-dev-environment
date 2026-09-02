@@ -332,6 +332,35 @@
       "notes": "機器不驗 locator / evidence / degradation / bypass / notes 的文字內容(誠實邊界,見渲染檔檔頭)"
     },
     {
+      "id": "CTRL-CI-012",
+      "name": "Baseline governance(baseline 變更旁路機器守門)",
+      "legacyGate": "⑤",
+      "class": "hard-automated",
+      "triggers": [
+        "pull_request"
+      ],
+      "implementation": [
+        ".github/workflows/ci.yml",
+        "scripts/check-baseline-governance.ts"
+      ],
+      "locator": "CI step「Baseline Governance Check」(pull_request only);merge-base 對 HEAD 比 source-term baseline 值",
+      "ciStep": "Baseline Governance Check",
+      "owner": "github",
+      "failureBehavior": "block",
+      "evidence": "CI check 狀態;本機 npm run check:baseline-governance -- --base=<ref> 印 UNCHANGED / OK / FAIL 逐條 code",
+      "degradation": "base ref 未 fetch 或 shallow → exit 2(無法判定,不放行)",
+      "tested": [
+        "e2e",
+        "mutation"
+      ],
+      "testRefs": [
+        "tests/check-baseline-governance.e2e.test.ts",
+        "scripts/mutations/baseline-governance.json"
+      ],
+      "bypass": "admin override",
+      "notes": "人工段 = CTRL-GOV-002(Owner 授權);本條只擋機器可判的旁路形狀,不判斷推進理由是否正當"
+    },
+    {
       "id": "CTRL-HOOK-001",
       "name": "pre-commit:保護分支 code 守衛",
       "legacyGate": "⑤",

@@ -1,0 +1,44 @@
+[
+  {
+    "file": "scripts/check-baseline-governance.ts",
+    "find": "  return p === BASELINE_CONFIG || p === BASELINE_ADR || isBookkeepingPath(p);",
+    "replace": "  return true || p === BASELINE_CONFIG || p === BASELINE_ADR || isBookkeepingPath(p);",
+    "label": "BG-M1 allowlist 放寬成全部 → e2e (3)(4) path.disallowed 轉紅"
+  },
+  {
+    "file": "scripts/check-baseline-governance.ts",
+    "find": "        if (isAnc === null) f.push({ code: 'value.not-ancestor-of-merge-base'",
+    "replace": "        if (false) f.push({ code: 'value.not-ancestor-of-merge-base'",
+    "label": "BG-M2 祖先檢查拿掉 → e2e (6) 洗白形狀轉紅"
+  },
+  {
+    "file": "scripts/check-baseline-governance.ts",
+    "find": "            if (forward === null || ovSha === nvSha) f.push({ code: 'value.not-forward'",
+    "replace": "            if (false) f.push({ code: 'value.not-forward'",
+    "label": "BG-M3 倒退放行 → e2e (7) 轉紅"
+  },
+  {
+    "file": "scripts/check-baseline-governance.ts",
+    "find": "  if (baseArgs.length !== 1 || baseArgs[0] === '--base=') {",
+    "replace": "  if (baseArgs.length > 1) {",
+    "label": "BG-M4 缺 --base 不再擋(偷渡預設)→ e2e (9)(11) 轉紅"
+  },
+  {
+    "file": "scripts/check-baseline-governance.ts",
+    "find": "  const base = baseArgs[0]!.slice('--base='.length);",
+    "replace": "  const base = process.env.DELIVERY_REFS ?? baseArgs[0]!.slice('--base='.length);",
+    "label": "BG-M5 env 讀取偷渡 → e2e (9)(env 有值也不讀)轉紅"
+  },
+  {
+    "file": "scripts/check-baseline-governance.ts",
+    "find": "  return r.status === 'UNCHANGED' || r.status === 'OK' ? 0 : 2;",
+    "replace": "  return 0;",
+    "label": "BG-M6 有 FAIL 仍 exit 0 → e2e 負對照(exit 2 斷言)轉紅"
+  },
+  {
+    "file": "scripts/check-baseline-governance.ts",
+    "find": "  if (mb === head) return und('merge-base.equals-head'",
+    "replace": "  if (false) return und('merge-base.equals-head'",
+    "label": "BG-M7 mb == HEAD 不再 fail-closed → e2e (15) 轉紅"
+  }
+]

@@ -46,6 +46,7 @@ type: reference
 | CTRL-CI-009 | Source-term 去識別化掃描 | ⑤ | `push` `pull_request` | `.github/workflows/ci.yml`, `scripts/check-no-source-terms.ts`, `scripts/deny-terms.txt`, `scripts/source-term-baseline.json` | CI step「Source-term scan (de-identification gate)」;current tree 全量 + baseline..HEAD per-commit diff + commit 訊息 | `Source-term scan (de-identification gate)` | github | block | admin override;baseline 變更走 CTRL-GOV-002(人工授權),機器守門見 ADR 已知限制第 2 條的處置 | CI check 狀態;hit 列 rev 前 8 碼 + 內容片段 | 下游 fork 找不到 template baseline → 降級全史掃描並印 warning;shallow clone fail-closed | unit e2e mutation | `tests/check-no-source-terms.test.ts`, `scripts/mutations/source-term-diff-scan.json` | 已知限制第 1 條:diff hit 缺精確 file:line 屬診斷精度、不影響判定,登錄於此、無排程修復 |
 | CTRL-CI-010 | 測試套件(vitest) | ④ | `push` `pull_request` | `.github/workflows/ci.yml`, `vitest.config.ts` | CI step「Test (vitest)」;本機 npm test | `Test (vitest)` | github | block | admin override;skipped 測試不算失敗(原則 7:有 skip 要說明) | CI check 狀態;測試檔 / 通過數在 job log | 無 | manual-drill | — | — |
 | CTRL-CI-011 | Control catalog conformance | ⑪ | `push` `pull_request` | `.github/workflows/ci.yml`, `scripts/check-control-catalog.ts`, `scripts/lib/control-catalog.ts`, `scripts/control-catalog.json`, `scripts/render-control-catalog.ts`, `docs/CONTROL-CATALOG.md` | CI step「Control Catalog Check」;路徑 tracked + ci.yml 雙向鎖(ciSetupSteps 豁免)+ 渲染一致 | `Control Catalog Check` | github | block | admin override | CI check 狀態;本機 npm run check:catalog 印 CATALOG_OK / CATALOG_FAIL 逐條 code | 無;catalog 缺 / 壞一律 exit 2 | unit e2e mutation | `tests/control-catalog.test.ts`, `tests/render-control-catalog.test.ts`, `tests/check-control-catalog.e2e.test.ts`, `scripts/mutations/control-catalog.json` | 機器不驗 locator / evidence / degradation / bypass / notes 的文字內容(誠實邊界,見渲染檔檔頭) |
+| CTRL-CI-012 | Baseline governance(baseline 變更旁路機器守門) | ⑤ | `pull_request` | `.github/workflows/ci.yml`, `scripts/check-baseline-governance.ts` | CI step「Baseline Governance Check」(pull_request only);merge-base 對 HEAD 比 source-term baseline 值 | `Baseline Governance Check` | github | block | admin override | CI check 狀態;本機 npm run check:baseline-governance -- --base=<ref> 印 UNCHANGED / OK / FAIL 逐條 code | base ref 未 fetch 或 shallow → exit 2(無法判定,不放行) | e2e mutation | `tests/check-baseline-governance.e2e.test.ts`, `scripts/mutations/baseline-governance.json` | 人工段 = CTRL-GOV-002(Owner 授權);本條只擋機器可判的旁路形狀,不判斷推進理由是否正當 |
 
 ## soft-automated
 
@@ -109,7 +110,7 @@ type: reference
 | ② | CTRL-SOP-001 |
 | ③ | CTRL-CI-008, CTRL-MEM-002 |
 | ④ | CTRL-CI-002, CTRL-CI-003, CTRL-CI-010 |
-| ⑤ | CTRL-CI-009, CTRL-HOOK-001, CTRL-HOOK-002, CTRL-HOOK-003, CTRL-GOV-002 |
+| ⑤ | CTRL-CI-009, CTRL-CI-012, CTRL-HOOK-001, CTRL-HOOK-002, CTRL-HOOK-003, CTRL-GOV-002 |
 | ⑥ | CTRL-GUARD-001 |
 | ⑦ | CTRL-SOP-002, CTRL-SOP-006 |
 | ⑧ | CTRL-SOP-003 |
