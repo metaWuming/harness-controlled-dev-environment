@@ -31,7 +31,7 @@
   },
   {
     "file": "scripts/check-baseline-governance.ts",
-    "find": "  return r.status === 'UNCHANGED' || r.status === 'OK' ? 0 : 2;",
+    "find": "  return r.status === 'UNCHANGED' || r.status === 'OK' || r.status === 'SKIPPED' ? 0 : 2;",
     "replace": "  return 0;",
     "label": "BG-M6 有 FAIL 仍 exit 0 → e2e 負對照(exit 2 斷言)轉紅"
   },
