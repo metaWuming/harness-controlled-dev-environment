@@ -237,7 +237,7 @@ export function parseControlCatalog(text: string): ControlCatalog {
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) fail('root 必須是 JSON object');
   const root = parsed as Record<string, unknown>;
   const unknown = Object.keys(root).filter((k) => !ROOT_ALLOWED.has(k));
-  if (unknown.length > 0) fail(`root 未知欄位:${unknown.join(', ')}(只准 schemaVersion / ciSetupSteps / controls)`);
+  if (unknown.length > 0) fail(`root 未知欄位:${unknown.join(', ')}(只准 schemaVersion / ciSetupSteps / controls,外加純說明的 _comment)`);
   for (const k of ROOT_REQUIRED) if (!(k in root)) fail(`root 缺必要欄位 ${k}`);
   if (root.schemaVersion !== CATALOG_SCHEMA_VERSION) {
     fail(`schemaVersion 未知(收到 ${JSON.stringify(root.schemaVersion)},本 loader 只支援 ${CATALOG_SCHEMA_VERSION})`);

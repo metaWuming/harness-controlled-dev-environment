@@ -71,6 +71,13 @@ type: guide
       每條 pattern 對得到 repo 真實檔案,防路徑表隨重構漂移;template 分支那一條會顯示 skipped、屬設計
 - [ ] 之後**每次新增安全敏感模組,同步更新路徑表**(machine 判定是下限不是上限)
 
+## 3.5 Control catalog:你自己加的 CI step 要登錄
+
+- [ ] 每個非 setup 的 ci.yml step 都要在 `scripts/control-catalog.json` 有一條 `hard-automated` control(`ciStep` 逐字等於
+      step 名);環境準備 step 列進 `ciSetupSteps`。**每個 step 都必須有單行 `name:`**(無名 step 或 `name: |` 會被
+      `check:catalog` 擋)。改完 JSON 跑 `npm run catalog:render`,不要手改 `docs/CONTROL-CATALOG.md`
+- [ ] 沒有對應測試的 control 用 `"tested": ["untested"]` 誠實標;`check:catalog` 綠 = 登錄與 CI 雙向對應
+
 ## 4. 本機 git hooks
 
 - [ ] `npm run setup-hooks`(設 `core.hooksPath`,一次即可,clone 的每個人都要跑)
@@ -110,6 +117,12 @@ type: guide
       `pull_request:` 各自的 `branches: [...]` 行,都必須等於 config 的 `protectedBranches`(多一個、
       少一個都紅;push 清單裡只允許 `feature/**` 這一個 glob,其他 glob 一律擋)
 - [ ] 同一 workflow 的 `Adoption Readiness Check` step(`npm run check:adoption`)要保留,恰 1 行
+- [ ] 三處 delivery-branch 的 `if:` 行(Fetch delivery refs / TODOS Markers / Source-term)在 adopted mode 會被 A5.ci.if 驗:
+      必須逐字等於 `if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)`
+      再對 `deliveryBranches` 每個 b 接 ` || github.ref == 'refs/heads/<b>'`。出廠 ci.yml 含 `develop`——要嘛把 `develop` 列進
+      `deliveryBranches`,要嘛從三行拿掉
+- [ ] `Baseline Governance Check` step(pull_request only)要保留:同 repo PR 會帶 `--head`,保護分支之間的 promotion PR
+      (例 develop → main)依你宣告的 `protectedBranches` 明文跳過;fork PR 不帶 `--head`
 - [ ] 用 Next.js+Prisma → 照 `stack/nextjs-prisma/README.md` 把 L2 層裝上
       (ESLint AST 規則 + migration 守衛 + CI 片段)
 - [ ] `Source-term scan` step:本模板用它防「來源專案識別詞」殘留。

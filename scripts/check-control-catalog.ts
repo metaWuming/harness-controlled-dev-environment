@@ -4,7 +4,9 @@
 //
 // 驗的是**對應關係**(loader 只驗資料形狀):
 //   1. 每個 implementation / testRefs 路徑都在 `git ls-files` 內(tracked)。
-//   2. ci.yml 雙向鎖(位置＋數量,不解析 YAML 結構,只抽 `- name:` 行):
+//   2. ci.yml 雙向鎖(位置＋數量,不解析 YAML 結構;只掃 `steps:` 區塊、每個 list item 一條):
+//      0. 每個 step 都必須有單行字面 `name:`(`ci.step.unnamed:<line>` / `ci.step.name-unsupported:<line>`;
+//         Step 5 r1 C4:無名或 `name: |` 的 step 不能從反向鎖消失);引號會剝掉、未加引號的尾端 `# 註解` 會剝掉
 //      a. ci.yml 每個 step 名恰出現 1 次(`ci.step.duplicate:<name>`)
 //      b. ciSetupSteps 每個名稱必須存在於 ci.yml(`catalog.setup.missing:<name>`)
 //      c. ciSetupSteps 與所有 control 的 ciStep 交集為空(`catalog.setup.shadows-gate:<name>`;loader 已擋,此處再驗一次)
@@ -39,14 +41,76 @@ export interface CatalogFinding {
   msg: string;
 }
 
-/** 從 ci.yml 抽全部 `- name:` 行(trim 後名稱;保留重複以便 2a 判定)。 */
-export function extractCiStepNames(yml: string): string[] {
-  const out: string[] = [];
-  for (const line of yml.split('\n')) {
-    const m = /^\s*- name:\s*(.+?)\s*$/.exec(line);
-    if (m) out.push(m[1]!);
+export interface CiStepItem {
+  line: number;
+  name: string | null;
+  /** `name: |` / `name: >` / 空值 這類本 checker 不支援的形狀(fail-closed)。 */
+  unsupported: string | null;
+}
+
+/** 去引號、去尾端 `# 註解`(只對未加引號的值)。回 null = 不支援的形狀。 */
+function normalizeStepName(raw: string): { name: string | null; unsupported: string | null } {
+  const v = raw.trim();
+  if (v === '' || v === '|' || v === '>' || v.startsWith('|') || v.startsWith('>')) return { name: null, unsupported: raw };
+  const q = /^"(.*)"\s*(#.*)?$|^'(.*)'\s*(#.*)?$/.exec(v);
+  if (q) return { name: (q[1] ?? q[3])!, unsupported: null };
+  return { name: v.replace(/\s+#.*$/, ''), unsupported: null };
+}
+
+/**
+ * 只掃 `steps:` 區塊(縮排判定,不解析 YAML 結構):每個 list item 一條;有 `name:` 就抽名稱、
+ * 沒有就登記為 unnamed(Step 5 r1 C4:無名 step 不能從反向鎖消失)。`strategy.matrix` 之類
+ * 區塊外的 `- name:` 不算 step(I1)。註解行與空行略過。
+ */
+export function extractCiSteps(yml: string): CiStepItem[] {
+  const lines = yml.split('\n');
+  const items: CiStepItem[] = [];
+  let stepsIndent = -1;
+  let itemIndent = -1;
+  let cur: CiStepItem | null = null;
+  const flush = () => {
+    if (cur) items.push(cur);
+    cur = null;
+  };
+  const setName = (raw: string) => {
+    if (!cur) return;
+    const n = normalizeStepName(raw);
+    cur.name = n.name;
+    cur.unsupported = n.unsupported;
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i]!;
+    if (/^\s*(#|$)/.test(raw)) continue;
+    const indent = /^\s*/.exec(raw)![0].length;
+    const t = raw.trim();
+    if (stepsIndent >= 0 && indent <= stepsIndent) {
+      flush();
+      stepsIndent = -1;
+      itemIndent = -1;
+    }
+    if (stepsIndent < 0) {
+      if (t === 'steps:') stepsIndent = indent;
+      continue;
+    }
+    if (t === '-' || t.startsWith('- ')) {
+      if (itemIndent < 0) itemIndent = indent;
+      if (indent === itemIndent) {
+        flush();
+        cur = { line: i + 1, name: null, unsupported: null };
+        const rest = t.replace(/^-\s*/, '');
+        if (/^name:/.test(rest)) setName(rest.slice('name:'.length));
+        continue;
+      }
+    }
+    if (cur && indent > itemIndent && /^name:/.test(t)) setName(t.slice('name:'.length));
   }
-  return out;
+  flush();
+  return items;
+}
+
+/** 相容舊介面:只回有名稱的 step(保留重複以便 2a 判定)。 */
+export function extractCiStepNames(yml: string): string[] {
+  return extractCiSteps(yml).flatMap((s) => (s.name === null ? [] : [s.name]));
 }
 
 export function checkCatalogConformance(catalog: ControlCatalog, io: CatalogIo): CatalogFinding[] {
@@ -69,7 +133,12 @@ export function checkCatalogConformance(catalog: ControlCatalog, io: CatalogIo):
     f.push({ code: 'ci.unreadable', msg: `${CI_YML} 讀不到` });
     return f;
   }
-  const names = extractCiStepNames(yml);
+  const steps = extractCiSteps(yml);
+  for (const st of steps) {
+    if (st.unsupported !== null) f.push({ code: `ci.step.name-unsupported:${st.line}`, msg: `${CI_YML}:${st.line} 的 name 是本 checker 不支援的形狀(${JSON.stringify(st.unsupported.trim())};請用單行字面)` });
+    else if (st.name === null) f.push({ code: `ci.step.unnamed:${st.line}`, msg: `${CI_YML}:${st.line} 的 step 沒有 name:(無名 step 無法登錄 catalog,反向鎖不接受)` });
+  }
+  const names = steps.flatMap((st) => (st.name === null ? [] : [st.name]));
   const seen = new Set<string>();
   const dup = new Set<string>();
   for (const n of names) {

@@ -58,7 +58,7 @@ npx tsx scripts/mutate.ts --file src/example.ts \
   做 mutation,驗 `tests/check-doc-size.test.ts` 有守得住那條不變量。這是範例,
   你的專案 mutation spec 依業務需求另外寫。
 - `source-term-diff-scan.json` — 本模板自身的 29 條探針,守 `check-no-source-terms.ts`
-- `adoption-readiness.json` — PR A2 的 16 條探針,守 `check-adoption-readiness.ts` /
+- `adoption-readiness.json` — PR A2 的 16 條 + PR A3 的 4 條(M15–M18),共 20 條探針,守 `check-adoption-readiness.ts` /
   `lib/harness-config.ts` / `lib/template-governance.ts`(loader fail-closed、mode dispatch、
   A3 / A4 / A5 / A7 規則、字面分支名文法;M12–M14 由 e2e 行為級證據殺)
 - `control-catalog.json` — PR A3 的 11 條探針,守 `lib/control-catalog.ts`(loader 形狀與一致性)與

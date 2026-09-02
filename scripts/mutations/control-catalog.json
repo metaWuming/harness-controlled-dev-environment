@@ -64,5 +64,17 @@
     "find": "    if (ciStep === null) fail(`${id}:hard-automated 且 triggers 含 push / pull_request → ciStep 必填`);",
     "replace": "    if (false) fail(`${id}:hard-automated 且 triggers 含 push / pull_request → ciStep 必填`);",
     "label": "M11 loader:hard+CI 的 ciStep 可 null → e2e (ii) 與 ciStep 一致性測試轉紅"
+  },
+  {
+    "file": "scripts/check-control-catalog.ts",
+    "find": "    else if (st.name === null) f.push({ code: `ci.step.unnamed:${st.line}`",
+    "replace": "    else if (false) f.push({ code: `ci.step.unnamed:${st.line}`",
+    "label": "M12 checker:無名 step 不再 fail → e2e (C4) 轉紅"
+  },
+  {
+    "file": "scripts/check-control-catalog.ts",
+    "find": "  if (q) return { name: (q[1] ?? q[3])!, unsupported: null };",
+    "replace": "  if (false) return { name: (q[1] ?? q[3])!, unsupported: null };",
+    "label": "M13 extractor:不剝引號 → e2e (I1) 轉紅"
   }
 ]

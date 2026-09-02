@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { checkCatalogConformance, extractCiStepNames, type CatalogIo } from '../scripts/check-control-catalog';
+import { checkCatalogConformance, extractCiStepNames, extractCiSteps, type CatalogIo } from '../scripts/check-control-catalog';
 import { parseControlCatalog } from '../scripts/lib/control-catalog';
 import { renderCatalog } from '../scripts/render-control-catalog';
 
@@ -97,10 +97,23 @@ function makeRepo(doc: unknown, opts: { ci?: string; mdOverride?: string; skipTr
 }
 const codes = (out: string) => [...out.matchAll(/\[([^\]]+)\]/g)].map((m) => m[1]!);
 
-describe('extractCiStepNames', () => {
-  it('抽 - name: 行、保留重複、trim', () => {
+describe('extractCiSteps(Step 5 r1 C4 / I1)', () => {
+  it('抽 steps 區塊內每個 item;保留重複;trim', () => {
     expect(extractCiStepNames(CI)).toEqual(['Checkout', 'Typecheck', 'Test (vitest)']);
-    expect(extractCiStepNames('      - name:   A  \n  - name: A\n- notname: B')).toEqual(['A', 'A']);
+    expect(extractCiStepNames(CI + '      - name: Typecheck\n')).toEqual(['Checkout', 'Typecheck', 'Test (vitest)', 'Typecheck']);
+  });
+  it('無名 step(- run: / - uses:)與 dash 後多空白都被登記;name 在後行也抽得到', () => {
+    const yml = CI + '      - run: echo x\n      -   name: Spaced\n      - uses: a/b\n        name: Later\n';
+    const items = extractCiSteps(yml);
+    expect(items.map((s) => s.name)).toEqual(['Checkout', 'Typecheck', 'Test (vitest)', null, 'Spaced', 'Later']);
+    expect(items.filter((s) => s.name === null).map((s) => s.line)).toHaveLength(1);
+  });
+  it('引號剝掉、尾端註解剝掉;`name: |` 標 unsupported;matrix include 的 - name 不算 step;steps 以外的 - name 不算', () => {
+    const yml = `jobs:\n  ci:\n    strategy:\n      matrix:\n        include:\n          - name: node22\n    steps:\n      - name: "Lint"\n        run: x\n      - name: 'Typecheck' # c\n      - name: Test (vitest) # trailing\n      - name: |\n          multi\n  other:\n    - name: NotAStep\n`;
+    const items = extractCiSteps(yml);
+    expect(items.map((s) => s.name)).toEqual(['Lint', 'Typecheck', 'Test (vitest)', null]);
+    expect(items[3]!.unsupported).not.toBeNull();
+    expect(extractCiStepNames(yml)).not.toContain('node22');
   });
 });
 
@@ -193,6 +206,22 @@ describe('check:catalog CLI(真 git fixture)', () => {
     const r = run([`--root=${makeRepo(baseDoc(), { ci: CI + '      - name: Extra\n        run: x\n' })}`]);
     expect(r.code).toBe(2);
     expect(codes(r.out)).toContain('ci.step.unregistered:Extra');
+  });
+  it('(C4) ci.yml 多一個無名 step(- run:)→ exit 2 含 ci.step.unnamed;name: | → name-unsupported;-   name: 也算 step', () => {
+    let r = run([`--root=${makeRepo(baseDoc(), { ci: CI + '      - run: echo sneaky\n' })}`]);
+    expect(r.code).toBe(2);
+    expect(codes(r.out).some((c) => c.startsWith('ci.step.unnamed:'))).toBe(true);
+    r = run([`--root=${makeRepo(baseDoc(), { ci: CI + '      - name: |\n          Weird\n' })}`]);
+    expect(r.code).toBe(2);
+    expect(codes(r.out).some((c) => c.startsWith('ci.step.name-unsupported:'))).toBe(true);
+    r = run([`--root=${makeRepo(baseDoc(), { ci: CI + '      -   name: Extra\n        run: x\n' })}`]);
+    expect(r.code).toBe(2);
+    expect(codes(r.out)).toContain('ci.step.unregistered:Extra');
+  });
+  it('(I1) 引號 / 尾端註解的 name 對得上 catalog → exit 0', () => {
+    const ci = CI.replace('- name: Typecheck', '- name: "Typecheck"').replace('- name: Test (vitest)', "- name: 'Test (vitest)' # keep");
+    const r = run([`--root=${makeRepo(baseDoc(), { ci })}`]);
+    expect(r.code, r.out + r.err).toBe(0);
   });
   it('(viii) ci.yml 兩個同名 step → exit 2 含 duplicate', () => {
     const r = run([`--root=${makeRepo(baseDoc(), { ci: CI + '      - name: Typecheck\n        run: x\n' })}`]);

@@ -182,10 +182,21 @@ jobs:
         # 只在 pull_request 跑(push 到主線時 merge-base == HEAD 會 fail-closed 假紅);base ref 依賴上一 step 的
         # 顯式 fetch —— fetch 失敗 → ref 不存在 → 本 step exit 2(fail-closed),不假設 fetch-depth 0 產生 remote ref。
         # base 用 env 傳、在 run 內引號展開,不做 workflow 表達式的 shell 內插;腳本本身不讀任何 env。
+        # Step 5 r1 C3:base 用 PR 真正的 base 分支(GitFlow 進 develop 的 PR 不能拿 main 當 base);
+        # 同 repo 的 PR 另傳 --head,保護分支之間的 promotion PR(develop → main)由腳本依宣告的
+        # protectedBranches 明文 SKIPPED;fork PR 不傳 --head(fork 分支名可任取,不得拿來當豁免)。
         if: github.event_name == 'pull_request'
         env:
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: npm run check:baseline-governance -- "--base=origin/$DEFAULT_BRANCH"
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          git fetch --no-tags origin "$BASE_REF:refs/remotes/origin/$BASE_REF" || echo "note: base ref fetch 略過(下一步 fail-closed)"
+          if [ "$HEAD_SAME_REPO" = "true" ]; then
+            npm run check:baseline-governance -- "--base=origin/$BASE_REF" "--head=$HEAD_REF"
+          else
+            npm run check:baseline-governance -- "--base=origin/$BASE_REF"
+          fi
 
       - name: TODOS Markers Check
         # marker 治理:TODOS.md 完成宣稱(✅/完工)必須引用有 merge 證據的 PR 號,

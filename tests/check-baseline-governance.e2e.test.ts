@@ -1,11 +1,11 @@
 // tests/check-baseline-governance.e2e.test.ts — PR A3 baseline 治理旁路機器守門(真 git fixture、subprocess)
 //
-// plan §2.4 的 16 條 e2e,各一個 it。fixture 形狀:
+// plan §2.4 的 16 條 e2e + Step 5 r1 補的 (17)–(20),各一個 it。fixture 形狀:
 //   A(initial,config baseline = "")→ B(main,config baseline = A)→ feature 分支從 B 開 PR commit。
 //   merge-base(main, feature) = B。
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -214,8 +214,84 @@ describe('check:baseline-governance e2e(16 條)', () => {
     expect(r.code).toBe(2);
     expect(r.out).toMatch(/merge-base\.unavailable|merge-base\.equals-head|base\.unresolvable/);
   });
-  it('E-self:本 repo 對 frozen base 未動 baseline → exit 0 UNCHANGED', () => {
-    const r = run(['--base=5832d9ed7b57c471dcb1a298ddf9245100529bb4']);
+  it('(17) C1:舊值 template: 前綴在本 history 解不開(下游新歷史)+ 新值 = merge-base、只動 config → exit 0(視為首次設定)', () => {
+    const f = fixture();
+    f.git('checkout', '-q', 'main');
+    f.write(CONFIG, cfg('template:' + 'f'.repeat(40)));
+    const M = f.commit('M: template legacy value');
+    f.git('checkout', '-q', '-b', 'feature3');
+    f.write(CONFIG, cfg(M));
+    f.commit('C: first real baseline');
+    const r = run([`--root=${f.dir}`, '--base=main']);
+    expect(r.code, ok(r)).toBe(0);
+    expect(r.out).toContain('template 遺產');
+  });
+  it('(18) 非 template 前綴的舊值解不開 → exit 2 old-unresolvable(不放行)', () => {
+    const f = fixture();
+    f.git('checkout', '-q', 'main');
+    f.write(CONFIG, cfg('f'.repeat(40)));
+    const M = f.commit('M: bogus old');
+    f.git('checkout', '-q', '-b', 'feature3');
+    f.write(CONFIG, cfg(M));
+    f.commit('C');
+    const r = run([`--root=${f.dir}`, '--base=main']);
+    expect(r.code).toBe(2);
+    expect(r.out).toContain('[value.old-unresolvable]');
+  });
+  const HC = JSON.stringify({ schemaVersion: 2, mode: 'template', projectId: '__TEMPLATE__', templatePackageName: 'x', protectedBranches: ['develop', 'main'], deliveryBranches: ['main'], requiredAgentAdapters: ['claude'], githubGovernanceRequired: false, mergeStrategy: 'squash' });
+  it('(19) C3:--head ∈ protectedBranches(promotion PR)→ SKIPPED exit 0;--head=feature 不跳過;--head 形狀非法 / 缺 config → exit 2', () => {
+    const f = fixture();
+    f.write('scripts/harness.config.json', HC);
+    f.write(CONFIG, cfg(f.B));
+    f.write('scripts/x.ts', 'export {}\n'); // 若不跳過會 path.disallowed
+    f.commit('C');
+    let r = run([`--root=${f.dir}`, '--base=main', '--head=develop']);
+    expect(r.code, ok(r)).toBe(0);
+    expect(r.out).toMatch(/^BASELINE_GOVERNANCE_SKIPPED/);
+    r = run([`--root=${f.dir}`, '--base=main', '--head=feature']);
+    expect(r.code).toBe(2);
+    expect(r.out).toContain('[path.disallowed:scripts/x.ts]');
+    r = run([`--root=${f.dir}`, '--base=main', '--head=dev elop']);
+    expect(r.code).toBe(2);
+    expect(r.out).toContain('[head.shape]');
+    expect(run([`--root=${f.dir}`, '--base=main', '--head=']).code).toBe(2);
+    expect(run([`--root=${f.dir}`, '--base=main', '--head=a', '--head=b']).code).toBe(2);
+    const g = fixture(); // 無 harness.config
+    g.write('README.md', 'x\n');
+    g.commit('C');
+    r = run([`--root=${g.dir}`, '--base=main', '--head=develop']);
+    expect(r.code).toBe(2);
+    expect(r.err).toMatch(/harness\.config/);
+  });
+  it('(20) C3:GitFlow 三步 —— bump→develop 合法;release develop→main 以 --head=develop 跳過', () => {
+    const f = fixture();
+    f.git('checkout', '-q', 'main');
+    f.write('scripts/harness.config.json', HC);
+    f.commit('cfg');
+    f.git('checkout', '-q', '-b', 'develop');
+    f.write('feat.txt', 'feature\n');
+    const D1 = f.commit('develop feature');
+    f.git('checkout', '-q', '-b', 'bump');
+    f.write(CONFIG, cfg(D1));
+    f.commit('bump baseline to develop tip');
+    let r = run([`--root=${f.dir}`, '--base=develop', '--head=bump']);
+    expect(r.code, ok(r)).toBe(0);
+    f.git('checkout', '-q', 'develop');
+    f.git('merge', '-q', '--no-ff', 'bump', '-m', 'merge bump');
+    r = run([`--root=${f.dir}`, '--base=main', '--head=develop']);
+    expect(r.code, ok(r)).toBe(0);
+    expect(r.out).toMatch(/^BASELINE_GOVERNANCE_SKIPPED/);
+    r = run([`--root=${f.dir}`, '--base=main']); // fork 形狀(無 --head)→ 不跳過 → 紅(刻意)
+    expect(r.code).toBe(2);
+  });
+  it('E-self(template mode):以 config 首次加入的 commit 為 base → UNCHANGED;單 commit / 非 template / 找不到就跳過', () => {
+    // Step 5 r1 C2:不硬編任何 SHA(下游新歷史沒有模板的 commit)。config 首次加入的 commit 在任何 history 都存在;
+    // 若它就是 HEAD(全新 template repo 只有 1 commit)或 mode 不是 template,刻意跳過而不假裝驗過。
+    const mode = JSON.parse(readFileSync(path.join(REPO, 'scripts/harness.config.json'), 'utf-8')).mode;
+    const firstAdd = execFileSync('git', ['-C', REPO, 'log', '--diff-filter=A', '--format=%H', '--', CONFIG], { encoding: 'utf-8' }).trim().split('\n').filter(Boolean).pop() ?? '';
+    const head = execFileSync('git', ['-C', REPO, 'rev-parse', 'HEAD'], { encoding: 'utf-8' }).trim();
+    if (mode !== 'template' || firstAdd === '' || firstAdd === head) return;
+    const r = run([`--base=${firstAdd}`]);
     expect(r.code, ok(r)).toBe(0);
     expect(r.out).toMatch(/^BASELINE_UNCHANGED/);
   });

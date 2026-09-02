@@ -40,5 +40,17 @@
     "find": "  if (mb === head) return und('merge-base.equals-head'",
     "replace": "  if (false) return und('merge-base.equals-head'",
     "label": "BG-M7 mb == HEAD 不再 fail-closed → e2e (15) 轉紅"
+  },
+  {
+    "file": "scripts/check-baseline-governance.ts",
+    "find": "    if (opts.protectedBranches.includes(opts.headRef)) {",
+    "replace": "    if (true) {",
+    "label": "BG-M8 --head 一律跳過(不看 protectedBranches)→ e2e (19) --head=feature 轉紅"
+  },
+  {
+    "file": "scripts/check-baseline-governance.ts",
+    "find": "          if (!ovSha && oldVal.startsWith('template:')) {",
+    "replace": "          if (!ovSha) {",
+    "label": "BG-M9 非 template 舊值解不開也放行 → e2e (18) 轉紅"
   }
 ]
