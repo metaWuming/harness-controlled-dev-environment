@@ -60,30 +60,21 @@ npm test                         # 全綠;check-cso-trigger 的 template 分支 
 ### 回滾(0.2 → 0.1)
 
 0.2 的 loader(`scripts/lib/harness-config.ts`)**只認 schemaVersion 2**;只把 config 改回 v1、刪三個 CI step 與 catalog
-檔,`check:adoption` 仍會 exit 2。回滾必須連 harness 自己的程式一起回到 0.1,二選一:
+檔,`check:adoption` 仍會 exit 2。回滾必須連 harness 自己的程式一起回到 0.1,**唯一支援的做法是整段 revert**:
 
-**A. 整段 revert(建議)**:找出你 repo 內 Milestone A 的 squash commit(A1 / A1.1 / A2 / A3 四支;PR 編號見 tag `v0.2.0` 訊息),
-由新到舊逐一 `git revert <sha>`。這會同時還原 loader / checker / CI step / catalog / docs;你自己填的 `harness.config.json`
-與 `CLAUDE.md` Part 4 內容若在 revert 中衝突,保留你的內容但把 config 改回 v1 形狀(刪 `mergeStrategy`、`schemaVersion: 1`)。
-
-**B. 從 0.1 的 commit 還原 harness 檔(不動你的專案碼)**:下面的 `v0.1.0` 是 0.1 最後一個主線 commit 的 tag;
-本模板在 Milestone A 之前**沒有打過 tag**,若你的 repo 也沒有,改用 Milestone A 第一支 PR(A1)的 parent SHA(`git log --oneline` 找 A1 squash 的前一個 commit)。
+1. 找出你 repo 內 Milestone A 的 squash commit(A1 / A1.1 / A2 / A3 四支;PR 編號見 tag `v0.2.0` 訊息;本模板在
+   Milestone A 之前沒有打過 tag)。
+2. 由新到舊逐一 `git revert <sha>`(A3 → A2 → A1.1 → A1)。這會同時還原 loader / checker / CI step / catalog / docs,
+   並移除 A2 / A3 才新增的檔(`scripts/harness.config.json`、`scripts/lib/harness-config.ts`、
+   `scripts/check-adoption-readiness.ts`、catalog 與 baseline-governance 相關檔都是 0.1 沒有的,不能用 checkout 從 0.1 還原)。
+3. revert 衝突時保留你自己的專案內容(`CLAUDE.md` Part 4、你的 ci.yml 自訂 step),harness 檔取 revert 側。
+4. 驗證只用 0.1 就存在的指令:
 
 ```bash
-git checkout v0.1.0 -- scripts/lib/harness-config.ts scripts/check-adoption-readiness.ts \
-  scripts/lib/template-governance.ts tests/harness-config.test.ts tests/check-adoption-readiness.test.ts \
-  tests/check-adoption-readiness.e2e.test.ts tests/check-cso-trigger.test.ts tests/check-doc-refs.test.ts \
-  .github/workflows/ci.yml package.json docs/ADOPTION.md CLAUDE.md
-git rm -q scripts/control-catalog.json docs/CONTROL-CATALOG.md scripts/lib/control-catalog.ts \
-  scripts/render-control-catalog.ts scripts/check-control-catalog.ts scripts/check-baseline-governance.ts \
-  tests/control-catalog.test.ts tests/render-control-catalog.test.ts tests/check-control-catalog.e2e.test.ts \
-  tests/check-baseline-governance.e2e.test.ts scripts/mutations/control-catalog.json scripts/mutations/baseline-governance.json \
-  docs/MIGRATION.md CHANGELOG.md
-# harness.config.json:刪 mergeStrategy、schemaVersion 改 1(0.1 的 loader 只認 v1)
-npm ci && npm run check:adoption && npm test
+npm ci && npm run typecheck && npm run lint && npm test && npm run check:no-source-terms
 ```
 
-- 路徑 B 的清單以 `git diff --name-only <0.1 commit> v0.2.0` 為準(上面是 0.2.0 當下的清單;若你的 repo 在中間自訂過 ci.yml,
-  改用 revert 路徑 A 再手動合併)。
+(`check:adoption` / `check:catalog` / `check:baseline-governance` 在 0.1 不存在,不得列為回滾驗收。)
+
 - 若你在 0.2 上把 baseline 往前推過(受 Baseline Governance Check 守門),回滾後那條守門消失、只剩人工授權——
   回滾前確認 `scripts/source-term-baseline.json` 的值仍是你要的。
