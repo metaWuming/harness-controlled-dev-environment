@@ -1,0 +1,68 @@
+[
+  {
+    "file": "scripts/lib/control-catalog.ts",
+    "find": "    if (ids.has(c.id)) fail(`control id ${c.id} 重複`);",
+    "replace": "    if (false) fail(`control id ${c.id} 重複`);",
+    "label": "M1 loader:ID 重複放行 → control-catalog.test「id 重複」轉紅"
+  },
+  {
+    "file": "scripts/check-control-catalog.ts",
+    "find": "    for (const p of c.implementation) {\n      if (!tracked.has(p))",
+    "replace": "    for (const p of c.implementation) {\n      if (false)",
+    "label": "M2 checker:implementation 不驗 tracked → e2e (x) path.untracked 轉紅"
+  },
+  {
+    "file": "scripts/check-control-catalog.ts",
+    "find": "    if (!setup.has(n) && !ciSteps.has(n)) f.push(",
+    "replace": "    if (false) f.push(",
+    "label": "M3 checker:反向鎖(3e)拿掉 → e2e (vii) unregistered 轉紅"
+  },
+  {
+    "file": "scripts/check-control-catalog.ts",
+    "find": "  else if (doc !== renderCatalog(catalog)) f.push(",
+    "replace": "  else if (false) f.push(",
+    "label": "M4 checker:渲染一致比對拿掉 → e2e (ix) doc.drift 轉紅"
+  },
+  {
+    "file": "scripts/lib/control-catalog.ts",
+    "find": "  if (cls === 'hard-automated' && bypass === '--no-verify') fail(",
+    "replace": "  if (false) fail(",
+    "label": "M5 loader:hard-automated 可寫 --no-verify → bypass 一致性測試轉紅"
+  },
+  {
+    "file": "scripts/lib/control-catalog.ts",
+    "find": "  if (tested.includes('untested') && tested.length > 1) fail(",
+    "replace": "  if (false) fail(",
+    "label": "M6 loader:untested 可混用 → tested 一致性測試轉紅"
+  },
+  {
+    "file": "scripts/lib/control-catalog.ts",
+    "find": "    if (ciSetupSteps.includes(c.ciStep)) fail(",
+    "replace": "    if (false) fail(",
+    "label": "M7 loader:3c 交集檢查拿掉(把 Test (vitest) 搬進 setup 仍綠)→ e2e (i) 與 loader 測試轉紅"
+  },
+  {
+    "file": "scripts/check-control-catalog.ts",
+    "find": "    if (!seen.has(s)) f.push({ code: `catalog.setup.missing:${s}`",
+    "replace": "    if (false) f.push({ code: `catalog.setup.missing:${s}`",
+    "label": "M8 checker:3b 缺名稱檢查拿掉 → e2e (iii) setup.missing 轉紅"
+  },
+  {
+    "file": "scripts/lib/control-catalog.ts",
+    "find": "    if (seen.has(x)) fail(`${where}[${i}] = ${JSON.stringify(x)} 重複`);",
+    "replace": "    if (false) fail(`${where}[${i}] = ${JSON.stringify(x)} 重複`);",
+    "label": "M9 loader:ciSetupSteps(所有陣列)重複檢查拿掉 → 重複負對照轉紅"
+  },
+  {
+    "file": "scripts/check-control-catalog.ts",
+    "find": "  for (const x of findings) console.log(`  [${x.code}] ${x.msg}`);\n  return 2;",
+    "replace": "  for (const x of findings) console.log(`  [${x.code}] ${x.msg}`);\n  return 0;",
+    "label": "M10 checker main:有 findings 仍 exit 0 → e2e 負對照(exit 2 斷言)轉紅"
+  },
+  {
+    "file": "scripts/lib/control-catalog.ts",
+    "find": "    if (ciStep === null) fail(`${id}:hard-automated 且 triggers 含 push / pull_request → ciStep 必填`);",
+    "replace": "    if (false) fail(`${id}:hard-automated 且 triggers 含 push / pull_request → ciStep 必填`);",
+    "label": "M11 loader:hard+CI 的 ciStep 可 null → e2e (ii) 與 ciStep 一致性測試轉紅"
+  }
+]

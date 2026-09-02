@@ -143,6 +143,12 @@ jobs:
         # placeholder / 空表 / 骨架 / 缺檔 fail-closed。config 缺或壞 = exit 2。
         run: npm run check:adoption
 
+      - name: Control Catalog Check
+        # PR A3:scripts/control-catalog.json 是控制措施目錄的正本。本 step 驗:每個實作 / 測試路徑
+        # tracked、hard-automated 的 CI step 與本檔 `- name:` 雙向一一對應(setup step 由 JSON 的
+        # ciSetupSteps 明文豁免;新增 step 沒登錄 → 紅)、docs/CONTROL-CATALOG.md 與 JSON 逐位元組一致。
+        run: npm run check:catalog
+
       - name: Fetch delivery refs (for TODOS Markers Check)
         # check-todos-markers 用主線分支的 git 史判 PR merge 證據;pull_request event 下
         # checkout 是 detached merge ref,顯式 fetch 建 remote-tracking ref(best-effort:

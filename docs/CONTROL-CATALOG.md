@@ -45,6 +45,7 @@ type: reference
 | CTRL-CI-008 | TODOS marker 治理(完成宣稱需 merge 證據) | ③ | `push` `pull_request` | `.github/workflows/ci.yml`, `scripts/check-todos-markers.ts`, `scripts/lib/marker-self-pr.ts` | CI step「TODOS Markers Check」;PR event 一律跑、push 只在 delivery branch 跑 | `TODOS Markers Check` | github | block | admin override;MARKER_SELF_PR 允許同 PR 自我引用(刻意) | CI check 狀態;引用的 PR 號需在 delivery refs 有 merge 證據 | 本機 npm run check:todos(需 origin refs) | unit e2e | `tests/check-todos-markers.test.ts` | 缺 merge 證據 → block;已完工但沒引用 PR 號 → 只 warn(advisory 部分) |
 | CTRL-CI-009 | Source-term 去識別化掃描 | ⑤ | `push` `pull_request` | `.github/workflows/ci.yml`, `scripts/check-no-source-terms.ts`, `scripts/deny-terms.txt`, `scripts/source-term-baseline.json` | CI step「Source-term scan (de-identification gate)」;current tree 全量 + baseline..HEAD per-commit diff + commit 訊息 | `Source-term scan (de-identification gate)` | github | block | admin override;baseline 變更走 CTRL-GOV-002(人工授權),機器守門見 ADR 已知限制第 2 條的處置 | CI check 狀態;hit 列 rev 前 8 碼 + 內容片段 | 下游 fork 找不到 template baseline → 降級全史掃描並印 warning;shallow clone fail-closed | unit e2e mutation | `tests/check-no-source-terms.test.ts`, `scripts/mutations/source-term-diff-scan.json` | 已知限制第 1 條:diff hit 缺精確 file:line 屬診斷精度、不影響判定,登錄於此、無排程修復 |
 | CTRL-CI-010 | 測試套件(vitest) | ④ | `push` `pull_request` | `.github/workflows/ci.yml`, `vitest.config.ts` | CI step「Test (vitest)」;本機 npm test | `Test (vitest)` | github | block | admin override;skipped 測試不算失敗(原則 7:有 skip 要說明) | CI check 狀態;測試檔 / 通過數在 job log | 無 | manual-drill | — | — |
+| CTRL-CI-011 | Control catalog conformance | ⑪ | `push` `pull_request` | `.github/workflows/ci.yml`, `scripts/check-control-catalog.ts`, `scripts/lib/control-catalog.ts`, `scripts/control-catalog.json`, `scripts/render-control-catalog.ts`, `docs/CONTROL-CATALOG.md` | CI step「Control Catalog Check」;路徑 tracked + ci.yml 雙向鎖(ciSetupSteps 豁免)+ 渲染一致 | `Control Catalog Check` | github | block | admin override | CI check 狀態;本機 npm run check:catalog 印 CATALOG_OK / CATALOG_FAIL 逐條 code | 無;catalog 缺 / 壞一律 exit 2 | unit e2e mutation | `tests/control-catalog.test.ts`, `tests/render-control-catalog.test.ts`, `tests/check-control-catalog.e2e.test.ts`, `scripts/mutations/control-catalog.json` | 機器不驗 locator / evidence / degradation / bypass / notes 的文字內容(誠實邊界,見渲染檔檔頭) |
 
 ## soft-automated
 
@@ -114,6 +115,6 @@ type: reference
 | ⑧ | CTRL-SOP-003 |
 | ⑨ | CTRL-SOP-004 |
 | ⑩ | CTRL-SOP-005, CTRL-SOP-007 |
-| ⑪ | CTRL-CI-001, CTRL-CI-004, CTRL-CI-005, CTRL-CI-006, CTRL-CI-007, CTRL-GOV-005 |
+| ⑪ | CTRL-CI-001, CTRL-CI-004, CTRL-CI-005, CTRL-CI-006, CTRL-CI-007, CTRL-CI-011, CTRL-GOV-005 |
 | ⑫ | CTRL-GOV-001 |
 | ⑬ | CTRL-GOV-004 |

@@ -13,15 +13,23 @@
       "name": "Secret scan(gitleaks 全史)",
       "legacyGate": "⑪",
       "class": "hard-automated",
-      "triggers": ["push", "pull_request"],
-      "implementation": [".github/workflows/ci.yml", ".gitleaks.toml"],
+      "triggers": [
+        "push",
+        "pull_request"
+      ],
+      "implementation": [
+        ".github/workflows/ci.yml",
+        ".gitleaks.toml"
+      ],
       "locator": "CI step「Secret scan (gitleaks)」;pinned binary + sha256 校驗;全史、無 grandfather",
       "ciStep": "Secret scan (gitleaks)",
       "owner": "github",
       "failureBehavior": "block",
       "evidence": "CI check 狀態;失敗時 job log 列出 leak 位置(--redact)",
       "degradation": "本機 pre-push 有同款 gitleaks(CTRL-HOOK-003),但那是 soft;CI 這道是唯一 hard 的秘密掃描",
-      "tested": ["manual-drill"],
+      "tested": [
+        "manual-drill"
+      ],
       "testRefs": [],
       "bypass": "admin override(branch protection 設定;本 repo 未機器驗證,見 CTRL-GOV-005)",
       "notes": "與 source-term(CTRL-CI-009)是兩條獨立政策,只共用 CI job"
@@ -31,15 +39,23 @@
       "name": "Typecheck",
       "legacyGate": "④",
       "class": "hard-automated",
-      "triggers": ["push", "pull_request"],
-      "implementation": [".github/workflows/ci.yml", "tsconfig.json"],
+      "triggers": [
+        "push",
+        "pull_request"
+      ],
+      "implementation": [
+        ".github/workflows/ci.yml",
+        "tsconfig.json"
+      ],
       "locator": "CI step「Typecheck」= tsc --noEmit;本機 npm run typecheck",
       "ciStep": "Typecheck",
       "owner": "github",
       "failureBehavior": "block",
       "evidence": "CI check 狀態;本機 exit code",
       "degradation": "無(tsc 是 devDependency,離線可跑)",
-      "tested": ["manual-drill"],
+      "tested": [
+        "manual-drill"
+      ],
       "testRefs": [],
       "bypass": "admin override",
       "notes": null
@@ -49,15 +65,23 @@
       "name": "Lint",
       "legacyGate": "④",
       "class": "hard-automated",
-      "triggers": ["push", "pull_request"],
-      "implementation": [".github/workflows/ci.yml", "eslint.config.mjs"],
+      "triggers": [
+        "push",
+        "pull_request"
+      ],
+      "implementation": [
+        ".github/workflows/ci.yml",
+        "eslint.config.mjs"
+      ],
       "locator": "CI step「Lint」= eslint .;L2 stack 另掛 harness/* AST 規則",
       "ciStep": "Lint",
       "owner": "github",
       "failureBehavior": "block",
       "evidence": "CI check 狀態;本機 exit code",
       "degradation": "無",
-      "tested": ["manual-drill"],
+      "tested": [
+        "manual-drill"
+      ],
       "testRefs": [],
       "bypass": "admin override",
       "notes": null
@@ -67,15 +91,23 @@
       "name": "Dependency audit(high / critical 硬擋)",
       "legacyGate": "⑪",
       "class": "hard-automated",
-      "triggers": ["push", "pull_request"],
-      "implementation": [".github/workflows/ci.yml", "package.json"],
+      "triggers": [
+        "push",
+        "pull_request"
+      ],
+      "implementation": [
+        ".github/workflows/ci.yml",
+        "package.json"
+      ],
       "locator": "CI step「Dependency audit (high/critical 硬 gate)」= npm audit --audit-level=high",
       "ciStep": "Dependency audit (high/critical 硬 gate)",
       "owner": "github",
       "failureBehavior": "block",
       "evidence": "CI check 狀態;moderate / low 只印不擋",
       "degradation": "本機 npm audit;無網路時無法判定",
-      "tested": ["manual-drill"],
+      "tested": [
+        "manual-drill"
+      ],
       "testRefs": [],
       "bypass": "admin override",
       "notes": "只有 high / critical 擋;中低風險 CVE 可見不擋(刻意)"
@@ -85,16 +117,26 @@
       "name": "文件檔案引用完整性",
       "legacyGate": "⑪",
       "class": "hard-automated",
-      "triggers": ["push", "pull_request"],
-      "implementation": [".github/workflows/ci.yml", "scripts/check-doc-refs.ts"],
+      "triggers": [
+        "push",
+        "pull_request"
+      ],
+      "implementation": [
+        ".github/workflows/ci.yml",
+        "scripts/check-doc-refs.ts"
+      ],
       "locator": "CI step「Doc Refs Check」;掃 docs/**、.claude/sop、.claude/memory 的檔案引用",
       "ciStep": "Doc Refs Check",
       "owner": "github",
       "failureBehavior": "block",
       "evidence": "CI check 狀態;本機 npm run check:doc-refs 列出失效引用",
       "degradation": "無",
-      "tested": ["unit"],
-      "testRefs": ["tests/check-doc-refs.test.ts"],
+      "tested": [
+        "unit"
+      ],
+      "testRefs": [
+        "tests/check-doc-refs.test.ts"
+      ],
       "bypass": "admin override",
       "notes": "只讀 .md;.yml / .json / .ts 內的引用不驗;#anchor 不驗(ADR 已知限制第 5 條)"
     },
@@ -103,16 +145,28 @@
       "name": "記憶檔大小額度",
       "legacyGate": "⑪",
       "class": "hard-automated",
-      "triggers": ["push", "pull_request"],
-      "implementation": [".github/workflows/ci.yml", "scripts/check-doc-size.ts"],
+      "triggers": [
+        "push",
+        "pull_request"
+      ],
+      "implementation": [
+        ".github/workflows/ci.yml",
+        "scripts/check-doc-size.ts"
+      ],
       "locator": "CI step「Doc Size Check」;progress.md 20 KB / LESSONS.md 60 KB,額度數字由測試釘住",
       "ciStep": "Doc Size Check",
       "owner": "github",
       "failureBehavior": "block",
       "evidence": "CI check 狀態;本機 npm run check:doc-size 印各檔 % ",
       "degradation": "無",
-      "tested": ["unit", "mutation"],
-      "testRefs": ["tests/check-doc-size.test.ts", "scripts/mutations/example-fail-closed-guard.json"],
+      "tested": [
+        "unit",
+        "mutation"
+      ],
+      "testRefs": [
+        "tests/check-doc-size.test.ts",
+        "scripts/mutations/example-fail-closed-guard.json"
+      ],
       "bypass": "admin override;調額度須改測試釘值並寫理由",
       "notes": null
     },
@@ -121,16 +175,33 @@
       "name": "Adoption readiness(宣告式 mode)",
       "legacyGate": "⑪",
       "class": "hard-automated",
-      "triggers": ["push", "pull_request"],
-      "implementation": [".github/workflows/ci.yml", "scripts/check-adoption-readiness.ts", "scripts/lib/harness-config.ts", "scripts/harness.config.json"],
+      "triggers": [
+        "push",
+        "pull_request"
+      ],
+      "implementation": [
+        ".github/workflows/ci.yml",
+        "scripts/check-adoption-readiness.ts",
+        "scripts/lib/harness-config.ts",
+        "scripts/harness.config.json"
+      ],
       "locator": "CI step「Adoption Readiness Check」;template mode 列 exception、adopted mode fail-closed",
       "ciStep": "Adoption Readiness Check",
       "owner": "github",
       "failureBehavior": "block",
       "evidence": "CI check 狀態;本機 exit 0 = READY / 2 = NOT_READY 或無法判定",
       "degradation": "無;config 缺 / 壞一律 exit 2",
-      "tested": ["unit", "e2e", "mutation"],
-      "testRefs": ["tests/check-adoption-readiness.test.ts", "tests/check-adoption-readiness.e2e.test.ts", "tests/harness-config.test.ts", "scripts/mutations/adoption-readiness.json"],
+      "tested": [
+        "unit",
+        "e2e",
+        "mutation"
+      ],
+      "testRefs": [
+        "tests/check-adoption-readiness.test.ts",
+        "tests/check-adoption-readiness.e2e.test.ts",
+        "tests/harness-config.test.ts",
+        "scripts/mutations/adoption-readiness.json"
+      ],
       "bypass": "admin override",
       "notes": "mode 是顯式靜態宣告;無 runtime 偵測、無 env override"
     },
@@ -139,16 +210,28 @@
       "name": "TODOS marker 治理(完成宣稱需 merge 證據)",
       "legacyGate": "③",
       "class": "hard-automated",
-      "triggers": ["push", "pull_request"],
-      "implementation": [".github/workflows/ci.yml", "scripts/check-todos-markers.ts", "scripts/lib/marker-self-pr.ts"],
+      "triggers": [
+        "push",
+        "pull_request"
+      ],
+      "implementation": [
+        ".github/workflows/ci.yml",
+        "scripts/check-todos-markers.ts",
+        "scripts/lib/marker-self-pr.ts"
+      ],
       "locator": "CI step「TODOS Markers Check」;PR event 一律跑、push 只在 delivery branch 跑",
       "ciStep": "TODOS Markers Check",
       "owner": "github",
       "failureBehavior": "block",
       "evidence": "CI check 狀態;引用的 PR 號需在 delivery refs 有 merge 證據",
       "degradation": "本機 npm run check:todos(需 origin refs)",
-      "tested": ["unit", "e2e"],
-      "testRefs": ["tests/check-todos-markers.test.ts"],
+      "tested": [
+        "unit",
+        "e2e"
+      ],
+      "testRefs": [
+        "tests/check-todos-markers.test.ts"
+      ],
       "bypass": "admin override;MARKER_SELF_PR 允許同 PR 自我引用(刻意)",
       "notes": "缺 merge 證據 → block;已完工但沒引用 PR 號 → 只 warn(advisory 部分)"
     },
@@ -157,16 +240,31 @@
       "name": "Source-term 去識別化掃描",
       "legacyGate": "⑤",
       "class": "hard-automated",
-      "triggers": ["push", "pull_request"],
-      "implementation": [".github/workflows/ci.yml", "scripts/check-no-source-terms.ts", "scripts/deny-terms.txt", "scripts/source-term-baseline.json"],
+      "triggers": [
+        "push",
+        "pull_request"
+      ],
+      "implementation": [
+        ".github/workflows/ci.yml",
+        "scripts/check-no-source-terms.ts",
+        "scripts/deny-terms.txt",
+        "scripts/source-term-baseline.json"
+      ],
       "locator": "CI step「Source-term scan (de-identification gate)」;current tree 全量 + baseline..HEAD per-commit diff + commit 訊息",
       "ciStep": "Source-term scan (de-identification gate)",
       "owner": "github",
       "failureBehavior": "block",
       "evidence": "CI check 狀態;hit 列 rev 前 8 碼 + 內容片段",
       "degradation": "下游 fork 找不到 template baseline → 降級全史掃描並印 warning;shallow clone fail-closed",
-      "tested": ["unit", "e2e", "mutation"],
-      "testRefs": ["tests/check-no-source-terms.test.ts", "scripts/mutations/source-term-diff-scan.json"],
+      "tested": [
+        "unit",
+        "e2e",
+        "mutation"
+      ],
+      "testRefs": [
+        "tests/check-no-source-terms.test.ts",
+        "scripts/mutations/source-term-diff-scan.json"
+      ],
       "bypass": "admin override;baseline 變更走 CTRL-GOV-002(人工授權),機器守門見 ADR 已知限制第 2 條的處置",
       "notes": "已知限制第 1 條:diff hit 缺精確 file:line 屬診斷精度、不影響判定,登錄於此、無排程修復"
     },
@@ -175,34 +273,89 @@
       "name": "測試套件(vitest)",
       "legacyGate": "④",
       "class": "hard-automated",
-      "triggers": ["push", "pull_request"],
-      "implementation": [".github/workflows/ci.yml", "vitest.config.ts"],
+      "triggers": [
+        "push",
+        "pull_request"
+      ],
+      "implementation": [
+        ".github/workflows/ci.yml",
+        "vitest.config.ts"
+      ],
       "locator": "CI step「Test (vitest)」;本機 npm test",
       "ciStep": "Test (vitest)",
       "owner": "github",
       "failureBehavior": "block",
       "evidence": "CI check 狀態;測試檔 / 通過數在 job log",
       "degradation": "無",
-      "tested": ["manual-drill"],
+      "tested": [
+        "manual-drill"
+      ],
       "testRefs": [],
       "bypass": "admin override;skipped 測試不算失敗(原則 7:有 skip 要說明)",
       "notes": null
+    },
+    {
+      "id": "CTRL-CI-011",
+      "name": "Control catalog conformance",
+      "legacyGate": "⑪",
+      "class": "hard-automated",
+      "triggers": [
+        "push",
+        "pull_request"
+      ],
+      "implementation": [
+        ".github/workflows/ci.yml",
+        "scripts/check-control-catalog.ts",
+        "scripts/lib/control-catalog.ts",
+        "scripts/control-catalog.json",
+        "scripts/render-control-catalog.ts",
+        "docs/CONTROL-CATALOG.md"
+      ],
+      "locator": "CI step「Control Catalog Check」;路徑 tracked + ci.yml 雙向鎖(ciSetupSteps 豁免)+ 渲染一致",
+      "ciStep": "Control Catalog Check",
+      "owner": "github",
+      "failureBehavior": "block",
+      "evidence": "CI check 狀態;本機 npm run check:catalog 印 CATALOG_OK / CATALOG_FAIL 逐條 code",
+      "degradation": "無;catalog 缺 / 壞一律 exit 2",
+      "tested": [
+        "unit",
+        "e2e",
+        "mutation"
+      ],
+      "testRefs": [
+        "tests/control-catalog.test.ts",
+        "tests/render-control-catalog.test.ts",
+        "tests/check-control-catalog.e2e.test.ts",
+        "scripts/mutations/control-catalog.json"
+      ],
+      "bypass": "admin override",
+      "notes": "機器不驗 locator / evidence / degradation / bypass / notes 的文字內容(誠實邊界,見渲染檔檔頭)"
     },
     {
       "id": "CTRL-HOOK-001",
       "name": "pre-commit:保護分支 code 守衛",
       "legacyGate": "⑤",
       "class": "soft-automated",
-      "triggers": ["commit"],
-      "implementation": ["scripts/git-hooks/pre-commit", "scripts/git-hooks/code-pattern.sh", "scripts/setup-hooks.sh"],
+      "triggers": [
+        "commit"
+      ],
+      "implementation": [
+        "scripts/git-hooks/pre-commit",
+        "scripts/git-hooks/code-pattern.sh",
+        "scripts/setup-hooks.sh"
+      ],
       "locator": "develop / main 上 staged 含 code 或 PROTECTED_DOCS → block;feature/* 放行",
       "ciStep": null,
       "owner": "developer",
       "failureBehavior": "block",
       "evidence": "hook stderr;npm run check:hooks 驗 hook 活著",
       "degradation": "沒跑 npm run setup-hooks 就不存在;CI 端由 branch protection 補(未機器驗證)",
-      "tested": ["unit"],
-      "testRefs": ["tests/check-hooks.test.ts"],
+      "tested": [
+        "unit"
+      ],
+      "testRefs": [
+        "tests/check-hooks.test.ts"
+      ],
       "bypass": "--no-verify;未安裝 hooks",
       "notes": "縱深用;不能假設遠端一定守得住"
     },
@@ -211,16 +364,25 @@
       "name": "commit-msg:訊息去識別化 denylist",
       "legacyGate": "⑤",
       "class": "soft-automated",
-      "triggers": ["commit"],
-      "implementation": ["scripts/git-hooks/commit-msg", "scripts/deny-terms.txt"],
+      "triggers": [
+        "commit"
+      ],
+      "implementation": [
+        "scripts/git-hooks/commit-msg",
+        "scripts/deny-terms.txt"
+      ],
       "locator": "訊息含 denylist 詞 → block;scripts/deny-terms.txt 不在時 no-op",
       "ciStep": null,
       "owner": "developer",
       "failureBehavior": "block",
       "evidence": "hook stderr",
       "degradation": "CI 的 CTRL-CI-009 掃 commit 訊息全史兜底",
-      "tested": ["unit"],
-      "testRefs": ["tests/check-hooks.test.ts"],
+      "tested": [
+        "unit"
+      ],
+      "testRefs": [
+        "tests/check-hooks.test.ts"
+      ],
       "bypass": "--no-verify",
       "notes": null
     },
@@ -229,16 +391,25 @@
       "name": "pre-push:本機 gitleaks + 保護分支 push 守衛",
       "legacyGate": "⑤",
       "class": "soft-automated",
-      "triggers": ["push"],
-      "implementation": ["scripts/git-hooks/pre-push", "scripts/git-hooks/code-pattern.sh"],
+      "triggers": [
+        "push"
+      ],
+      "implementation": [
+        "scripts/git-hooks/pre-push",
+        "scripts/git-hooks/code-pattern.sh"
+      ],
       "locator": "先跑 gitleaks(有 leak 硬擋)再做保護分支 code push 確認;刪保護分支硬擋",
       "ciStep": null,
       "owner": "developer",
       "failureBehavior": "block",
       "evidence": "hook stderr",
       "degradation": "本機無 gitleaks → 該段略過並提示;CI CTRL-CI-001 兜底",
-      "tested": ["unit"],
-      "testRefs": ["tests/check-hooks.test.ts"],
+      "tested": [
+        "unit"
+      ],
+      "testRefs": [
+        "tests/check-hooks.test.ts"
+      ],
       "bypass": "--no-verify",
       "notes": null
     },
@@ -247,16 +418,24 @@
       "name": "Destructive 腳本四層守衛",
       "legacyGate": "⑥",
       "class": "soft-automated",
-      "triggers": ["manual"],
-      "implementation": ["scripts/lib/destructive-guard.ts"],
+      "triggers": [
+        "manual"
+      ],
+      "implementation": [
+        "scripts/lib/destructive-guard.ts"
+      ],
       "locator": "NODE_ENV / DATABASE_URL 含 prod / FLAG_ENV / --confirm token + dry-run 預設",
       "ciStep": null,
       "owner": "developer",
       "failureBehavior": "block",
       "evidence": "腳本 stderr 摘要(DRY-RUN / APPLY)",
       "degradation": "腳本不 import guard 就沒有守衛;採用者 adopted mode 由 CTRL-CI-007 驗常數已改",
-      "tested": ["unit"],
-      "testRefs": ["tests/destructive-guard.test.ts"],
+      "tested": [
+        "unit"
+      ],
+      "testRefs": [
+        "tests/destructive-guard.test.ts"
+      ],
       "bypass": "改常數;不 import guard;env 與 token 都是本機可設值",
       "notes": "⚠️ 誠實定位(不變量 I6):固定 token + prod 字串偵測是 accident interlock(防誤觸),不是 production security boundary;真正 apply 應驗 target identity 與影響範圍(Milestone C)"
     },
@@ -265,15 +444,22 @@
       "name": "Plan Mode 7 步 SOP + STOP point",
       "legacyGate": "②",
       "class": "manual-mandatory",
-      "triggers": ["sop-step"],
-      "implementation": [".claude/sop/plan-mode-checklist.md", "CLAUDE.md"],
+      "triggers": [
+        "sop-step"
+      ],
+      "implementation": [
+        ".claude/sop/plan-mode-checklist.md",
+        "CLAUDE.md"
+      ],
       "locator": "CLAUDE.md Part 2「Plan Mode 流程規則」;checklist 每步 STOP point 與 effort 建議",
       "ciStep": null,
       "owner": "agent",
       "failureBehavior": "block",
       "evidence": "plan file + progress entry 的 7 步 checklist 狀態",
       "degradation": "外部工具缺席照 DEGRADATION.md 降級,骨架不變",
-      "tested": ["untested"],
+      "tested": [
+        "untested"
+      ],
       "testRefs": [],
       "bypass": "Owner 明示 trivial 例外(typo / 單行 / 純格式),受 docs-only 判準約束",
       "notes": "人守;機器只驗其產物(progress entry 由 CTRL-SOP-007 / CTRL-CI-006)"
@@ -283,15 +469,22 @@
       "name": "跨模型 review(Step 4)",
       "legacyGate": "⑦",
       "class": "manual-mandatory",
-      "triggers": ["sop-step"],
-      "implementation": [".claude/sop/plan-mode-checklist.md", "docs/DEGRADATION.md"],
+      "triggers": [
+        "sop-step"
+      ],
+      "implementation": [
+        ".claude/sop/plan-mode-checklist.md",
+        "docs/DEGRADATION.md"
+      ],
       "locator": "Step 4;外部 Codex CLI 對本地 diff 迭代到 0 findings;三條壓輪數紀律",
       "ciStep": null,
       "owner": "agent",
       "failureBehavior": "block",
       "evidence": "progress entry 的 round 數 / P1 / P2;fix commit 訊息標 round",
       "degradation": "無 Codex → Claude Code 內建 /code-review(失去跨模型多樣性)",
-      "tested": ["untested"],
+      "tested": [
+        "untested"
+      ],
       "testRefs": [],
       "bypass": "docs-only 車道可略 Step 4(判不準從嚴)",
       "notes": "cross-model agreement 實測接近 0,兩道 review 都不可省"
@@ -301,16 +494,31 @@
       "name": "CSO 觸發判定 + 高風險車道探針",
       "legacyGate": "⑧",
       "class": "soft-automated",
-      "triggers": ["sop-step"],
-      "implementation": ["scripts/check-cso-trigger.ts", "scripts/cso-trigger.config.ts", "scripts/mutate.ts", ".claude/sop/plan-mode-checklist.md"],
+      "triggers": [
+        "sop-step"
+      ],
+      "implementation": [
+        "scripts/check-cso-trigger.ts",
+        "scripts/cso-trigger.config.ts",
+        "scripts/mutate.ts",
+        ".claude/sop/plan-mode-checklist.md"
+      ],
       "locator": "Step 4.5;判定機器化(完整變更面 vs 路徑表,fail-closed exit 2)、探針執行靠人",
       "ciStep": null,
       "owner": "agent",
       "failureBehavior": "block",
       "evidence": "progress entry 記 CSO_REQUIRED / NOT + 命中域 + 探針 exit 0 綁定 SHA",
       "degradation": "無 gstack /cso → 內建 security-review;模板 repo 表空 = 例外人工判定",
-      "tested": ["unit", "e2e", "mutation"],
-      "testRefs": ["tests/check-cso-trigger.test.ts", "tests/mutate.test.ts", "scripts/mutations/example-fail-closed-guard.json"],
+      "tested": [
+        "unit",
+        "e2e",
+        "mutation"
+      ],
+      "testRefs": [
+        "tests/check-cso-trigger.test.ts",
+        "tests/mutate.test.ts",
+        "scripts/mutations/example-fail-closed-guard.json"
+      ],
       "bypass": "本機不跑即無;判定是下限不是上限",
       "notes": "不是 CI gate(CI 跑不了 /cso)"
     },
@@ -319,15 +527,22 @@
       "name": "條件式視覺關",
       "legacyGate": "⑨",
       "class": "manual-mandatory",
-      "triggers": ["sop-step"],
-      "implementation": [".claude/sop/plan-mode-checklist.md", "docs/DEGRADATION.md"],
+      "triggers": [
+        "sop-step"
+      ],
+      "implementation": [
+        ".claude/sop/plan-mode-checklist.md",
+        "docs/DEGRADATION.md"
+      ],
       "locator": "Step 4.6;diff 碰 UI 才觸發;外部 gstack /design-review,降級為實際截圖比對",
       "ciStep": null,
       "owner": "agent",
       "failureBehavior": "block",
       "evidence": "progress entry 記觸發與否 + before / after 截圖",
       "degradation": "無 gstack → 手動截圖;不得只讀碼推論外觀",
-      "tested": ["untested"],
+      "tested": [
+        "untested"
+      ],
       "testRefs": [],
       "bypass": "未觸發即不跑(純後端 / 純文件 sprint)",
       "notes": null
@@ -337,15 +552,22 @@
       "name": "Step 5 對抗審 + 高風險車道 worktree 獨立審",
       "legacyGate": "⑩",
       "class": "manual-mandatory",
-      "triggers": ["sop-step"],
-      "implementation": [".claude/agents/adversarial-reviewer.md", ".claude/sop/plan-mode-checklist.md"],
+      "triggers": [
+        "sop-step"
+      ],
+      "implementation": [
+        ".claude/agents/adversarial-reviewer.md",
+        ".claude/sop/plan-mode-checklist.md"
+      ],
       "locator": "Step 5;全新拋棄式 clone、40 字元 review-tip 核對、findings 全報再按軸過濾",
       "ciStep": null,
       "owner": "agent",
       "failureBehavior": "block",
       "evidence": "progress entry 記 CRITICAL / INFORMATIONAL 數、review-tip SHA、Step5 獨立發現數",
       "degradation": "無 gstack /review → 內建 /code-review + 一個 adversarial-reviewer",
-      "tested": ["untested"],
+      "tested": [
+        "untested"
+      ],
       "testRefs": [],
       "bypass": "none(SOP 內無例外;docs-only 車道仍跑 fresh review)",
       "notes": null
@@ -355,16 +577,24 @@
       "name": "量詞自檢器",
       "legacyGate": "⑦",
       "class": "advisory",
-      "triggers": ["sop-step"],
-      "implementation": ["scripts/check-claims.ts"],
+      "triggers": [
+        "sop-step"
+      ],
+      "implementation": [
+        "scripts/check-claims.ts"
+      ],
       "locator": "送審前對自己 diff 新增行掃過度宣稱,產待處置清單",
       "ciStep": null,
       "owner": "agent",
       "failureBehavior": "record-only",
       "evidence": "progress entry 與 PR 描述的逐條處置(留 A / 降級 B)",
       "degradation": "無工具 → 人工核對新增宣稱句",
-      "tested": ["unit"],
-      "testRefs": ["tests/check-claims.test.ts"],
+      "tested": [
+        "unit"
+      ],
+      "testRefs": [
+        "tests/check-claims.test.ts"
+      ],
       "bypass": "刻意非 gate;命中不代表錯",
       "notes": null
     },
@@ -373,16 +603,24 @@
       "name": "Bookkeeping commit 機器化核對",
       "legacyGate": "⑩",
       "class": "soft-automated",
-      "triggers": ["sop-step"],
-      "implementation": ["scripts/check-bookkeeping-commit.ts"],
+      "triggers": [
+        "sop-step"
+      ],
+      "implementation": [
+        "scripts/check-bookkeeping-commit.ts"
+      ],
       "locator": "Step 5 收尾;純檔名 allowlist(progress / TODOS / BACKLOG / progress-archive 非 README)",
       "ciStep": null,
       "owner": "agent",
       "failureBehavior": "block",
       "evidence": "本機 exit code;progress entry 記結果",
       "degradation": "無",
-      "tested": ["unit"],
-      "testRefs": ["tests/check-bookkeeping-commit.test.ts"],
+      "tested": [
+        "unit"
+      ],
+      "testRefs": [
+        "tests/check-bookkeeping-commit.test.ts"
+      ],
       "bypass": "本機不跑即無;v1 只看檔名不看內容",
       "notes": null
     },
@@ -391,15 +629,21 @@
       "name": "三層行為守則",
       "legacyGate": "①",
       "class": "manual-mandatory",
-      "triggers": ["manual"],
-      "implementation": ["CLAUDE.md"],
+      "triggers": [
+        "manual"
+      ],
+      "implementation": [
+        "CLAUDE.md"
+      ],
       "locator": "Part 1(工作原則)/ Part 2(協作偏好)/ Part 3(放寬規則);D 編號可否決機制",
       "ciStep": null,
       "owner": "agent",
       "failureBehavior": "record-only",
       "evidence": "plan file 的 Sensible Defaults 段;Owner 否決紀錄",
       "degradation": "無",
-      "tested": ["untested"],
+      "tested": [
+        "untested"
+      ],
       "testRefs": [],
       "bypass": "none(行為守則無機器強制;偏差由 Owner redirect)",
       "notes": "CLAUDE.md 屬 PROTECTED_DOCS(CTRL-HOOK-001 / 003 擋直推)"
@@ -409,15 +653,25 @@
       "name": "記憶層與歸檔慣例",
       "legacyGate": "③",
       "class": "periodic-governance",
-      "triggers": ["manual"],
-      "implementation": [".claude/memory/progress.md", ".claude/memory/LESSONS.md", "TODOS.md", ".claude/memory/progress-archive/README.md", ".claude/memory/LESSONS-archive/README.md"],
+      "triggers": [
+        "manual"
+      ],
+      "implementation": [
+        ".claude/memory/progress.md",
+        ".claude/memory/LESSONS.md",
+        "TODOS.md",
+        ".claude/memory/progress-archive/README.md",
+        ".claude/memory/LESSONS-archive/README.md"
+      ],
       "locator": "progress 每 sprint 一 entry(pre-merge schema)、LESSONS 踩坑即寫、TODOS 完成宣稱引 PR 號;超額度歸檔",
       "ciStep": null,
       "owner": "agent",
       "failureBehavior": "record-only",
       "evidence": "檔案內容;額度由 CTRL-CI-006、marker 由 CTRL-CI-008 機器驗",
       "degradation": "無 gbrain → 純 git 核實",
-      "tested": ["untested"],
+      "tested": [
+        "untested"
+      ],
       "testRefs": [],
       "bypass": "none",
       "notes": "歸檔會搬動 canonical ADR 引用 → 同 commit 更新 template-governance 的位置＋數量表"
@@ -427,16 +681,24 @@
       "name": "週健檢",
       "legacyGate": "⑫",
       "class": "periodic-governance",
-      "triggers": ["schedule"],
-      "implementation": ["scripts/weekly-health-check.ts"],
+      "triggers": [
+        "schedule"
+      ],
+      "implementation": [
+        "scripts/weekly-health-check.ts"
+      ],
       "locator": "三個 collector:工作累積 / 教訓產出速率 / 審查鈍化偵測;輸出 .claude/memory/health-history/",
       "ciStep": null,
       "owner": "owner",
       "failureBehavior": "record-only",
       "evidence": "health-history 週報",
       "degradation": "不排程即無;兩個 collector 明文未實作",
-      "tested": ["unit"],
-      "testRefs": ["tests/weekly-health-check.test.ts"],
+      "tested": [
+        "unit"
+      ],
+      "testRefs": [
+        "tests/weekly-health-check.test.ts"
+      ],
       "bypass": "不排程即無",
       "notes": null
     },
@@ -445,15 +707,21 @@
       "name": "Baseline 變更授權(人工段)",
       "legacyGate": "⑤",
       "class": "manual-mandatory",
-      "triggers": ["pull_request"],
-      "implementation": ["docs/architecture/source-term-history-baseline.md"],
+      "triggers": [
+        "pull_request"
+      ],
+      "implementation": [
+        "docs/architecture/source-term-history-baseline.md"
+      ],
       "locator": "H2「baseline 變更授權」:baseline 是治理決策,改動走 PR + Owner 拍板",
       "ciStep": null,
       "owner": "owner",
       "failureBehavior": "block",
       "evidence": "PR 描述 + Owner approve 紀錄",
       "degradation": "無",
-      "tested": ["untested"],
+      "tested": [
+        "untested"
+      ],
       "testRefs": [],
       "bypass": "Owner",
       "notes": "機器守門(同 PR 推 baseline 洗白)屬 ADR 已知限制第 2 條,由 catalog 批次處置"
@@ -463,15 +731,22 @@
       "name": "季 retro 與封存",
       "legacyGate": "⑬",
       "class": "periodic-governance",
-      "triggers": ["schedule"],
-      "implementation": [".claude/memory/LESSONS-archive/README.md", ".claude/memory/progress-archive/README.md"],
+      "triggers": [
+        "schedule"
+      ],
+      "implementation": [
+        ".claude/memory/LESSONS-archive/README.md",
+        ".claude/memory/progress-archive/README.md"
+      ],
       "locator": "封存已機器化教訓、記憶防膨脹、掃文件交叉引用防漂移",
       "ciStep": null,
       "owner": "owner",
       "failureBehavior": "record-only",
       "evidence": "archive 目錄內容",
       "degradation": "無",
-      "tested": ["untested"],
+      "tested": [
+        "untested"
+      ],
       "testRefs": [],
       "bypass": "none",
       "notes": null
@@ -481,15 +756,21 @@
       "name": "GitHub branch protection",
       "legacyGate": "⑪",
       "class": "advisory",
-      "triggers": ["manual"],
-      "implementation": [".github/workflows/ci.yml"],
+      "triggers": [
+        "manual"
+      ],
+      "implementation": [
+        ".github/workflows/ci.yml"
+      ],
       "locator": "ci.yml 檔頭註解建議設 branch protection(主線要求 CI pass);GitHub 端設定非本 repo 內可驗",
       "ciStep": null,
       "owner": "github",
       "failureBehavior": "record-only",
       "evidence": "無(repo 內無證據;Milestone C 才做 governance verification)",
       "degradation": "無 branch protection 時所有 hard-automated 的 admin override 等於任何人可 merge 紅 PR",
-      "tested": ["untested"],
+      "tested": [
+        "untested"
+      ],
       "testRefs": [],
       "bypass": "github",
       "notes": "⚠️ 本 repo 的 hard-automated controls 之所以「hard」依賴這條設定存在;目前只能建議、不能驗證"

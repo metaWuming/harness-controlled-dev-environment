@@ -24,6 +24,7 @@
     "check:bookkeeping": "tsx scripts/check-bookkeeping-commit.ts",
     "check:adoption": "tsx scripts/check-adoption-readiness.ts",
     "catalog:render": "tsx scripts/render-control-catalog.ts --write",
+    "check:catalog": "tsx scripts/check-control-catalog.ts",
     "mutate": "tsx scripts/mutate.ts"
   },
   "devDependencies": {
