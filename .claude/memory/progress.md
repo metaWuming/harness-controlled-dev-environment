@@ -75,6 +75,11 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+## 🤝 hi5 交棒紀錄 — 2026-09-02 20:14
+- 交棒時 commit:`2ed1be1cf4bca2da3ac0c260cd25928122f0149e`(main;PR #46 squash;工作樹乾淨、無 WIP)
+- 交接檔:`_handoffs/HANDOFF.md`(本機檔,`.gitignore` 忽略)
+- 暫停點:Milestone A 全部收尾(v0.2.0 + #45 + #46),無在途工作;下一棒由 Codex supervisor(Herdr w2:p8)拍板選 B1 / TODOS P2 / defer 集合
+
 📅 2026-09-02 ② — **git-add-guard:`git add -A` 誤加工具產物的機器化守門(LESSONS ⚠️ 第 ≥4 次 → 升級階梯)**
 
 > **緣起**:Owner 拍板(PR #45 merge 後):把 LESSONS ⚠️ [2026-08-29] 的規則寫進本 repo 並機器化。frozen base `80f76b8`(main = v0.2.0 + #45),直接在主 worktree 開 `feat/git-add-guard`(當時已無其他 worktree、工作樹乾淨)。
