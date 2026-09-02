@@ -451,11 +451,14 @@ function makeRepo(opts: {
   /** Step 5 F1:刻意不注入 CA entries,測 startup fail-hard 漂移守門 */
   omitCaAutoInject?: boolean;
   /**
-   * 批 8 Phase A:注入 origin remote,讓 buildDeliveryRefs 三條非 last-resort
-   * fallback 路徑(①origin/HEAD、②DELIVERY_REFS env、③origin/develop)有可測
-   * 目標。每條 push 分支帶「獨立 commit」——local main 不含該 commit,這樣通過與
-   * 否能證明「該路徑真的被走過」;路徑失效時 fallback 到 ④local main 查不到 PR#
-   * → exit 1(路徑破損直接被抓)
+   * 注入 origin remote 上的額外分支(批 8 Phase A 引入;現行契約下用途如下)。
+   * 現行契約(scripts/lib/delivery-refs.ts):交付證據**唯一來源是受驗的 origin/HEAD**;沒有 env、
+   * 沒有 fallback;無 origin / origin/HEAD 未設 → base.missing → exit 2(見 noOrigin 負對照)。
+   * `setHeadTo` 決定 origin/HEAD 指向哪條分支(不設 → makeRepo 預設 set-head main);其他分支上的
+   * 「獨立 commit」(commitSubject 有給)刻意不在 origin/HEAD 內——用來證明它們的 PR # **不會**被算進
+   * allowedPrs(env 被忽略、develop 不再猜);commitSubject 省略 → 分支指在 main tip(相等)。
+   * 【歷史】批 8 時這裡服務「①origin/HEAD ②DELIVERY_REFS env ③origin/develop ④本地 main」四條 fallback,
+   * 後三條已於 #48 與本版移除。
    */
   originRefs?: {
     /** 建 bare origin、每條 push 上去(獨立 commit)*/
@@ -483,9 +486,10 @@ function makeRepo(opts: {
   mkdirSync(join(dir, "scripts"), { recursive: true });
   const git = (...a: string[]) =>
     execFileSync("git", a, { cwd: dir, stdio: "ignore" });
-  // round 2 P1-1 相關:確保 default branch = main,讓 buildDeliveryRefs 的
-  // last-resort fallback(本地 main / develop)找得到 ref。避免因 host git
-  // config init.defaultBranch = master 導致 allowedPrs 空 → 假紅
+  // 確保 default branch = main:makeRepo 稍後會 push main 並 `remote set-head origin main`,
+  // 受驗 origin/HEAD 才會指向已宣告的 main(避免 host git config init.defaultBranch = master
+  // 讓 origin/HEAD 指向未宣告分支 → base.undeclared 假紅)。【歷史】round 2 P1-1 時這裡是為了
+  // 本地 main fallback,該 fallback 已移除。
   git("init", "-q", "-b", "main");
   git("config", "user.email", "t@example.com");
   git("config", "user.name", "t");
@@ -564,7 +568,7 @@ function makeRepo(opts: {
       // 一次性 temp branch 從 main tip 分岔 → 加獨立 commit(commitSubject 含
       // 該 case 想測的 PR #)→ push 上 origin 作 `refs/heads/${b.name}` →
       // 回 main → 刪 temp。刪 temp 後,那個獨立 commit 只留在 origin/${b.name}
-      // 上、local main 不含 → 若對應 fallback 路徑失效,ε local main 查不到 PR#
+      // 上、local main / origin/HEAD 不含 → 現行契約下該 PR # **不得**進 allowedPrs(負對照素材)
       if (b.commitSubject === undefined) {
         // P2#2:不加獨立 commit → 該分支 tip == main tip(是 origin/main 的祖先,相等也算)
         git("push", "-q", "origin", `main:refs/heads/${b.name}`);
@@ -615,7 +619,7 @@ function harnessConfigJson(deliveryBranches: readonly string[]): string {
 }
 
 function runChecker(cwd: string, envOverride?: Record<string, string>): { code: number; out: string } {
-  // 從 parent env 移除可能影響 delivery-refs / MARKER_SELF_PR 判定的變數,
+  // 從 parent env 移除 MARKER_SELF_PR 與(已移除、腳本不再讀的)DELIVERY_REFS,
   // 讓每個 e2e case 從乾淨基線起跑;需要時透過 envOverride 顯式加回。避免
   // 宿主 shell / 外層 CI 洩漏這兩個 env 進 checker、跨 case 污染測試結果
   const baseEnv: NodeJS.ProcessEnv = { ...process.env };
@@ -820,24 +824,21 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     expect(code).toBe(1);
   });
 
-  // ─────────────────── 批 8 Phase A:buildDeliveryRefs 前三條 fallback 路徑 e2e ───────────────────
+  // ─────────────────── 交付 ref 來源 e2e:唯一受驗 origin/HEAD 路徑(批 8 Phase A 引入、本版改寫)───────────────────
   //
-  // 動機:批 7 (#32) Step 5 F2(defer 進 TODOS.md P3)——buildDeliveryRefs 四條
-  // fallback ①origin/HEAD ②DELIVERY_REFS env ③origin/develop ④last-resort 本地 main
-  // 只有 ④ 有 e2e 覆蓋(其他既有 case 全走 ④,因 makeRepo 沒建 origin remote)。
-  // 前三條路徑破損只在特定 CI 場景才顯現——本 sprint 補齊 e2e 覆蓋。
-  //
-  // 每條 case 的設計:目標 PR # 只放在對應 fallback 路徑的分支上、local main 不含。
-  // 若對應路徑失效,fallback 掉到 ④local main → 查不到 PR# → allowedPrs 空 → CA
-  // hit 未知 PR 引用 → exit 1(路徑破損直接被抓)
+  // 現行契約:交付證據唯一路徑 = 受驗的 origin/HEAD(scripts/lib/delivery-refs.ts);無 env、無 fallback。
+  // makeRepo 預設建 bare origin + set-head main,所以既有 case 都走這條路徑;noOrigin 負對照 → base.missing → exit 2。
+  // 以下 case 的設計:目標 PR # 只放在 origin/HEAD 指向的分支(正對照)或刻意放在它之外的分支(負對照:
+  // 該 PR # 不得進 allowedPrs → CA hit 未知引用 → exit 1;或 base 本身不合格 → exit 2)。
+  // 【歷史】批 8 Phase A 時本節覆蓋「①origin/HEAD ②DELIVERY_REFS env ③origin/develop ④本地 main」四條
+  // fallback;②③④ 已於 #48 與本版移除,對應 case 已改寫。
 
   it("🔴 批 8 Phase A A-e1:①origin/HEAD 路徑抓 self-PR → 放行", () => {
     // origin/HEAD 指向 origin/cg-default-sentinel(該分支含 `feat (井號+7)`);
     // local main 無 #7。用 sentinel branch name(非 master / main / trunk 等
     // GitHub 慣例)確保若把 symbolic-ref 動態解析改成硬碼「origin/master」,
     // 此 case 會轉紅——真正守到「跟隨 origin/HEAD」契約(round 1 P2 修法)。
-    // 若 buildDeliveryRefs 路徑 ① 破損(例:symbolic-ref 讀失敗、resolves 誤判),
-    // fallback 到 ④local main 查不到 #7 → 轉紅
+    // 若 origin/HEAD 路徑破損(例:symbolic-ref 讀失敗、驗證誤判)→ exit 2 或查不到 #7 → 轉紅
     const dir = makeRepo({
       deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
       commits: [
@@ -859,56 +860,7 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     expect(code).toBe(0);
   });
 
-  it("🔴 批 8 Phase A A-e2(P2#2 改寫):②DELIVERY_REFS 逗號分隔多 ref,已宣告且為 origin/HEAD 祖先 → 接受、放行;去重、trim", () => {
-    // origin/HEAD=main(含 `feat (井號+8)`);release-line-a / release-line-b 都指在 main tip
-    // (commitSubject 省略 → 祖先且相等)、且宣告在 deliveryBranches。env 兩側空白 + 重複 → 仍 exit 0。
-    // 若 split / trim / 宣告或祖先判定壞掉 → 任一候選被拒 → exit 2(不再是靜默 fallback)
-    const dir = makeRepo({
-      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
-      commits: [{ message: "feat (#8)", files: { "src/foo.md": "hello\n" } }],
-      originRefs: { branches: [{ name: "release-line-a" }, { name: "release-line-b" }] },
-      deliveryBranches: ["main", "release-line-a", "release-line-b"],
-      workingTree: { "docs/note.md": "see " + PREF_PR + "8 in main\n" },
-    });
-    const { code, out } = runChecker(dir, {
-      DELIVERY_REFS: "origin/release-line-a ,  origin/release-line-b,origin/release-line-a",
-    });
-    expect(out).toContain("self-PR 引用放行");
-    expect(out).toContain("✅ 去識別化掃描全數通過");
-    expect(code).toBe(0);
-  });
-
-  it("🔴 P2#2 ref.nonancestor:env 指向已宣告、正規、可解、但含未合併 commit 的 origin 分支 → exit 2、不放行", () => {
-    // release-line-a 從 main tip 多一個獨立 commit `feat (井號+8)` → 不是 origin/main 的祖先。
-    // 舊契約會把 #8 放進 allowedPrs(這正是 P2#2 的洞);新契約 → [ref.nonancestor]、exit 2
-    const dir = makeRepo({
-      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
-      commits: [{ message: "init: no PR # on main", files: { "src/foo.md": "hello\n" } }],
-      originRefs: { branches: [{ name: "release-line-a", commitSubject: "feat (#8)" }] },
-      deliveryBranches: ["main", "release-line-a"],
-      workingTree: { "docs/note.md": "see " + PREF_PR + "8 in unmerged line\n" },
-    });
-    const { code, out } = runChecker(dir, { DELIVERY_REFS: "origin/release-line-a" });
-    expect(code).toBe(2);
-    expect(out).toContain("[ref.nonancestor] origin/release-line-a");
-    expect(out).not.toContain("self-PR 引用放行");
-  });
-
-  it("🔴 P2#2 ref.undeclared:env 指向正規、可解、是 origin/HEAD 祖先、但未宣告的 origin 分支 → exit 2", () => {
-    // 祖先與宣告是兩道獨立假設:release 指在 main tip(祖先成立),但 deliveryBranches 只有 main
-    const dir = makeRepo({
-      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
-      commits: [{ message: "feat (#8)", files: { "src/foo.md": "hello\n" } }],
-      originRefs: { branches: [{ name: "release" }] },
-      workingTree: { "docs/note.md": "see " + PREF_PR + "8\n" },
-    });
-    const { code, out } = runChecker(dir, { DELIVERY_REFS: "origin/release" });
-    expect(code).toBe(2);
-    expect(out).toContain("[ref.undeclared] origin/release");
-    expect(out).not.toContain("allowedPrs:");
-  });
-
-  it("🔴 P2#2 base.undeclared:origin/HEAD 指向正規、可解、但未宣告的分支;env 空 → exit 2、不建 allowedPrs", () => {
+  it("🔴 P2#2 base.undeclared:origin/HEAD 指向正規、可解、但未宣告的分支 → exit 2、不建 allowedPrs", () => {
     const dir = makeRepo({
       deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
       commits: [{ message: "feat (#8)", files: { "src/foo.md": "hello\n" } }],
@@ -934,7 +886,7 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     expect(out).toContain("[base.noncanonical] refs/remotes/origin/main");
   });
 
-  it("🔴 P2#2 base.missing:無 origin remote(fallback ③④ 已移除)→ exit 2,不再用本地 main 充當交付證據", () => {
+  it("🔴 P2#2 base.missing:noOrigin(無 origin remote)→ exit 2,不再用本地 main 充當交付證據", () => {
     const dir = makeRepo({
       deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
       commits: [{ message: "feat (#8)", files: { "src/foo.md": "hello\n" } }],
@@ -947,27 +899,9 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     expect(out).not.toContain("self-PR 引用放行");
   });
 
-  it("🔴 P2#2 ref.shape:DELIVERY_REFS=HEAD / 本地 feature 名 → exit 2(P2#2 原始漏洞封死)", () => {
-    const dir = makeRepo({
-      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
-      commits: [{ message: "init", files: { "src/foo.md": "hello\n" } }],
-      workingTree: { "docs/note.md": "see " + PREF_PR + "31\n" },
-    });
-    // 本地 feature 分支含未合併的 `(井號+31)`
-    execFileSync("git", ["checkout", "-q", "-b", "feature/x"], { cwd: dir, stdio: "ignore" });
-    execFileSync("git", ["commit", "--allow-empty", "-qm", "feat (#31)"], { cwd: dir, stdio: "ignore" });
-    for (const bad of ["HEAD", "feature/x"]) {
-      const { code, out } = runChecker(dir, { DELIVERY_REFS: bad });
-      expect(code, bad).toBe(2);
-      expect(out).toContain(`[ref.shape] ${bad}`);
-      expect(out).not.toContain("self-PR 引用放行");
-    }
-  });
-
-  it("🔴 批 8 Phase A A-e3(P2#2 改寫):origin/develop 不再是 fallback——未宣告、env 空 → 該分支的 PR # 不進 allowedPrs → exit 1", () => {
+  it("🔴 批 8 Phase A A-e3(P2#2 改寫):origin/develop 不再是 fallback——該分支的 PR # 不進 allowedPrs → exit 1", () => {
     // origin/HEAD=main(無 #9);origin/develop 含 `feat (井號+9)`。舊契約 ③ 會猜 origin/develop 放行;
-    // 新契約只用受驗 base → #9 未知 → CA hit 擋 → exit 1。同 fixture 用 env 指 origin/develop
-    // → 未合併(非祖先)→ [ref.nonancestor] exit 2
+    // 新契約只用受驗 base → #9 未知 → CA hit 擋 → exit 1
     const dir = makeRepo({
       deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
       commits: [{ message: "init: no PR # on local main", files: { "src/foo.md": "hello\n" } }],
@@ -978,16 +912,35 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     const r1 = runChecker(dir);
     expect(r1.code).toBe(1);
     expect(r1.out).not.toContain("self-PR 引用放行");
-    const r2 = runChecker(dir, { DELIVERY_REFS: "origin/develop" });
-    expect(r2.code).toBe(2);
-    expect(r2.out).toContain("[ref.nonancestor] origin/develop");
+  });
+
+  it("🔴 A-e2'(env 已移除):DELIVERY_REFS 指向含未合併 (#8) 的 origin 分支 → 輸出與 exit 與不設 env 逐位元相同(#8 仍未知、exit 1)", () => {
+    // 舊契約(批 8)會把 origin/release-line-a 的 #8 算進 allowedPrs → 放行;#48 契約會 ref.nonancestor exit 2;
+    // 本契約完全不讀 env:兩次結果相同,且都是「#8 未知 → CA hit 擋 → exit 1」
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [{ message: "init: no PR # on main", files: { "src/foo.md": "hello\n" } }],
+      originRefs: { branches: [{ name: "release-line-a", commitSubject: "feat (#8)" }] },
+      deliveryBranches: ["main", "release-line-a"],
+      workingTree: { "docs/note.md": "see " + PREF_PR + "8 in unmerged line\n" },
+    });
+    const plain = runChecker(dir);
+    const withEnv = runChecker(dir, { DELIVERY_REFS: "origin/release-line-a" });
+    expect(plain.code).toBe(1);
+    expect(withEnv.code).toBe(plain.code);
+    expect(withEnv.out).toBe(plain.out);
+    expect(plain.out).not.toContain("self-PR 引用放行");
+    // 垃圾值也一樣不影響(不會 exit 2、不會被解析)
+    const junk = runChecker(dir, { DELIVERY_REFS: "HEAD,;pwd,origin/nope" });
+    expect(junk.code).toBe(plain.code);
+    expect(junk.out).toBe(plain.out);
   });
 
   it("🔴 批 8 Phase A A-e4:所有 delivery ref log 內無 PR # → allowedPrs 空 → CA hit 全擋", () => {
-    // 無 origin、無 envOverride、local main log 內無 PR#(僅 init commit)。
-    // 四條 fallback ①②③失敗、④拿到 local main 但 log 內無 PR # → allowedPrs
-    // 空 set → 工作樹的 CA hit 一律未知 → exit 1。若未來把 allowedPrs 空的處理
-    // 錯改成放行(例:「空 set 視為信任所有」),此 case 會轉綠 → 該 bug 被抓
+    // makeRepo 預設建 origin + set-head main;origin/HEAD(= main)log 內無 PR#(僅 init commit)
+    // → 受驗 base 合格、allowedPrs 為空 set → 工作樹的 CA hit 一律未知 → exit 1。若未來把
+    // allowedPrs 空的處理錯改成放行(例:「空 set 視為信任所有」),此 case 會轉綠 → 該 bug 被抓。
+    // (無 origin 的形狀是另一條 noOrigin 負對照:base.missing → exit 2)
     const dir = makeRepo({
       deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
       commits: [

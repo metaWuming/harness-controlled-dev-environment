@@ -1,21 +1,15 @@
 [
   {
     "file": "scripts/lib/delivery-refs.ts",
-    "find": "    if (git(['merge-base', '--is-ancestor', fullRef, opts.mustBeAncestorOf]) === null) {",
-    "replace": "    if (false) {",
-    "label": "DR-M1 拿掉祖先檢查 → 未合併 origin 分支進 allowedPrs;兩個 consumer 的 ref.nonancestor e2e + lib 單測轉紅"
-  },
-  {
-    "file": "scripts/lib/delivery-refs.ts",
     "find": "  if (canon !== fullRef) {",
     "replace": "  if (false) {",
-    "label": "DR-M2 拿掉正規比對(base 與 env 共用)→ 本地同名 ref 遮蔽不再被抓;noncanonical 單測與 e2e 轉紅"
+    "label": "DR-M2 拿掉 base 正規比對 → 本地同名 ref 遮蔽不再被抓;noncanonical 單測與 e2e 轉紅"
   },
   {
     "file": "scripts/lib/delivery-refs.ts",
-    "find": "  return { ok: rejections.length === 0, refs: rejections.length === 0 ? refs : [], rejections };",
-    "replace": "  return { ok: true, refs, rejections: [] };",
-    "label": "DR-M3 REJECT 改靜默 skip(拒絕不再回報、能解的 ref 照用)→ 所有負對照轉紅"
+    "find": "  if (r) return { ok: false, refs: [], rejections: [r] };",
+    "replace": "  if (r) return { ok: true, refs: [target], rejections: [] };",
+    "label": "DR-M3 base 驗證失敗改靜默放行(拒絕不再回報)→ base.* 負對照與兩個 consumer 的 exit 2 e2e 轉紅"
   },
   {
     "file": "scripts/check-todos-markers.ts",
@@ -31,9 +25,9 @@
   },
   {
     "file": "scripts/lib/delivery-refs.ts",
-    "find": "  if (!opts.declared.includes(name)) {",
+    "find": "  if (!declared.includes(name)) {",
     "replace": "  if (false) {",
-    "label": "DR-M6 拿掉共用 validateRef 的 deliveryBranches 成員檢查(base 與 env 同一支)→ ref.undeclared 與 base.undeclared 的 lib 單測 + 兩個 consumer e2e 轉紅"
+    "label": "DR-M6 拿掉 validateRef 的 deliveryBranches 成員檢查 → base.undeclared 的 lib 單測 + 兩個 consumer e2e 轉紅"
   },
   {
     "file": "scripts/lib/delivery-refs.ts",
@@ -43,8 +37,14 @@
   },
   {
     "file": "scripts/lib/delivery-refs.ts",
-    "find": "    const r = validateRef(git, target, { kind: 'base', declared });",
-    "replace": "    const r = remoteBranchName(target) === null ? validateRef(git, target, { kind: 'base', declared }) : null;",
+    "find": "  const r = validateRef(git, target, declared);",
+    "replace": "  const r = remoteBranchName(target) === null ? validateRef(git, target, declared) : null;",
     "label": "DR-M8 base 跳過正規 / 存在 / 宣告驗證(只看形狀)→ base.undeclared / base.noncanonical / base.unresolvable 轉紅"
+  },
+  {
+    "file": "scripts/lib/delivery-refs.ts",
+    "find": "  const target = git(['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD']);",
+    "replace": "  const target = process.env['DELIVERY_REFS'] ? 'refs/remotes/origin/' + process.env['DELIVERY_REFS'].slice(7) : git(['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD']);",
+    "label": "DR-M9 偷讀 env DELIVERY_REFS 當 base(env 通道復活)→ lib「不讀 env」等價測試與兩個 consumer 的 env 已移除 e2e 轉紅"
   }
 ]

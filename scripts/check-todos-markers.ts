@@ -17,7 +17,7 @@
 //      若其條目 body 引用了已 merged 的交付 PR 且缺明示阻塞詞(⏳ / 卡 / 待外部 / 待拍板 / 律師 …)
 //      → 印警告要求人工 re-verify。不擋 CI(避免合理 partial 假陽性)。
 //
-// merged 判定:對「交付分支」(受驗 origin/HEAD + 已宣告且為祖先的 env 候選;見 scripts/lib/delivery-refs.ts)`git log` 抓 commit subject,regex 出
+// merged 判定:對「交付分支」(受驗 origin/HEAD;不讀 env;見 scripts/lib/delivery-refs.ts)`git log` 抓 commit subject,regex 出
 //   - squash 形式 `…(#N)`(feature/fix PR squash→develop)
 //   - merge 形式 `Merge pull request #N`(sync develop→main)
 //   兩者聯集 = 「有 merge 證據的 PR 號集合」。離線、確定性、無 gh 依賴。
@@ -306,10 +306,10 @@ export function checkTodosMarkers(
   return { violations, advisories, verifiedPrs, totalCompletionPrs };
 }
 
-/** 交付分支來源:見 scripts/lib/delivery-refs.ts(P2#2 共用契約)。
- *   ①受驗的 `origin/HEAD` 權威 base(目標須為 refs/remotes/origin/<已宣告交付分支>、正規、可解)
- *   ②env `DELIVERY_REFS`(逗號分隔;每條須為 `origin/<已宣告交付分支>` 且為 base 祖先)
- *   沒有 fallback:origin/develop、本地 main / develop 都不再猜。任何拒絕 → 印原因碼、exit 2。 */
+/** 交付分支來源:見 scripts/lib/delivery-refs.ts(共用契約)。
+ *   唯一來源 = 受驗的 `origin/HEAD` 權威 base(目標須為 refs/remotes/origin/<已宣告交付分支>、正規、可解)。
+ *   沒有 fallback(origin/develop、本地 main / develop 都不再猜)、**不讀任何 env**(DELIVERY_REFS 已移除)。
+ *   任何拒絕 → 印原因碼、exit 2。 */
 
 /**
  * git IO:從「交付分支」commit subject 建「有 merge 證據的 PR 號集合」。
@@ -320,9 +320,8 @@ export function checkTodosMarkers(
  */
 function buildMergedPrSet(): Set<number> {
   const merged = new Set<number>();
-  // P2#2:交付 ref 的來源與驗證抽到 shared lib(scripts/lib/delivery-refs.ts),兩 script 共用單一契約:
-  // 受驗的 origin/HEAD 權威 base + env DELIVERY_REFS 候選(origin/<已宣告交付分支>、且為 base 祖先)。
-  // 任何拒絕都不靜默:印原因碼、exit 2(無法判定)。沒有 fallback(origin/develop / 本地 main 已移除)。
+  // 交付 ref 的來源與驗證在 shared lib(scripts/lib/delivery-refs.ts),兩 script 共用單一契約:
+  // 唯一來源 = 受驗的 origin/HEAD 權威 base;不讀任何 env;沒有 fallback。任何拒絕都不靜默:印原因碼、exit 2。
   const resolved = resolveDeliveryRefsFromRepo(REPO_ROOT);
   if (!resolved.ok) {
     console.error(formatRejections(resolved.rejections));

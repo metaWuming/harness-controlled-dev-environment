@@ -399,7 +399,7 @@ function harnessConfigJson(deliveryBranches: readonly string[]): string {
 }
 
 function runChecker(cwd: string, envOverride?: Record<string, string>): { code: number; out: string } {
-  // 從 parent env 移除 MARKER_SELF_PR / DELIVERY_REFS 避免宿主 CI 洩漏污染
+  // 從 parent env 移除 MARKER_SELF_PR 與(已移除、腳本不再讀的)DELIVERY_REFS,避免宿主 CI 洩漏污染
   const baseEnv: NodeJS.ProcessEnv = { ...process.env };
   delete baseEnv.DELIVERY_REFS;
   delete baseEnv.MARKER_SELF_PR;
@@ -433,16 +433,35 @@ describe('check-todos-markers — 端到端(CLI 接線)', () => {
     expect(code).toBe(0);
   });
 
-  it('🔴 P2#2 正對照:origin/HEAD=main 含 (#42) → 完工宣稱過;env origin/main(已宣告、祖先=相等)也接受', () => {
+  it('🔴 P2#2 正對照:origin/HEAD=main 含 (#42) → 完工宣稱過', () => {
     const dir = makeRepo({
       todosContent: '# TODOS\n\n## P3\n\n### ✅ some completion (#42)\n- done\n',
       extraCommits: [{ message: 'feat: x (#42)' }],
     });
     expect(runChecker(dir).code).toBe(0);
-    expect(runChecker(dir, { DELIVERY_REFS: ' origin/main ' }).code).toBe(0);
   });
 
-  it('🔴 P2#2 base.undeclared:origin/HEAD 指向正規、可解、未宣告分支;env 空 → exit 2、不放行', () => {
+  it('🔴 env 已移除:DELIVERY_REFS 指向含未合併 (#42) 的 origin 分支 / 垃圾值 → 輸出與 exit 與不設 env 逐位元相同(#42 仍無證據、exit 1)', () => {
+    const dir = makeRepo({
+      todosContent: '# TODOS\n\n## P3\n\n### ✅ some completion (#42)\n- done\n',
+      deliveryBranches: ['main', 'feature/x'],
+    });
+    const git = (...a: string[]) => execFileSync('git', a, { cwd: dir, stdio: 'ignore' });
+    git('checkout', '-q', '-b', 'feature/x');
+    git('commit', '--allow-empty', '-qm', 'feat: x (#42)');
+    git('push', '-q', 'origin', 'feature/x:refs/heads/feature/x');
+    git('checkout', '-q', 'main');
+    git('fetch', '-q', 'origin');
+    const plain = runChecker(dir);
+    expect(plain.code).toBe(1);
+    for (const v of ['origin/feature/x', 'HEAD', 'feature/x', ';pwd']) {
+      const r = runChecker(dir, { DELIVERY_REFS: v });
+      expect(r.code, v).toBe(plain.code);
+      expect(r.out, v).toBe(plain.out);
+    }
+  });
+
+  it('🔴 P2#2 base.undeclared:origin/HEAD 指向正規、可解、未宣告分支 → exit 2、不放行', () => {
     const dir = makeRepo({
       todosContent: '# TODOS\n\n## P3\n\n### ✅ some completion (#42)\n- done\n',
       extraCommits: [{ message: 'feat: x (#42)' }],
@@ -453,37 +472,7 @@ describe('check-todos-markers — 端到端(CLI 接線)', () => {
     expect(out).toContain('[base.undeclared] refs/remotes/origin/main');
   });
 
-  it('🔴 P2#2 ref.undeclared:env 指向正規、可解、祖先、但未宣告的 origin 分支 → exit 2', () => {
-    const dir = makeRepo({
-      todosContent: '# TODOS\n\n## P3\n\n### ✅ some completion (#42)\n- done\n',
-      extraCommits: [{ message: 'feat: x (#42)' }],
-    });
-    // release 指在 main tip(祖先相等成立),但未宣告
-    execFileSync('git', ['push', '-q', 'origin', 'main:refs/heads/release'], { cwd: dir, stdio: 'ignore' });
-    execFileSync('git', ['fetch', '-q', 'origin'], { cwd: dir, stdio: 'ignore' });
-    const { code, out } = runChecker(dir, { DELIVERY_REFS: 'origin/release' });
-    expect(code).toBe(2);
-    expect(out).toContain('[ref.undeclared] origin/release');
-  });
-
-  it('🔴 P2#2 ref.shape / ref.nonancestor:DELIVERY_REFS=HEAD、本地 feature、未合併 origin/feature/x → exit 2(原始漏洞封死)', () => {
-    const dir = makeRepo({
-      todosContent: '# TODOS\n\n## P3\n\n### ✅ some completion (#42)\n- done\n',
-      deliveryBranches: ['main', 'feature/x'],
-    });
-    const git = (...a: string[]) => execFileSync('git', a, { cwd: dir, stdio: 'ignore' });
-    git('checkout', '-q', '-b', 'feature/x');
-    git('commit', '--allow-empty', '-qm', 'feat: x (#42)');
-    git('push', '-q', 'origin', 'feature/x:refs/heads/feature/x');
-    git('fetch', '-q', 'origin');
-    for (const [bad, code] of [['HEAD', 'ref.shape'], ['feature/x', 'ref.shape'], ['origin/feature/x', 'ref.nonancestor']] as const) {
-      const r = runChecker(dir, { DELIVERY_REFS: bad });
-      expect(r.code, bad).toBe(2);
-      expect(r.out).toContain(`[${code}] ${bad}`);
-    }
-  });
-
-  it('🔴 P2#2 base.missing:無 origin remote → exit 2(本地 main fallback 已移除)', () => {
+  it('🔴 P2#2 base.missing:noOrigin(無 origin remote)→ exit 2(本地 main fallback 已移除)', () => {
     const dir = makeRepo({
       todosContent: '# TODOS\n\n## P3\n\n### ✅ some completion (#42)\n- done\n',
       extraCommits: [{ message: 'feat: x (#42)' }],
@@ -502,7 +491,7 @@ describe('check-todos-markers — 端到端(CLI 接線)', () => {
       todosContent: '# TODOS\n\n## P3\n\n### ✅ some completion (#42)\n- done\n',
     });
     const { code, out } = runChecker(dir);
-    // disposable repo 無 origin remote → buildMergedPrSet 四條 fallback 全空
+    // makeRepo 預設建 origin + set-head main;受驗 origin/HEAD 合格但 log 內無 (#42)
     // → merged set 空 → 有 completionClaim 但 merged.size = 0 → 走 fail-hard
     // 路徑(script L437-439)、exit 1。若 MARKER_SELF_PR call site 破損、
     // 就算 env 傳 42 也不會進 merged set,同樣走 fail-hard。此 case 驗

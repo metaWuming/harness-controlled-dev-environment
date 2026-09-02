@@ -61,10 +61,18 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 
 ## P3
 
+### 🟢 delivery-refs 移除 sprint defer 集合(2 條)
+- **來源**:2026-09-03 移除 sprint Step 5 r2–r4;Owner 裁示停止遞迴後登錄
+- **內容**:①**缺一份經驗證的「換交付線」runbook**——本版 MIGRATION 刻意不提供(四輪審查證明:任何一句指引都牽動 `deliveryBranches` 語意(證據白名單 vs `check:adoption` A5 `if:` 行與 A2.4.6 §4.6)、`ci.yml` `on:` / 三處 `if:` / Fetch step 的 fetch 與 set-head 行、push event 下沒有 `MARKER_SELF_PR` 豁免、Source-term scan 只對 `PR #N` / `pull/N` 字面判 allowedPrs)。要寫就要在 adopted mode fixture 上實跑過每一步(conf 8);②`docs/ADOPTION.md:125` / `docs/MIGRATION.md` 0.2.0 段 / `CHANGELOG.md` 0.2.0 段仍教導入者把 `develop` 列進 `deliveryBranches` 以過 A5——語意已變成「允許的 origin/HEAD 目標白名單」,多列對證據零影響但會改 A5 期望(conf 6;屬歷史版本敘述,改時與 ① 一起)
+- **方向**:① 1–2h(含 fixture 實跑);② 隨 ① 收
+- **工時**:2h
+
 ### 🟢 P2#2 Step 5 defer 集合(delivery-refs 契約邊角,9 條 INFORMATIONAL conf 5–9)
 - **來源**:2026-09-03 PR P2#2 Step 5 worktree 審 r1–r2;0 CRITICAL 未修
 - **內容**:①**env `DELIVERY_REFS` 在祖先契約下是空操作**——通過驗證的候選必是 base 祖先、`git log` 集合 ⊆ base,加不進任何新 PR 號;通道只剩「驗證會不會拒絕」(conf 9;待 supervisor 決定:登錄為已知限制、或整個移除以縮攻擊面);②`ci.yml` 第 59 行與 Fetch step 註解仍寫「GitFlow 導入者覆蓋 env 常數即可 / env 能加交付分支」,新契約下 `origin/develop` 非 base 祖先 → 永久 exit 2(conf 9);③`check-no-source-terms.ts` 新 `process.exit(2)` 在 `main()` mkdtemp 之後,`finally` 清理不跑、本機反覆失敗會留 `cnst-*` 目錄(conf 9;修法:把 `loadAllowedPrs` 移到 pattern file 建立前、或改回傳值);④`merge-base --is-ancestor` exit 128(未 fetch / shallow)與 1(真非祖先)同判 `ref.nonancestor`,診斷誤導(conf 6);⑤tag 同名 `origin/main` 讓兩 gate 對所有 PR exit 2(fail-closed 型 DoS,非繞過;conf 6);⑥`ci.yml` 的 `develop` fetch 是死步驟(conf 6);⑦`harnessConfigJson` 在兩個測試檔逐字兩份,schema 升版要改兩處(conf 6);⑧無 base 時 env 候選借用 `ref.nonancestor` 原因碼、語意不精確(conf 5);⑨`LESSONS.md` / `docs/OVERVIEW.md` 仍寫四條來源與舊 env 語意(conf 5;LESSONS 屬治理內容需完整 SOP)
-- **方向**:① 先問 supervisor;②⑥⑨ 一起收(docs,0.5h);③ 0.5h;④⑧ 一起(原因碼細分,0.5h);其餘逐條 0.5h
+- **交付(PR #49)**:① supervisor 拍板移除——env 通道、workflow-level env、`ref.*` 原因碼與對應測試 / 探針整組刪除,新增「不讀 env」等價測試與 DR-M9;② 與 ⑥ 隨 ci.yml 同段改寫一併收(develop fetch 行刪除;`if:` 的 `refs/heads/develop` 不動,屬 A3 defer ①);⑧ 隨 env 移除自然消失
+- **方向(其餘)**:③ 0.5h;④ 隨 env 通道移除自然消失(祖先檢查已不存在);⑤⑦⑨ 逐條 0.5h
+- **刻意保留(移除 sprint Step 5 r2)**:`tests/check-baseline-governance.e2e.test.ts` (9) 仍對 `check-baseline-governance` 傳 `DELIVERY_REFS`——那是 `baseline-governance.json` BG-M5(env 偷渡)探針的唯一偵測器,不是殘留,**不要清**;另 `ci.yml` 三處 `if:` 上方註解仍把 develop 當交付分支,屬 A3 defer ①(`if:` 行)同一組,一併處理
 - **工時**:合計 2–3h
 
 ### 🟢 P2#3 Step 5 defer 集合(check-mutation-specs 邊角,15 條 INFORMATIONAL conf ≤8)

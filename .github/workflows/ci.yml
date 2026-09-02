@@ -46,21 +46,11 @@ concurrency:
 permissions:
   contents: read
 
-# 🔴 批 10:workflow-level DELIVERY_REFS 常數(SSOT、擋兩處 env 值漂)。
-# TODOS Markers Check + Source-term scan 兩 step 都用此常數當「delivery-refs
-# 白名單」(即哪些 remote branch 上的 merged commits 可算作「本 repo 已 merge
-# PR 證據」)。過去兩處 step-level env 各自定義,批 9 Step 5 F-round23-4 抓到
-# 「未來翻該值時只翻一處會漂」漏洞。集中在 workflow-level 一份 SSOT 解決。
-#
-# 🔴 批 10 D0 拍板 policy A:只傳 `origin/${default_branch}`,不含 `origin/develop`。
-# 理由(見批 10 plan file 詳述):
-#   - 本 harness template 本身 main-only、應遵守 main-only 預設
-#   - Legacy develop 誤放行是隱性 false negative(比 GitFlow 假紅嚴重)
-#   - GitFlow importer 客製此 workflow yml 覆蓋常數即可(合理成本)
-# 批 9 Codex round 2 vs round 3 對此 pre-existing 兩難各抓一半、
-# Owner 拍板 A(統一方向)、跨兩 step 對齊。
+# 交付證據(哪些 merged commit 的 `(#N)` 可算「本 repo 已 merge」)**唯一來源是受驗的 origin/HEAD**
+# (scripts/lib/delivery-refs.ts:目標須為 refs/remotes/origin/<harness.config deliveryBranches 內的分支>、
+# 正規、可解;否則兩個 gate exit 2)。過去的 workflow-level `DELIVERY_REFS` env 已移除:在祖先契約下它
+# 加不進任何 PR 號、只擴大輸入面(見 CHANGELOG Unreleased / docs/MIGRATION.md)。腳本不讀該 env,設了也被忽略。
 env:
-  DELIVERY_REFS: origin/${{ github.event.repository.default_branch }}
   # 🔴 批 10 Step 5 F1(conf 7):MARKER_SELF_PR 也提到 workflow-level(同 SSOT 論證延伸)。
   # 兩 step 的 MARKER_SELF_PR 都寫 `${{ github.event.pull_request.number }}`——
   # 未來若換表達式(如 `github.event.number`)只要漏改一處,兩 script 拿到不同
@@ -172,24 +162,21 @@ jobs:
         # 🔴 Codex batch 6 round 6 P2 + Step 5 #6/#8:改用 default_branch 動態抓 +
         # `git remote set-head` 讓 origin/HEAD 指向 default,check-todos-markers 走
         # origin/HEAD 唯一權威來源、不再無條件 resolve master/trunk 造成 legacy branch
-        # 假通過。額外 delivery branch 導入者透過 env `DELIVERY_REFS` 加(見 script)。
-        # P2#2:DELIVERY_REFS 每條須為 `origin/<harness.config deliveryBranches 內的分支>` 且為受驗 origin/HEAD 的祖先;
-        # origin/HEAD 目標本身也須正規、可解、已宣告。任何拒絕 → 印原因碼、exit 2;無 fallback(見 scripts/lib/delivery-refs.ts)。
+        # 假通過。origin/HEAD 目標本身須正規、可解、且宣告在 harness.config deliveryBranches;任何拒絕 → 印原因碼、
+        # exit 2;無 fallback、不讀任何 env(見 scripts/lib/delivery-refs.ts)。
         # env 傳 default_branch(不用 shell string interpolation),避免罕見的
-        # branch 名含 shell metacharacter 情境。⚠️ set-head 失敗 = 沒有權威 base → 兩個 gate exit 2,
-        # env DELIVERY_REFS 救不了(P2#2 起 env 候選必須是受驗 base 的祖先)。
+        # branch 名含 shell metacharacter 情境。⚠️ set-head 失敗 = 沒有權威 base → 兩個 gate exit 2(沒有任何救援通道)。
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           git fetch --no-tags origin "$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH" || echo "note: $DEFAULT_BRANCH ref fetch 略過"
           git remote set-head origin -a || echo "note: origin/HEAD set-head 略過"
-          git fetch --no-tags origin develop:refs/remotes/origin/develop || echo "note: develop ref fetch 略過(未採 develop 主線則屬正常)"
 
       - name: Baseline Governance Check
         # PR A3(ADR〈已知限制〉第 2 條的機器守門):source-term baseline 值若在本 PR 改變,PR 只准動
         # config / ADR / bookkeeping allowlist,且新值必須是 merge-base 的祖先(不得指向本 PR 內 commit)並為舊值後裔。
         # 只在 pull_request 跑(push 到主線時 merge-base == HEAD 會 fail-closed 假紅);base ref 由本 step 自己顯式
-        # fetch(下面 run 的第一行;上一 step 只 fetch default_branch 與 develop,PR base 是其他保護分支時只有這一行有效)
+        # fetch(下面 run 的第一行;上一 step 只 fetch default_branch,PR base 是其他保護分支時只有這一行有效)
         # —— fetch 失敗 → ref 不存在 → 腳本 exit 2(fail-closed),不假設 fetch-depth 0 產生 remote ref。
         # base 用 env 傳、在 run 內引號展開,不做 workflow 表達式的 shell 內插;腳本本身不讀任何 env。
         # Step 5 r1 C3:base 用 PR 真正的 base 分支(GitFlow 進 develop 的 PR 不能拿 main 當 base);
@@ -221,9 +208,8 @@ jobs:
         # `release/**`),同步把它加進下面的條件,否則 mainline push 的 marker 治理
         # 會被靜默跳過(Codex batch 6 round 3 P2)。
         if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/develop'
-        # 🔴 批 10:DELIVERY_REFS + MARKER_SELF_PR 都繼承 workflow-level env
-        # (見檔頭 `env:` 區塊)、無需 step-level 覆蓋。policy A 拍板統一「只
-        # default_branch」+ SSOT 擋兩處值漂(批 9 F-round23-4 / 批 10 F1)。
+        # MARKER_SELF_PR 繼承 workflow-level env(見檔頭 `env:` 區塊)、無需 step-level 覆蓋。
+        # 交付證據只來自受驗 origin/HEAD(policy A「只 default_branch」的自然延伸;DELIVERY_REFS env 已移除)。
         run: npx tsx scripts/check-todos-markers.ts
 
       - name: Source-term scan (de-identification gate)
@@ -247,16 +233,14 @@ jobs:
         # baseline cutover 讓主線可自證。兩者共用 CI 步驟純巧合,別在文件裡合稱
         # 「全史 no leaks」——那會把兩個 policy 語意合流誤導讀者。
         #
-        # 🔴 批 7 R3-4 → 批 10 收:step-level env 不會跨 step 傳遞(pre-existing 事實),
-        # 但 workflow-level env 會自動繼承——批 10 把 DELIVERY_REFS 提到 workflow-level
-        # (見檔頭 `env:` 區塊)後,本 step 無需顯式再設。批 7 註記的「顯式列出所有
-        # delivery refs」考量已改由 workflow-level SSOT 承接(擋兩處值漂,
+        # 🔴 批 7 R3-4 → 批 10 收 → 本版收乾:交付 ref 不再由 env 提供(DELIVERY_REFS 已移除),
+        # 唯一來源是受驗 origin/HEAD;「顯式列出所有 delivery refs」的考量已由 harness.config
+        # deliveryBranches 靜態宣告承接(擋兩處值漂,
         # 批 9 Step 5 F-round23-4)。
         #
-        # 🔴 批 10 D0 policy A:workflow-level env 只 default_branch、不含 develop。
-        # 批 7 R3-4 曾在此 step 加 `,origin/develop` 解 GitFlow-only PR 誤擋,但
-        # 批 9 Codex round 2 抓到「main-only 專案 legacy develop 誤放行」反面問題——
-        # 跨兩 step 相反選擇是 pre-existing 兩難,Owner 批 10 拍板 A(見檔頭註解)。
+        # 【歷史】批 10 D0 policy A:當時的 workflow-level env 只 default_branch、不含 develop(批 7 曾在此 step
+        # 加 `,origin/develop`、批 9 抓到 legacy develop 誤放行的反面問題,Owner 拍板 A)。該 env 現已整個移除;
+        # 交付證據只來自受驗 origin/HEAD(= GitHub default branch),沒有任何加 develop 的通道。
         #
         # 🔴 批 8 Phase B:MARKER_SELF_PR 解 sprint 內 self-reference 死鎖。
         # 完整契約與範圍見 scripts/check-no-source-terms.ts 的 loadAllowedPrs
@@ -275,8 +259,8 @@ jobs:
         # (例:release/**),同步把它加進下面的條件——與 TODOS Markers Check 三處
         # 同步紀律(批 6 LESSONS L89)。
         if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/develop'
-        # 🔴 批 10:DELIVERY_REFS + MARKER_SELF_PR 都繼承 workflow-level env
-        # (見檔頭 `env:` 區塊)、無需 step-level 覆蓋(F1 修法)。
+        # MARKER_SELF_PR 繼承 workflow-level env(見檔頭 `env:` 區塊)、無需 step-level 覆蓋(F1 修法);
+        # DELIVERY_REFS env 已移除。
         run: npm run check:no-source-terms
 
       - name: Test (vitest)

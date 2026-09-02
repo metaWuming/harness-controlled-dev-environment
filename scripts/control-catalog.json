@@ -220,7 +220,7 @@
         "scripts/lib/delivery-refs.ts",
         "scripts/lib/marker-self-pr.ts"
       ],
-      "locator": "CI step「TODOS Markers Check」;PR event 一律跑、push 只在 delivery branch 跑;交付 ref 走 lib/delivery-refs 共用契約(受驗 origin/HEAD + 已宣告且為祖先的 env 候選;拒絕 → exit 2)",
+      "locator": "CI step「TODOS Markers Check」;PR event 一律跑、push 只在 delivery branch 跑;交付 ref 走 lib/delivery-refs 共用契約(唯一來源 = 受驗 origin/HEAD;不讀 env;拒絕 → exit 2)",
       "ciStep": "TODOS Markers Check",
       "owner": "github",
       "failureBehavior": "block",

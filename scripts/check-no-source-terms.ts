@@ -537,7 +537,7 @@ export function validateBaseline(
  *    `allowedPrs.size ≤ mergedCount + selfPrCount`(collision 時 <、其餘 =)。
  *
  * 兩來源:
- *   1) delivery refs(scripts/lib/delivery-refs.ts 共用契約:受驗 origin/HEAD + 已宣告且為祖先的 env 候選;無 fallback)的 git log subject 抽出
+ *   1) delivery refs(scripts/lib/delivery-refs.ts 共用契約:唯一來源是受驗 origin/HEAD;不讀 env;無 fallback)的 git log subject 抽出
  *      canonical squash 尾綴 / merge subject 開頭的 PR 號——「本 repo 已 merge」
  *   2) env `MARKER_SELF_PR`(sprint 內 self-reference 死鎖解法,批 8 Phase B):
  *      本 PR 尚未 squash merge 前,**diff 內(工作樹追蹤檔)/ 文件 blob(git
@@ -566,8 +566,8 @@ function loadAllowedPrs(root: string): {
   mergedCount: number;
   selfPrCount: number;
 } {
-  // P2#2:交付 ref 的來源與驗證抽到 shared lib(scripts/lib/delivery-refs.ts),與 check-todos-markers
-  // 共用單一契約(受驗 origin/HEAD base + env 候選須為已宣告交付分支且為 base 祖先;無 fallback)。
+  // 交付 ref 的來源與驗證在 shared lib(scripts/lib/delivery-refs.ts),與 check-todos-markers
+  // 共用單一契約(唯一來源 = 受驗 origin/HEAD base;不讀任何 env;無 fallback)。
   // 任何拒絕都不靜默:印原因碼、exit 2。**只動 allowedPrs 來源這道縫,掃描語意不變。**
   const resolved = resolveDeliveryRefsFromRepo(root);
   if (!resolved.ok) {
