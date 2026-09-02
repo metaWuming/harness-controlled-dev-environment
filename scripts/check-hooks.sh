@@ -14,9 +14,9 @@
 #   1. `core.hooksPath` 有設，且解析後等於本 repo 的 `scripts/git-hooks`
 #   2. `pre-commit` / `pre-push` 檔案存在
 #   3. 兩支都有可執行位元（git 不會執行沒有 +x 的 hook，而且**不會抱怨**）
-#   4. `code-pattern.sh`（SSOT）存在、可被 source，且兩個 pattern 變數方向沒反
+#   4. `code-pattern.sh`（SSOT）存在、可被 source，且三個 pattern 變數方向沒反
 #
-# 注意：這支只驗「hook 會被 git 呼叫」＋「SSOT 兩個 pattern 的方向」，不驗 hook
+# 注意：這支只驗「hook 會被 git 呼叫」＋「SSOT 三個 pattern 的方向」，不驗 hook
 # 分支邏輯是否正確——後者靠 `tests/` 底下的守門測試與拋棄式 clone 裡的實跑。
 #
 # Usage:  npm run check:hooks        # 或 bash scripts/check-hooks.sh
@@ -112,7 +112,7 @@ if [ $subshell_ec -eq 91 ]; then
   fail "code-pattern.sh 無法 source（語法錯誤？）"
 fi
 
-# 逐行讀:第 1 行 sentinel、第 2/3 行 base64 encoded 變數
+# 逐行讀:第 1 行 sentinel、第 2/3/4 行 base64 encoded 變數
 pattern_sentinel=$(printf '%s\n' "$pattern_output" | sed -n '1p')
 pattern_var1_b64=$(printf '%s\n' "$pattern_output" | sed -n '2p')
 pattern_var2_b64=$(printf '%s\n' "$pattern_output" | sed -n '3p')
@@ -127,7 +127,7 @@ PROTECTED_DOCS=$(printf '%s' "$pattern_var2_b64" | base64 -d 2>/dev/null)
 [ -n "$NON_CODE_PATTERN" ] || fail "code-pattern.sh 沒有定義 NON_CODE_PATTERN（兩支 hook 會靜默放行 code）"
 [ -n "$PROTECTED_DOCS" ] || fail "code-pattern.sh 沒有定義 PROTECTED_DOCS（PR-only 文件會被放行）"
 
-# 🔴 額外 defense:計算「所有非空行」的數量,若超過 3 行 → 有人在 code-pattern.sh
+# 🔴 額外 defense:計算「所有非空行」的數量,若超過 4 行 → 有人在 code-pattern.sh
 #    偷加了 echo/printf 副作用（會弄亂父端 sed 位置解讀）→ fail-closed。
 #    (變數為空的情境已在上面 [ -n ] 擋掉,不會走到這裡。)
 pattern_nonempty_lines=$(printf '%s\n' "$pattern_output" | grep -c '.' || true)
@@ -142,6 +142,7 @@ echo "CLAUDE.md" | grep -qE "$PROTECTED_DOCS" || fail "PROTECTED_DOCS 對不到 
 TOOL_ARTIFACT_PATTERN=$(printf '%s' "$pattern_var3_b64" | base64 -d 2>/dev/null)
 [ -n "$TOOL_ARTIFACT_PATTERN" ] || fail "code-pattern.sh 沒有定義 TOOL_ARTIFACT_PATTERN（\`git add -A\` 誤加工具產物的守門會靜默失效）"
 echo ".codegraph/index.db" | grep -qE "$TOOL_ARTIFACT_PATTERN" || fail "TOOL_ARTIFACT_PATTERN 對不到 .codegraph/（方向反了）"
+echo "packages/app/.codegraph/x" | grep -qE "$TOOL_ARTIFACT_PATTERN" || fail "TOOL_ARTIFACT_PATTERN 對不到巢狀 .codegraph/（應任意深度）"
 echo "src/x.ts" | grep -qEv "$TOOL_ARTIFACT_PATTERN" || fail "TOOL_ARTIFACT_PATTERN 把 src/x.ts 判成工具產物（方向反了）"
 
 echo "✅ git hooks 活著：core.hooksPath → ${CONFIGURED}（pre-commit + pre-push 存在且可執行；SSOT 三個 pattern 已載入並通過冒煙測試）"

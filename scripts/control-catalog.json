@@ -373,7 +373,7 @@
         "scripts/git-hooks/code-pattern.sh",
         "scripts/setup-hooks.sh"
       ],
-      "locator": "develop / main 上 staged 含 code 或 PROTECTED_DOCS → block;feature/* 放行;任何分支 staged 含 TOOL_ARTIFACT_PATTERN(本機工具產物,git add -A 誤加)→ block",
+      "locator": "先擋:任何分支 staged 新增 / 修改命中 TOOL_ARTIFACT_PATTERN(本機工具產物,任意深度;刪除放行以便清理)→ block;再擋:develop / main 上 staged 含 code 或 PROTECTED_DOCS → block;feature/* 放行",
       "ciStep": null,
       "owner": "developer",
       "failureBehavior": "block",

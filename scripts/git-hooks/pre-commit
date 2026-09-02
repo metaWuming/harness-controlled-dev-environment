@@ -19,6 +19,8 @@
 # 覆蓋邊界(誠實揭露):git 只對 `git commit` 跑 pre-commit。
 #   `git merge --no-ff`、`git cherry-pick`、`git revert`、`git am`(走 pre-applypatch)
 #   **都不會觸發本 hook**。那幾條路的最後一道是 pre-push 的互動確認(不是硬擋)。
+#   工具產物段只看**這次 staged** 的新增 / 修改:產物若已在 HEAD(先前誤 commit),`git commit --amend`
+#   沒有新 staged 時放行——要清理請 `git rm --cached <路徑>` 再 commit(刪除刻意放行)。
 #   所以本 hook 是「把最常見的那條路做成硬擋」,不是全覆蓋。
 #
 # 🔴 `--no-renames`:`git diff --cached --name-only` 對 rename 只回報**目的路徑** →
@@ -48,7 +50,12 @@ staged="$(git diff --cached --name-only --no-renames)"
 [ -z "$staged" ] && exit 0
 
 # 0) 任何分支:本機 AI / 工具產物不得進 commit(`git add -A` 誤加 untracked 的機器化守門)
-artifacts=$(printf '%s\n' "$staged" | grep -E "$TOOL_ARTIFACT_PATTERN" || true)
+#    🔴 `-c core.quotePath=false`(Step 5 C1):預設 quotePath 會把非 ASCII / 控制字元檔名印成帶引號的
+#       八進位跳脫(`".codegraph/\344..."`),`^\.codegraph/` 對不上開頭的引號 → 靜默放行。關掉才是原始路徑。
+#    🔴 `--diff-filter=d`(Step 5 C2):排除刪除——「把誤入版控的產物 `git rm --cached` 掉」正是本規則
+#       最該放行的修復路徑;rename-out 的 delete 端同理。只在本段排除,下面 default-deny 段維持原樣。
+artifact_staged="$(git -c core.quotePath=false diff --cached --name-only --no-renames --diff-filter=d)"
+artifacts=$(printf '%s\n' "$artifact_staged" | grep -E "$TOOL_ARTIFACT_PATTERN" || true)
 if [ -n "$artifacts" ]; then
   {
     echo ""
@@ -59,7 +66,7 @@ if [ -n "$artifacts" ]; then
       [ -n "$line" ] && echo "     - $line"
     done <<< "$artifacts"
     echo ""
-    echo "   → 修法:\`git restore --staged <路徑>\`,之後 \`git add\` 列具體檔名、不用 -A / .(先 \`git status --short\` 看 ?? 行)"
+    echo "   → 修法:\`git restore --staged <路徑>\`(新增 / 修改)之後 \`git add\` 列具體檔名、不用 -A / .(先 \`git status --short\` 看 ?? 行)"
     echo "   → 這些路徑應在 .gitignore;若你的工具產物不同,改 scripts/git-hooks/code-pattern.sh 的 TOOL_ARTIFACT_PATTERN"
     echo "   → 緊急逃生:\`git commit --no-verify\`"
   } >&2

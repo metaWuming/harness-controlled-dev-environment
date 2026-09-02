@@ -59,8 +59,8 @@ PROTECTED_DOCS='^CLAUDE\.md$|^\.claude/sop/|^(SPEC|ARCHITECTURE|GOVERNANCE)\.md$
 
 # 🔴 本機 AI / 工具產物(不進版控)——`git add -A` / `git add .` 最常掃進來的東西。
 #    根治是 .gitignore(已列);本 pattern 是縱深:`git add -f` 或 .gitignore 被改掉時,
-#    pre-commit 在**任何分支**都擋(LESSONS ⚠️ [2026-08-29] `git add -A` 誤加 untracked,
+#    pre-commit 在**任何分支**都擋、任意深度(與 .gitignore 語意對齊,Step 5 I3)(LESSONS ⚠️ [2026-08-29] `git add -A` 誤加 untracked,
 #    跨專案第 ≥4 次踩 → 機器化)。導入者依自家工具增補(例:.aider*、.cursor/)。
 #
 # shellcheck disable=SC2034
-TOOL_ARTIFACT_PATTERN='^\.codegraph/|^\.gbrain-source$|^_handoffs/'
+TOOL_ARTIFACT_PATTERN='(^|/)\.codegraph/|(^|/)\.gbrain-source(/|$)|(^|/)_handoffs/'

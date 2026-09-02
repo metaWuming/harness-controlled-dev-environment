@@ -67,7 +67,7 @@ npx tsx scripts/mutate.ts --file src/example.ts \
   `check-control-catalog.ts`(路徑 tracked、ci.yml 雙向鎖 3b / 3c / 3e、無名 step、巢狀 name: 不算、引號還原、渲染一致、exit 契約)
 - `baseline-governance.json` — PR A3 的 11 條探針,守 `check-baseline-governance.ts`(allowlist、祖先 / 方向檢查、
   promotion 豁免讀 merge-base、ls-tree 失敗不當 absent、argv 與 env 契約、exit 契約)
-- `git-add-guard.json` — 3 條探針,守 `git-hooks/pre-commit` 的 TOOL_ARTIFACT_PATTERN 守門(任何分支擋本機工具產物)
+- `git-add-guard.json` — 5 條探針,守 `git-hooks/pre-commit` 的 TOOL_ARTIFACT_PATTERN 守門(任何分支擋本機工具產物)
   與 `check-hooks.sh` 對第三個 SSOT 的要求
   **spec 的 `find` 是原始碼逐字樣本**——改到那些行就要同步改 spec,否則 mutate 會以
   「樣本沒對上」exit 2(fail-closed,不會靜默通過)。

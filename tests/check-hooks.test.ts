@@ -340,17 +340,52 @@ describe("pre-commit — 工具產物守門(git add -A 誤加 untracked 的機�
     gitc(dir, "config", "user.email", "t@example.test");
     gitc(dir, "config", "user.name", "t");
     writeFileSync(join(dir, "README.md"), "x\n");
-    gitc(dir, "add", "README.md");
+    // 第一道:.gitignore(與本 repo 相同三條);測試用 `add -f` 就是在模擬「ignore 被繞過」
+    writeFileSync(join(dir, ".gitignore"), ".codegraph/\n.gbrain-source\n_handoffs/\n");
+    gitc(dir, "add", "README.md", ".gitignore");
     expect(gitc(dir, "commit", "-q", "-m", "init").code).toBe(0);
     gitc(dir, "checkout", "-q", "-b", "feature/x");
     return dir;
   }
+  it("第一道:.gitignore 真的 ignore 三條路徑(check-ignore);不加 -f 的 git add 對它們無效", () => {
+    const dir = repoOnFeature();
+    mkdirSync(join(dir, ".codegraph"), { recursive: true });
+    writeFileSync(join(dir, ".codegraph/index.db"), "bin");
+    writeFileSync(join(dir, ".gbrain-source"), "x");
+    for (const rel of [".codegraph/index.db", ".gbrain-source", "_handoffs/x.md"]) {
+      expect(gitc(dir, "check-ignore", "-q", rel).code, rel).toBe(0);
+    }
+    gitc(dir, "add", "-A");
+    const staged = spawnSync("git", ["-C", dir, "diff", "--cached", "--name-only"], { encoding: "utf-8" }).stdout;
+    expect(staged).not.toContain(".codegraph");
+    expect(staged).not.toContain(".gbrain-source");
+  });
+  it("🔴 C1:非 ASCII 檔名(core.quotePath 會加引號)照樣被擋;C2:git rm --cached 清理產物放行;I3:巢狀路徑也擋", () => {
+    const dir = repoOnFeature();
+    mkdirSync(join(dir, ".codegraph"), { recursive: true });
+    writeFileSync(join(dir, ".codegraph/中文.db"), "bin");
+    gitc(dir, "add", "-f", ".codegraph/中文.db");
+    let r = gitc(dir, "commit", "-q", "-m", "oops");
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("TOOL_ARTIFACT_PATTERN");
+    // 已誤入版控的產物:用 --no-verify 模擬歷史,再驗清理路徑放行
+    expect(gitc(dir, "commit", "-q", "--no-verify", "-m", "legacy").code).toBe(0);
+    gitc(dir, "rm", "-q", "--cached", ".codegraph/中文.db");
+    r = gitc(dir, "commit", "-q", "-m", "cleanup");
+    expect(r.code, r.err).toBe(0);
+    mkdirSync(join(dir, "packages/app/.codegraph"), { recursive: true });
+    writeFileSync(join(dir, "packages/app/.codegraph/x"), "bin");
+    gitc(dir, "add", "-f", "packages/app/.codegraph/x");
+    r = gitc(dir, "commit", "-q", "-m", "nested");
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("packages/app/.codegraph/x");
+  });
   it("🔴 feature 分支 stage .codegraph/ 檔 → commit 被擋(exit 1、訊息點名路徑與修法)", () => {
     const dir = repoOnFeature();
     mkdirSync(join(dir, ".codegraph"), { recursive: true });
     writeFileSync(join(dir, ".codegraph/index.db"), "bin");
     writeFileSync(join(dir, "src.ts"), "export {}\n");
-    gitc(dir, "add", "-f", ".codegraph/index.db", "src.ts"); // -f 模擬 .gitignore 被繞過
+    gitc(dir, "add", "-f", ".codegraph/index.db", "src.ts"); // fixture 有 .gitignore,-f 模擬 ignore 被繞過
     const r = gitc(dir, "commit", "-q", "-m", "oops");
     expect(r.code).toBe(1);
     expect(r.err).toContain("TOOL_ARTIFACT_PATTERN");
