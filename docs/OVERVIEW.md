@@ -570,21 +570,9 @@ L2 加持（Next.js + Prisma）：4 支自訂 AST rule：
 - `DELIVERY_REFS = origin/${default_branch}`
 - `MARKER_SELF_PR = ${{ github.event.pull_request.number }}`
 
-八個 step（依序）：
-
-| Step | 做什麼 | 供應鏈守衛 |
-|---|---|---|
-| Checkout | actions/checkout SHA-pinned `3d3c42e5...` | ✅ |
-| Secret scan (gitleaks) | 全史掃、pinned binary + sha256 校驗 | ✅ |
-| Setup Node | actions/setup-node SHA-pinned `820762786...` | ✅ |
-| Typecheck / Lint | `tsc --noEmit` / `eslint` | — |
-| Npm audit | `--audit-level=high` 硬 gate | — |
-| Doc references check | `check-doc-refs.ts` 驗檔案引用完整 | — |
-| Doc size check | `check-doc-size.ts` 防記憶檔膨脹 | — |
-| Fetch delivery refs | fetch default_branch + develop（belt-and-suspenders） | — |
-| TODOS Markers Check | `check-todos-markers.ts` 驗完成宣稱有 PR merge 證據 | — |
-| Source-term scan | `check-no-source-terms.ts` 去識別化守衛 | — |
-| Test (vitest) | `npx vitest run` | — |
+CI step 逐條登錄於 [CONTROL-CATALOG.md](CONTROL-CATALOG.md)〈hard-automated〉（正本 `scripts/control-catalog.json`，
+`npm run check:catalog` 驗每個 step 與 catalog 雙向一一對應）；本節不重列 step 清單與數量，避免漂移。供應鏈守衛：
+`actions/checkout` / `actions/setup-node` SHA-pinned、gitleaks pinned binary + sha256 校驗。
 
 #### ⑫ 週健檢
 

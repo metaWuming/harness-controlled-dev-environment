@@ -44,6 +44,12 @@ type: guide
 - 改完 JSON 跑 `npm run catalog:render` 產生 `docs/CONTROL-CATALOG.md`(不要手改 md)。
 - 沒有對應測試的 control 用 `"tested": ["untested"]` 誠實標;`manual-drill` 表示只做過人工演練。
 
+### 4.5 升級順序(GitFlow)
+
+- 先單獨把 v2 升級 promote 到每個保護分支(develop → main),**再**做 baseline 推進 PR。promotion 豁免讀的是 merge-base
+  那側的 config;若 main 還是 v1、而 develop → main 的 promotion PR 同時帶 baseline 推進,mb 側解析失敗 → 不豁免 → 紅。
+  未來 schemaVersion 再升時同樣順序。
+
 ### 5. `scripts/cso-trigger.config.ts`
 
 - adopted mode 下五域各恰一種處置:有 pattern,或在 `CSO_NOT_APPLICABLE` 宣告理由(≥10 字)。

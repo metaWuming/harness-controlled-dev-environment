@@ -134,12 +134,17 @@ export function evaluateBaselineGovernance(baseRef: string, io: GitIo, opts: Gov
   const newVal = newCfg === 'absent' ? null : (newCfg as { baseline: string | null }).baseline;
 
   if (oldVal === newVal) {
-    return { status: 'UNCHANGED', findings: [], lines: [`BASELINE_UNCHANGED — ${BASELINE_CONFIG} 的 baseline 在 merge-base ${mb.slice(0, 12)} 與 HEAD 相同(${newVal ?? 'null'})`] };
+    return { status: 'UNCHANGED', findings: [], lines: [`BASELINE_UNCHANGED — ${BASELINE_CONFIG} 的 baseline 在 merge-base ${mb.slice(0, 12)} 與 HEAD 相同(${newVal ?? 'null'})`, ...infoLines] };
   }
+  let directionChecked = false;
 
   // 3. 變更面
   const diff = io.git(['diff', '--name-only', mb, head]);
-  if (diff === null) return und('diff.unavailable', 'git diff --name-only 取不到');
+  if (diff === null) {
+    const u = und('diff.unavailable', 'git diff --name-only 取不到');
+    u.lines.push(...infoLines);
+    return u;
+  }
   const changed = diff.split('\n').filter(Boolean);
   const disallowed = changed.filter((p) => !isAllowedBaselineChangePath(p));
   if (changed.length === 0) f.push({ code: 'diff.empty', msg: 'baseline 值變了但 diff 為空(無法判定)' });
@@ -164,8 +169,10 @@ export function evaluateBaselineGovernance(baseRef: string, io: GitIo, opts: Gov
             // Step 5 r1 C1:下游 GitHub Template 新歷史不含模板的 baseline commit —— 與 check-no-source-terms 的
             // template-fallback 同語意,視為首次設定(仍要求新值解得開、且為 merge-base 祖先)。
             infoLines.push(`  [info] 舊值 ${oldVal} 是 template 遺產且不在本 history(下游新歷史),視為首次設定、略過方向檢查`);
+            directionChecked = false;
           } else if (!ovSha) f.push({ code: 'value.old-unresolvable', msg: `舊 baseline ${JSON.stringify(oldVal)} 解不開,無法判定方向` });
           else {
+            directionChecked = true;
             const forward = io.git(['merge-base', '--is-ancestor', ovSha, nvSha]);
             if (forward === null || ovSha === nvSha) f.push({ code: 'value.not-forward', msg: `新 baseline ${nv.slice(0, 12)} 不是舊值 ${ov.slice(0, 12)} 的真後裔(只准往前推)` });
           }
@@ -175,7 +182,7 @@ export function evaluateBaselineGovernance(baseRef: string, io: GitIo, opts: Gov
   }
 
   if (f.length === 0) {
-    return { status: 'OK', findings: [], lines: [`BASELINE_GOVERNANCE_OK — baseline ${oldVal ?? 'null'} → ${newVal};變更面 ${changed.length} 檔皆在允許集合;新值為 merge-base 祖先${infoLines.length ? '' : '且為舊值後裔'}`, ...infoLines] };
+    return { status: 'OK', findings: [], lines: [`BASELINE_GOVERNANCE_OK — baseline ${oldVal ?? 'null'} → ${newVal};變更面 ${changed.length} 檔皆在允許集合;新值為 merge-base 祖先${directionChecked ? '且為舊值後裔' : '(方向檢查略過,見 info)'}`, ...infoLines] };
   }
   return { status: 'FAIL', findings: f, lines: [`BASELINE_GOVERNANCE_FAIL (${f.length}):`, ...f.map((x) => `  [${x.code}] ${x.msg}`), ...infoLines] };
 }
