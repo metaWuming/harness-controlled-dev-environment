@@ -10,11 +10,9 @@ type: guide
 
 ## [Unreleased] — 移除 `DELIVERY_REFS` env 通道(breaking)
 
-- **變了什麼**:`check:todos` 與 `check:no-source-terms` 的交付證據**唯一來源是受驗的 `origin/HEAD`**(目標須為 `refs/remotes/origin/<name>`、正規、可解、且 `<name>` 宣告在 `scripts/harness.config.json` 的 `deliveryBranches`)。交付 ref 相關的 env **`DELIVERY_REFS` 已移除、不再被讀**;workflow-level `DELIVERY_REFS` 已從 `ci.yml` 刪除。(`MARKER_SELF_PR` 是另一條獨立通道,保留、語意不變。)
-- **`deliveryBranches` 現在有兩個用途,要分開理解**:①交付證據:只驗 `origin/HEAD` 目標**這一個**分支是否在名單內;名單裡的其他分支**不會**成為證據來源(例:`['main','develop']` 不會讓 develop 的 merge 算證據)。②adopted mode 的 `check:adoption` A5:`ci.yml` 三處 `if:` 行必須逐字等於由 `deliveryBranches` 導出的形狀,`CLAUDE.md` §4.6 也須提到每個元素(見 `docs/ADOPTION.md`)。所以增減名單會改變 A5 的期望,**要同步改 `ci.yml` 三處 `if:` 行與 §4.6**。
+- **變了什麼**:`check:todos` 與 `check:no-source-terms` 的交付證據**唯一來源是受驗的 `origin/HEAD`**(目標須為 `refs/remotes/origin/<name>`、正規、可解、且 `<name>` 宣告在 `scripts/harness.config.json` 的 `deliveryBranches`;實作與原因碼見 `scripts/lib/delivery-refs.ts`)。env `DELIVERY_REFS` 已移除、不再被讀;workflow-level `DELIVERY_REFS` 已從 `ci.yml` 刪除。`MARKER_SELF_PR` 通道未變。
 - **為什麼**:祖先契約(上一版)下,任何通過驗證的 env 候選都是 origin/HEAD 的祖先,`git log` 集合不變、加不進任何 PR 號;通道只剩「驗證會不會拒絕」與可被 tag / 遮蔽觸發的 fail-closed DoS 面。
-- **導入者要做什麼**:若你的 workflow 自訂了 `DELIVERY_REFS`,**刪掉即可**(留著也會被靜默忽略,不會壞)。若你依賴它把 `origin/develop` 或 release 線的 merge 算作證據:**現在沒有這種通道**。CI 內 `origin/HEAD` 由 Fetch step 的 `git remote set-head origin -a` 決定 = GitHub repo 的 default branch。要換交付線,兩條路擇一,**兩條都必須把新交付線宣告進 `deliveryBranches`**(否則 `base.undeclared`、兩個 gate 每次 exit 2):(a) 改 GitHub default branch;(b) 把 Fetch step 的 `git fetch … "$DEFAULT_BRANCH:…"` 與 `git remote set-head origin -a` 兩行改成 fetch 並 `set-head origin <branch>`(不要假設 checkout 已產生 `refs/remotes/origin/<branch>`)。改了名單就依上一點同步 `if:` 行與 §4.6。
-- **GitFlow 專案注意**:PR 進 `develop` 或 push 到 `develop` 時三個 step 都會跑,但證據只來自 origin/HEAD;TODOS 或文件內引用「只 squash 進 develop、尚未 promotion 到 main」的 PR 號,會被 TODOS Markers Check **與** Source-term scan 擋到 promotion 為止(本 PR 自身不在此列,`MARKER_SELF_PR` 豁免它;policy A 既有行為,本版未改)。要避免就走 (b) 把交付線指到 develop。
+- **導入者要做什麼**:若你的 workflow 自訂了 `DELIVERY_REFS`,刪掉即可(留著也會被靜默忽略)。本版**不提供**把交付線換到 default branch 以外分支的指引;有此需求請先開 issue 討論(涉及 `deliveryBranches`、`ci.yml` 的 `on:` / `if:` / Fetch step 與 `check:adoption` 多條規則,不是單一改動)。
 - **回滾**:`git revert` 本 PR 的 squash commit,env 通道與其測試 / 探針整組還原;無 config schema 變更。
 
 ## 0.1 → 0.2(Milestone A)

@@ -17,7 +17,7 @@
 //      若其條目 body 引用了已 merged 的交付 PR 且缺明示阻塞詞(⏳ / 卡 / 待外部 / 待拍板 / 律師 …)
 //      → 印警告要求人工 re-verify。不擋 CI(避免合理 partial 假陽性)。
 //
-// merged 判定:對「交付分支」(受驗 origin/HEAD + 已宣告且為祖先的 env 候選;見 scripts/lib/delivery-refs.ts)`git log` 抓 commit subject,regex 出
+// merged 判定:對「交付分支」(受驗 origin/HEAD;不讀 env;見 scripts/lib/delivery-refs.ts)`git log` 抓 commit subject,regex 出
 //   - squash 形式 `…(#N)`(feature/fix PR squash→develop)
 //   - merge 形式 `Merge pull request #N`(sync develop→main)
 //   兩者聯集 = 「有 merge 證據的 PR 號集合」。離線、確定性、無 gh 依賴。
