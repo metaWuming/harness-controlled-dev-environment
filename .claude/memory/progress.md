@@ -88,58 +88,5 @@ type: note
 > 📐 量測:claude-opus-4-7[1m] effort xhigh(主 session)+ adversarial-reviewer 標準審 + isolation:worktree 審 x2 輪;Codex gpt-5.6-terra medium(w2:p8);baseline `a8df8d7d3d878f97832fbf7e7d9451f6ff89a2b1`;來源分佈:既有缺陷 0・漏改 consumer 0・baseline 後引入 6(r1 P1 由初 e2e 引入、r2 P2 由 round 1 fix 引入、Step 5 F1/F2/worktree F1 由初 patch 引入)
 > **7 步 checklist**:1 ✅ plan 4 rev / 2 ✅ Codex APPROVE + Owner go / 3 ✅ Phase 1-5 atomic commits / 4 ✅ Codex r1 P1 修 + r2 P2 散文 PASS / 4.5 ✅ 人工判高風險車道(cso 路徑表模板為空、守門 CLI 修 fail-open 屬橫切保守項),探針 8/8 綁 `be25d9b1797146bfaad75aaf5bcb1f409fcc788d`(3 caller-wiring exit(2) mutant 由 e2e case #4 精確 kill)/ 4.6 ✅ 未觸發(diff 不碰 UI)/ 5 ✅ 標準審 + worktree r1 修 F1 → r2 APPROVE 0 findings / 6-7 待執行
 
-## 🤝 hi5 交棒紀錄 — 2026-09-02 20:14
-- 交棒時 commit:`2ed1be1cf4bca2da3ac0c260cd25928122f0149e`(main;PR #46 squash;工作樹乾淨、無 WIP)
-- 交接檔:`_handoffs/HANDOFF.md`(本機檔,`.gitignore` 忽略)
-- 暫停點:Milestone A 全部收尾(v0.2.0 + #45 + #46),無在途工作;下一棒由 Codex supervisor(Herdr w2:p8)拍板選 B1 / TODOS P2 / defer 集合
-
-📅 2026-09-03 ② — **移除 `DELIVERY_REFS` env 通道(刻意的行為 / API 移除;交付證據唯一來源 = 受驗 origin/HEAD)**
-
-> **緣起**:(#48) 落地祖先契約後,Step 5 r2 指出 env 通道是空操作(任一合法候選 X:anc(X) ⊆ anc(base),`git log base X` 集合不變);supervisor 拍板方向為移除、另 scope、附證明與回滾。plan 2 rev(rev 1 P2:lib「不讀 env」測試改 save/set/restore 單參數入口)。frozen base `ff4db7d`,worktree `feat/delivery-refs-removal`。
-> **改動**:**15 檔 / 10 commits**(`git diff --name-only base..HEAD | wc -l` / `git rev-list --count`)。lib 刪 env 解析、`SAFE_REF_RE`、`ref.*` 六個原因碼、祖先檢查;`resolveDeliveryRefs(git, declared)` / `resolveDeliveryRefsFromRepo(root)`,`process.env` 0 讀取;兩 consumer 對齊簽章(nst 掃描語意 0 diff,2 個註解 hunk);ci.yml 刪 workflow-level env 與 develop fetch 行;測試:lib 加「不讀 env」等價測試,兩 consumer 加逐位元「env 被忽略」e2e(含垃圾值),刪 env 相關 case;探針刪 DR-M1、加 DR-M9(偷讀 env 當 base);MIGRATION Unreleased breaking 段、CHANGELOG Removed、OVERVIEW、catalog locator、README、TODOS。
-> **驗證(`ce3c44a` 實測)**:typecheck / lint;**25 檔 898 passed + 2 skipped**;check:mutation-specs OK(8 檔 96 條);catalog / doc-refs / doc-size / no-source-terms / adoption / hooks 綠;check:todos 以 MARKER_SELF_PR 綠。**mutation `delivery-refs.json` 8/8** 綁 `bea3b21`(Step 5 r1 在 `1e563eb` 獨立重跑亦 8/8);**`source-term-diff-scan.json` 29/29** 綁 `bea3b21`(其後 4 支 commit 只動測試註解 / 測試名 / 文件)。
-> **審查**:Codex 全範圍 r1 P2(nst fixture 說明仍寫四條 fallback)→ rereview #2 P2(節標題 / A-e4 / makeRepo 註解同類殘留)→ rereview #3 P2(todos 反例註解、測試名「env 空」)→ **rereview #4 PASS**。Step 5 worktree 審 2 輪:r1 **0 C + 7 I**(順手修 5 條文件矛盾:CHANGELOG Changed、ci.yml 兩處、OVERVIEW 標題、MIGRATION、TODOS ④)→ r2 **0 C + 6 I**(又順手修 3 條 MIGRATION 句)→ r3 **2 C + 4 I**(兩條 CRITICAL 都在 r2 新寫的 MIGRATION 句)→ r4 **1 C + 5 I**(仍在 MIGRATION 新句)→ Owner 裁示停止遞迴:**刪掉整段換線 / GitFlow 指引、只留事實**,不再開輪。defer 2 條進 TODOS P3。
-> **⭐ 教訓**:①**移除一個通道時,「說它存在」的每一句話都是 diff 的一部分**——Codex 三輪、Step 5 r1 抓的都是同類殘留(fixture docstring、節標題、反例註解、測試名、CHANGELOG 相鄰條目);移除類 PR 的 P0 要先 `grep -rn <名稱>` 逐處分類「刪 / 改現行 / 標歷史」列進 plan。②**INFORMATIONAL 不修就是不修,文件類尤其不能「順手」**:r1、r2 都是 0 CRITICAL,我順手修文件句,新句子每輪長出新 finding,r3 / r4 的 3 條 CRITICAL 全在我自己新寫的 MIGRATION 指引裡——Owner 已拍板的「無 CRITICAL 即停」我沒守,多燒 3 輪。修法是**刪掉指引**而不是再寫一版。
-> **check:claims 逐條處置**:17 處命中全留 A(「唯一來源」= 契約字面 ×13;「沒有任何救援通道」= ci.yml 事實;「絕不」為既有測試名 / label)。
-> 📊 成本:CC ~4.5h / plan 2 rev / Codex 4 輪 / Step 5 **4 輪**(後 2 輪是自找的)/ mutate 2 輪 / P1 0 / P2 3(全為文件契約漂移)/ Step5 獨立發現 25(3 CRITICAL 全在自己新寫的文件句、修 13、刪段解決 7、defer 2、既登錄 3)
-> 📐 量測:claude-fable-5-1 effort low;Codex gpt-5.6-terra medium(w2:p8);來源分佈:既有缺陷 0・漏改 consumer 8(全為註解 / 文件)・baseline 後引入 17(其中 3 CRITICAL 由 r1 / r2 修法引入)
-> **7 步 checklist**:1 ✅ rev 2 / 2 ✅ supervisor APPROVE / 3 ✅ P1–P4 / 4 ✅ Codex 4 輪 PASS / 4.5 ✅ 人工視同高風險(cso 路徑表空),探針 8/8 + 29/29 / 4.6 ✅ 未觸發 / 5 ✅ r4 後 Owner 裁示收乾 / 6-7 待執行
-
-📅 2026-09-03 ① — **P2#2:`DELIVERY_REFS` 共用政策契約(`lib/delivery-refs.ts`,fail-closed、無 fallback)**
-
-> **緣起**:TODOS P2#2(`DELIVERY_REFS=HEAD` / 本地 feature / 未合併 `origin/feature/x` 都能把未合併 `(#N)` 塞進 allowedPrs)。supervisor 拍板:只准 origin 正規 remote-tracking 交付 ref + 必須是權威 base 祖先 + 綁靜態 `deliveryBranches`(Q1)+ 移除 `origin/develop` / 本地 main fallback(Q2);plan 走 4 rev(rev 2 P1:origin/HEAD 權威 base 本身也受驗;rev 3 P2:`ref.undeclared` 專屬探針;rev 4:`base.unresolvable` 單測)。frozen base `2019f48`,worktree `feat/delivery-refs-remote-only`。
-> **改動**:**13 檔 / 5 commits**(`git diff --name-only base..HEAD | wc -l` / `git rev-list --count`)。`scripts/lib/delivery-refs.ts`:base 與 env 候選走同一支 `validateRef`(形狀 → 存在 → 正規 → 祖先 → 宣告),拒絕收集原因碼、refs 全空;兩 consumer 只接線,遇 `!ok` 印 stderr 後 exit 2;`check-no-source-terms.ts` 只動 allowedPrs 來源段(`git diff -U0` 5 個 hunk,掃描函式 0 diff)。fixture:兩 makeRepo 預設寫 config + bare origin + set-head main,`noOrigin` 給負對照;A-e1/e2/e3 改寫。catalog CI-008 / CI-009 登錄 lib 與 spec;ci.yml 註解、README、CHANGELOG [Unreleased] Changed、TODOS。
-> **驗證(`b4069e2` 實測)**:typecheck / lint;三個相關測試檔 **240 passed**;**25 檔 910 passed + 2 skipped**(bookkeeping 前重跑);check:mutation-specs OK(96 條樣本無漂移);catalog / doc-refs / doc-size / no-source-terms / adoption / hooks 綠;check:todos 以 MARKER_SELF_PR 綠。**mutation `delivery-refs.json` 8/8** 綁 `b4069e28c6ed8d33a791ce7fb3b78095f7a77156`;**`source-term-diff-scan.json` 29/29** 綁 `52dbc7b`(其後該檔只刪一行孤立 docstring)。
-> **審查**:Codex 全範圍 PASS(獨立 clone,lib 19/19、todos 45/45、nst 全綠)。Step 5 worktree 審 2 輪:r1 **0 C + 11 I**(順手修 4 條過時註解 + 1 條空字串診斷)→ r2 **0 C + 3 I 收斂**。defer 9 條進 TODOS P3。
-> **⭐ 教訓 / 已知限制**:①**祖先契約下 env 通道是空操作**——通過驗證的候選必是 base 祖先,`git log` 集合 ⊆ base 的,永遠加不進新 PR 號;env 現在只剩「驗證會不會拒絕」的意義(r2 conf 9,登錄待 supervisor 決定是否整個移除)。②新 `process.exit(2)` 插在 `main()` 的 mkdtemp 之後,`finally` 清理不會跑(r2;登錄)。③修註解要修整段:r1 修了同一 step 兩行,上方矛盾的兩行留著被 r2 抓。
-> **check:claims 逐條處置**:2 處命中留 A(lib 檔頭「沒有任何 ref」= 契約字面;測試註解「只有 main」= fixture 字面)。
-> 📊 成本:CC ~4h / plan 4 rev / Codex 1 輪 / Step 5 2 輪 / mutate 3 輪 / P1 0 / P2 0 / Step5 獨立發現 14(0 CRITICAL、修 5、defer 9)
-> 📐 量測:claude-fable-5-1 effort low;Codex gpt-5.6-terra medium(w2:p8);來源分佈:既有缺陷 0・漏改 consumer 5(ci.yml 註解 ×3、todos 檔頭、nst docstring)・baseline 後引入 9
-> **7 步 checklist**:1 ✅ rev 4 / 2 ✅ supervisor APPROVE / 3 ✅ P1–P5 / 4 ✅ Codex PASS / 4.5 ✅ 人工視同高風險(cso 路徑表空),探針 8/8 + 29/29 / 4.6 ✅ 未觸發 / 5 ✅ r2 收斂 / 6-7 待執行
-
-📅 2026-09-02 ③ — **P2#3:mutation spec 樣本漂移 CI 守門(`check:mutation-specs` + CTRL-CI-013)**
-
-> **緣起**:TODOS P2#3(前兩 sprint 內 spec 漂移被 mutate fail-closed 抓 4 次、都在收尾才發現)。supervisor 拍板只做 P2#3、單獨一支 PR;frozen base `7c4f0a35872de42a103d7ca5d9ed14aec53ae7b7`,worktree `feat/mutation-spec-drift-gate`。plan rev 2 通過(rev 1 P1:spec 檔本身要先過 `checkTarget` 再讀 bytes)。
-> **改動**:**10 檔 / 4 commits**(`git diff --name-only base..HEAD | wc -l` / `git rev-list --count`)。`scripts/check-mutation-specs.ts` 只複用 `mutate.ts` 的 `checkTarget` / `parseSpecs` / `applyMutation`:spec 目錄 lstat 非 symlink 且 realpath 等於正規路徑;spec 檔與探針目標都用 checkTarget 回的 bytes 解析;exit 0 全對 / 1 DRIFT / 2 無法判定(untrusted 優先)。CI step「Mutation Spec Drift Check」+ catalog CTRL-CI-013 同 commit(現 31 controls / 17 steps);mutations/README、CHANGELOG [Unreleased]、TODOS P2#3 ✅。
-> **驗證(`f32e512` 實測)**:typecheck / lint / **24 檔 880 passed + 2 skipped**;check:mutation-specs 對本 repo exit 0(7 spec 檔 88 條);catalog / doc-refs / doc-size / todos / no-source-terms / adoption / hooks 全綠;**mutation `mutation-spec-drift.json` 6/6** 綁 `f32e51237e83291fbd2285fdb895e4bfeba72beb`。
-> **審查**:Codex 全範圍 r1 PASS(0 P1/P2,獨立 clone 重跑全部驗證)。Step 5 worktree 審 2 輪:r1 **1 C + 9 I**(C1:`isMain` 未 realpath,經 symlink 目錄呼叫時靜默 exit 0 = 守門自己 fail-open;修成兩邊 realpath + e2e ⑩;順手修 catalog degradation、TODOS 數字、temp dir 洩漏)→ r2 **0 C + 9 I 收斂**(Owner 裁示無 CRITICAL 即停)。defer 合計 15 條進 TODOS P3。
-> **⭐ 教訓**:「fail-closed 守門」自己的入口(`isMain`)沿用 repo 慣例就繼承了 fail-open 形狀——`mutate.ts` / `check-control-catalog.ts` 同款,已登錄不在本 PR 動。新 checker 的第一條探針應該是「腳本根本沒跑」。
-> **check:claims 逐條處置**:9 處命中全留 A(「只有人工重跑」為 TODOS 原文引述;「沒有任何 spec 檔」= length===0 字面;「每一條問題」= 陣列全部;其餘為測試名 / spec label)。
-> 📊 成本:CC ~2.5h / plan 2 rev / Codex 1 輪 / Step 5 2 輪 / mutate 2 輪 / P1 0 / P2 0 / Step5 獨立發現 19(1 CRITICAL、修 4、defer 15)
-> 📐 量測:claude-fable-5-1 effort low;Codex gpt-5.6-terra medium(w2:p8);來源分佈:既有缺陷 1(isMain 慣例)・漏改 consumer 0・baseline 後引入 18
-> **7 步 checklist**:1 ✅ rev 2 / 2 ✅ supervisor APPROVE / 3 ✅ P1–P4 / 4 ✅ Codex PASS / 4.5 ✅ 人工視同高風險(cso 路徑表空),探針 6/6 / 4.6 ✅ 未觸發 / 5 ✅ r2 收斂 / 6-7 待執行
-
-📅 2026-09-02 ② — **git-add-guard:`git add -A` 誤加工具產物的機器化守門(LESSONS ⚠️ 第 ≥4 次 → 升級階梯)**
-
-> **緣起**:Owner 拍板(PR #45 merge 後):把 LESSONS ⚠️ [2026-08-29] 的規則寫進本 repo 並機器化。frozen base `80f76b8`(main = v0.2.0 + #45),直接在主 worktree 開 `feat/git-add-guard`(當時已無其他 worktree、工作樹乾淨)。
-> **改動**:**13 檔 / 5 commits**(`git diff --name-only base..HEAD | wc -l` / `git rev-list --count`)。三層:①`.gitignore` 列 `.codegraph` / `.gbrain-source` / `_handoffs`(**不加尾斜線**,symlink 才會被 ignore);②`code-pattern.sh` 第三個 SSOT `TOOL_ARTIFACT_PATTERN='(^|/)\.codegraph(/|$)|…'`,pre-commit 在**任何分支**、任意深度、檔 / 目錄 / symlink 皆擋,刪除放行以便清理;工具產物段用 `git diff --cached --name-only -z --diff-filter=d` 寫暫存檔(失敗即 exit 1)後 `read -d ''` 逐筆原始位元組比對;③`CLAUDE.md` §4.6 成文規則。`check-hooks.sh` 載入 + 冒煙第三個 SSOT;ADOPTION §4 / OVERVIEW / LESSONS / catalog CTRL-HOOK-001 同步。
-> **驗證**:typecheck / lint / **23 檔 856 passed + 2 skipped**;`check:hooks`(三個 pattern)/ catalog / doc-refs / doc-size / no-source-terms / adoption / todos 全綠;`tests/check-hooks.test.ts` 18 條(含真 `git commit` 行為級:非 ASCII、TAB、symlink、巢狀、`rm --cached` 清理放行、`.gitignore` 第一道 `add -A` 正對照)。**mutation `git-add-guard.json` 7/7** 綁 `875b015e089c04b8ea9066c287ac33d606698e4a`。
-> **審查**:Codex commit-only 4 輪(r1 P2 檔頭「兩個 pattern」;r2 **P1:`core.quotePath=false` 只解高位元、TAB / LF 仍 C-quote → 繞過**;r3 / r4 PASS)。Step 5 worktree 審 3 輪:r1 **2 C + 8 I**(C1 quotePath 非 ASCII 繞過、C2 刪除也被擋封死清理路徑)→ r2 **1 C + 5 I**(C1 修一半,`"` / `\` / TAB 仍繞過 = Codex P1 同形狀)→ r3 **0 C + 7 I 收斂**(順手修 F2 fail-open、F3 測試斷言、F7 用語)。共 3 CRITICAL + 1 P1 全修;登錄 F1 LF 路徑誤擋(安全方向)、F4 BSD grep locale、F5 測試 gitc 未切 global config、F6 訊息拆行、F6(r2)巢狀冒煙為刻意升級訊號。
-> **⭐ 教訓**:①**「修一半」比不修更危險**——r1 用 `quotePath=false` 修 C1,只覆蓋了 fixture 用的中文檔名;Codex 與 Step 5 r2 各自獨立用 TAB / `"` 打穿。修 encoding 類問題要拿**規格**(git 文件:引號 / 反斜線 / 控制字元不論設定一律跳脫)驗,不能拿一個樣本驗。②**目錄假設會在 symlink 上同時打穿兩道**(`.gitignore` 尾斜線 + pattern 尾 `/`);兩道防線用同一個假設就不是縱深。③process substitution 在 `set -e` 下是 fail-open 形狀——gate 讀外部指令輸出要落地並檢查 exit code。
-> **⏭️ 下一棒候選**(hint 非 truth):A. Milestone B1;B. TODOS P2#2 / P2#3;C. A2 / A3 defer 集合(含 protectedBranches 擴大警示)。
-> **check:claims 逐條處置**:命中以 pre-commit / code-pattern.sh 註解與測試名為主,留 A(「任何分支」「一律」是 hook 實際行為;「唯一」為 SSOT 設計)。
-> 📊 成本:CC ~3h / Codex 4 輪 + Step 5 3 輪 + mutate 5 輪 / P1 1 個 / P2 1 個 / Step5 獨立發現 20 個(3 CRITICAL、修 10、defer 7)
-> 📐 量測:claude-fable-5-1 effort low;Codex gpt-5.6-terra medium(新 pane w2:p8);baseline `80f76b858d1ffdfa902387dd62c6321575009c44`;來源分佈:既有缺陷 0・漏改 consumer 3(check-hooks 檔頭、ADOPTION §4、OVERVIEW)・baseline 後引入 17(其中 2 CRITICAL + 1 P1 由 r1 修法引入)
-> **7 步 checklist**:1 ✅(Owner 口頭 scope,無 plan file——小型 governance PR)/ 2 ✅ / 3 ✅ / 4 ✅ Codex r1–r4 / 4.5 ✅ 高風險車道(hooks),探針 7/7 / 4.6 ✅ 未觸發 / 5 ✅ r3 收斂 / 6-7 待執行
 
 > 更早的 entries:2026-09-03 ① PR A3、2026-09-02 ① PR A2、2026-08-31 ① PR A1.1 見 [progress-archive/progress-2026-09.md](progress-archive/progress-2026-09.md);(2026-08-29 ① PR A1 / 2026-08-28 ⑥ 批 12 / 2026-08-28 ⑤ 批 11 / 2026-08-28 ④ 批 10 / 2026-08-28 ③ 批 9 / 2026-08-28 ② 批 8 / 2026-08-28 批 7 / 2026-08-27 ③ 批 6 / 2026-08-27 ② 批 5 / 2026-08-27 ① 風險車道 及之前)見 [progress-archive/progress-2026-08.md](progress-archive/progress-2026-08.md)
