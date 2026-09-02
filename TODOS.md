@@ -46,7 +46,7 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 - **工時**:2-3h
 - **交付**:PR A2 —— 走第二個方向:G2 / G4 搬到 `scripts/lib/template-governance.ts`,由 `npm run check:adoption` 只在 `scripts/harness.config.json` 宣告 `mode: "template"` 時執行(T9 / T8);vitest 刪除兩條;mode 是顯式靜態宣告、無 runtime 判別式(mutation M12–M14 行為級證據)
 
-### ✅ `DELIVERY_REFS=HEAD` 可從環境變數還原「未合併分支進 allowlist」(PR #___)
+### ✅ `DELIVERY_REFS=HEAD` 可從環境變數還原「未合併分支進 allowlist」(PR #48)
 - **來源**:2026-09-01 PR A1.1 Step 5 r3 I9(confidence 6)
 - **內容**:`DELIVERY_REFS` 只過 `SAFE_REF_RE` + `rev-parse --verify`(option injection 已擋住),但 `HEAD` 或任何 feature branch 名都解得開。在 feature branch 上設 `DELIVERY_REFS=HEAD`,未 merge commit 的 subject 就進了 `allowedPrs` —— round 2 P1-1 的修法可被整條還原,目前無守門。
 - **工時**:1-2h
