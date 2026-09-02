@@ -38,12 +38,13 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 
 ## P2
 
-### 🟡 模板作者的簿記契約仍套在採用者身上(G2 / G4)
+### ✅ 模板作者的簿記契約仍套在採用者身上(G2 / G4)(PR #___)
 - **來源**:2026-09-01 PR A1.1 Step 5 r2 I4 / r3 C2(adversarial-reviewer,confidence 7-10)
 - **內容**:`tests/check-doc-refs.test.ts` 的 G2 把 `.claude/memory/progress.md` 與 2026-08 archive 的 ADR 引用數釘成 1、G4 斷言 progress.md 不含 `/Users/`。這兩條是**模板作者的簿記**,卻會隨模板複製、由採用者的 `npm test` 執行:採用者改寫自己的 progress、或在 macOS 寫自己的路徑就紅,而 checker 是綠的。
   A1.1 曾用 runtime 判別式(`isTemplateRepo()`)處理,r3 證明那個做法更糟(對族群判反、同時是一行斷路器、fail-open),已整組移除。G6 已改成靜態的模板出貨路徑前綴清單,G2/G4 尚未處理。
 - **可能方向**:比照 G6 改成靜態清單;或把這類「模板出貨前的自我檢查」移出交付給採用者的測試套件。**不要**再引入 runtime 判別式。
 - **工時**:2-3h
+- **交付**:PR A2 —— 走第二個方向:G2 / G4 搬到 `scripts/lib/template-governance.ts`,由 `npm run check:adoption` 只在 `scripts/harness.config.json` 宣告 `mode: "template"` 時執行(T9 / T8);vitest 刪除兩條;mode 是顯式靜態宣告、無 runtime 判別式(mutation M12–M14 行為級證據)
 
 ### 🟡 `DELIVERY_REFS=HEAD` 可從環境變數還原「未合併分支進 allowlist」
 - **來源**:2026-09-01 PR A1.1 Step 5 r3 I9(confidence 6)
