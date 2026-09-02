@@ -228,7 +228,12 @@ codebase 裡兩種寫法打架時,選一個(通常選較新 / 測試較多的),�
 
 ### 4.1 技術堆疊
 
-<!-- 填:框架 / 語言 / DB / 部署平台。若用 Next.js+Prisma,參考 stack/nextjs-prisma/README.md 疊加 L2 層 -->
+<!-- 填:四個固定鍵各一行(`npm run check:adoption` 在 adopted mode 會逐鍵驗,值不得是 TBD / 待填 / <…> 這類 placeholder):
+- 語言：TypeScript
+- 框架：Next.js 16
+- 資料庫：PostgreSQL(Prisma)
+- 部署：Vercel
+若用 Next.js+Prisma,參考 stack/nextjs-prisma/README.md 疊加 L2 層。填完把這整段註解刪掉。 -->
 
 ### 4.2 Design System(UI 任務必讀)
 
@@ -236,11 +241,12 @@ codebase 裡兩種寫法打架時,選一個(通常選較新 / 測試較多的),�
 
 ### 4.3 Health Stack
 
-<!-- 填:你的品質閘門。模板預設:
+<!-- 填:你的品質閘門,用反引號寫 `npm run <script>`。adopted mode 的 check:adoption 會驗:
+≥3 個不同 script、每個都存在於 package.json.scripts、且 typecheck / lint / test 三個必在。模板預設:
 - `npm run typecheck`(tsc --noEmit)
 - `npm run lint`
-- `npm test`(Vitest)
--->
+- `npm run test`(Vitest)
+填完把這整段註解刪掉。 -->
 
 ### 4.4 部署資訊
 
@@ -248,12 +254,13 @@ codebase 裡兩種寫法打架時,選一個(通常選較新 / 測試較多的),�
 
 ### 4.5 禁區清單(動前必問 Owner)
 
-<!-- 填:哪些檔案/目錄 AI 不可擅動。範例:
-- schema / migration 檔 — 動前必須先確認
-- 策略文件 — PR-only,不可直接 edit
-- destructive scripts — 必須走 scripts/lib/destructive-guard.ts 四層確認
+<!-- 填:哪些檔案/目錄 AI 不可擅動。每個 bullet 用反引號寫出實際路徑(≥2 個 bullet;check:adoption 會驗
+每個反引號路徑是 tracked 檔或存在的目錄;`.env*` 與 `.claude/settings.local.json` 例外放行)。範例:
+- `prisma/schema.prisma` / `prisma/migrations/` — 動前必須先確認
+- `docs/architecture/` — PR-only,不可直接 edit
+- `scripts/lib/destructive-guard.ts` — destructive scripts 必須走它的四層確認
 - `.claude/settings.local.json` / `.env*` — 不能 commit
--->
+填完把這整段註解刪掉。 -->
 
 ### 4.6 Git 規範
 
@@ -263,7 +270,10 @@ codebase 裡兩種寫法打架時,選一個(通常選較新 / 測試較多的),�
 - 上下文管理判準見 `.claude/sop/context-management.md`
 - **Codex review scope note archival**(僅本模板 backsync sprint 使用;導入者若採用選項 B、依需求自訂):`.claude/sop/codex-review-scope-note-drafts/` 底下的檔名 pattern(本模板用 `batch-N.md`、你的專案自訂)每 N 個 sprint 搬進 `archive/` 目錄底下(檔名依當月 `<yyyy-mm>.md` 命名、單檔滾動、append 進去、非個檔歸檔)。drafts/ 保留最近 N 個 sprint 供對照。archive 檔為只讀歷史 snapshot、不回頭編輯——同 `.claude/memory/progress-archive/` 慣例。sprint 開始前的例行 housekeeping,不算獨立 sprint。**導入者注意**:此段落 pattern 是本 harness 自身治理慣例,若你的專案不採選項 B(見 `.claude/sop/codex-review-scope-note-template.md`)、可整段刪除。
 
-<!-- 填:你的分支策略(例:main = 正式 / develop = 開發主線;feature/xxx、fix/xxx)與合併策略(feature→develop squash;develop→main merge commit) -->
+<!-- 填:你的分支策略與合併策略。check:adoption 會驗:`scripts/harness.config.json` 宣告的每個
+protectedBranches / deliveryBranches 都以反引號出現在本節(例:`main` = 正式 / `develop` = 開發主線;feature/xxx、fix/xxx),
+且至少一行寫明合併策略(squash / merge commit / rebase,例:feature→develop squash;develop→main merge commit)。
+填完把這整段註解刪掉。 -->
 
 ---
 

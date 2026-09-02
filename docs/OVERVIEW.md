@@ -878,6 +878,7 @@ harness-controlled-dev-environment/
 | `npm run check:claims` | ⑦ | 量詞自檢（待處置產生器） |
 | `npm run check:no-source-terms` | 常駐 | 去識別化 CA checker |
 | `npm run check:bookkeeping` | ⑩ | Bookkeeping commit allowlist |
+| `npm run check:adoption` | ⑪ | 導入就緒閘門（依 `scripts/harness.config.json` 宣告的 mode；template 列 exception、adopted fail-closed） |
 | `npm run mutate` | ⑧ | Destructive mutation 探針（`mutate` gate） |
 | `npm run health:weekly` | ⑫ | 週健檢 snapshot |
 
