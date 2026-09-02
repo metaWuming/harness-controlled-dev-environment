@@ -389,6 +389,10 @@ describe('adopted mode A2 Part 4 精確內容', () => {
   it('4.6 負:缺 config 分支名 / 無合併策略詞 / 只有出廠 bullet + 註解', () => {
     expect(ids(checkPart4Content(ADOPTED_CFG, withPart4(PART4_FILLED.replace('`develop` = 開發主線', 'develop = 開發主線'))))).toContain('A2.4.6');
     expect(ids(checkPart4Content(ADOPTED_CFG, withPart4(PART4_FILLED.replace('- feature → develop squash;develop → main merge commit\n', ''))))).toContain('A2.4.6');
+    // Step 5 r2 F1 / F2:英文時態 / 複數 / fast-forward 寫法是合法合併策略(不得假紅)
+    for (const ok of ['- feature is squashed into develop', '- use merge commits into main', '- branches are rebased before merge', '- merge_commit only', '- main 只收 ff-only']) {
+      expect(checkPart4Content(ADOPTED_CFG, withPart4(PART4_FILLED.replace('- feature → develop squash;develop → main merge commit\n', ok + '\n'))), ok).toEqual([]);
+    }
     // Step 5 r1 I4:「Firebase」不是合併策略
     expect(ids(checkPart4Content(ADOPTED_CFG, withPart4(PART4_FILLED.replace('- feature → develop squash;develop → main merge commit\n', '- 我們用 Firebase 部署\n'))))).toContain('A2.4.6');
     const stock = PART4_FILLED.replace(/### 4\.6 Git 規範[\s\S]*?---/, '### 4.6 Git 規範\n\n- 每完成一個功能模組必須 commit\n\n<!-- 填:你的分支策略 -->\n\n---');

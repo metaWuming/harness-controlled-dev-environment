@@ -256,7 +256,7 @@ flowchart LR
 1. **基本識別** — LICENSE / README / package.json / CLAUDE.md 內的 Owner 名稱
 2. **CLAUDE.md Part 4 填空** — 技術堆疊 / Design System / Health Stack / 部署 / 禁區 / Git 規範
 3. **思考力道與 agent** — `.claude/settings.json` 內 effortLevel、agent 定義
-4. **安全敏感域路徑表** — `scripts/cso-trigger.config.ts` 五域（認證 / 金流 / 個資 / 權限 / 資產轉移）+ 前台入口 + 啟用完整性鎖測試
+4. **安全敏感域路徑表** — `scripts/cso-trigger.config.ts` 五域（認證 / 金流 / 個資 / 權限 / 資產轉移）+ 前台入口 + 沒有的域在 `CSO_NOT_APPLICABLE` 宣告理由（完整性鎖測試 always-on、依 `scripts/harness.config.json` 宣告的 mode 分支）
 5. **本機 git hooks** — `npm run setup-hooks` + 保護分支清單 + `PROTECTED_DOCS` SSOT + default-deny NON_CODE_PATTERN
 6. **Destructive guard** — 改 FLAG_ENV / CONFIRM_TOKEN 常數
 7. **CI** — 分支清單、Source-term scan 保留或移除、`.gitleaks.toml`
