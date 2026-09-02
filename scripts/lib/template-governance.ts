@@ -39,10 +39,11 @@ export const EXPECTED_ADR_REFS: ReadonlyArray<readonly [string, number]> = [
   ['.claude/memory/progress-archive/progress-2026-09.md', 1],
   // PR A3:control catalog 把 ADR 登錄為人工控制(CTRL-GOV-002)的實作路徑;JSON 正本與
   // 渲染檔各 1 處(渲染檔的引用數必然等於 JSON 的引用數,渲染器不增刪路徑)。
-  ['scripts/control-catalog.json', 1],
-  ['docs/CONTROL-CATALOG.md', 1],
+  // CTRL-GOV-002(baseline 變更授權)與 CTRL-GOV-003(長命分支清理程序)各 1 處。
+  ['scripts/control-catalog.json', 2],
+  ['docs/CONTROL-CATALOG.md', 2],
 ];
-export const EXPECTED_ADR_REF_TOTAL = 8;
+export const EXPECTED_ADR_REF_TOTAL = 10;
 
 /** 原 G4:progress.md 不得含個人絕對路徑。回傳違規描述清單(空 = 通過)。 */
 export function checkNoPersonalPaths(text: string): string[] {

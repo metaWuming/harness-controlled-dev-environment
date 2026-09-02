@@ -756,6 +756,30 @@
       "notes": "機器守門(同 PR 推 baseline 洗白)屬 ADR 已知限制第 2 條,由 catalog 批次處置"
     },
     {
+      "id": "CTRL-GOV-003",
+      "name": "長命 pre-baseline 分支的清理程序(ADR 已知限制第 3 條)",
+      "legacyGate": "⑤",
+      "class": "manual-mandatory",
+      "triggers": [
+        "manual"
+      ],
+      "implementation": [
+        "docs/architecture/source-term-history-baseline.md"
+      ],
+      "locator": "H2「長命 pre-baseline 分支的清理程序」:先 rebase 到 post-baseline;不行則走獨立 baseline PR(受 CTRL-CI-012);再不行 admin override 留紀錄",
+      "ciStep": null,
+      "owner": "owner",
+      "failureBehavior": "block",
+      "evidence": "PR 描述列出誤紅 hit 與 grandfathered 來源;Owner override 紀錄",
+      "degradation": "無;本程序承接的是誤紅方向,漏抓方向(第 8 條)另案",
+      "tested": [
+        "untested"
+      ],
+      "testRefs": [],
+      "bypass": "Owner(admin override 屬本程序第 3 步,須留紀錄)",
+      "notes": "刻意不修掃描器(混合掃描策略屬架構級變更);catalog 登錄 + 明文程序即為本條的處置"
+    },
+    {
       "id": "CTRL-GOV-004",
       "name": "季 retro 與封存",
       "legacyGate": "⑬",

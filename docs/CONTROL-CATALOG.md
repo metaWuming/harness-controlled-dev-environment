@@ -73,6 +73,7 @@ type: reference
 | CTRL-SOP-005 | Step 5 對抗審 + 高風險車道 worktree 獨立審 | ⑩ | `sop-step` | `.claude/agents/adversarial-reviewer.md`, `.claude/sop/plan-mode-checklist.md` | Step 5;全新拋棄式 clone、40 字元 review-tip 核對、findings 全報再按軸過濾 | — | agent | block | none(SOP 內無例外;docs-only 車道仍跑 fresh review) | progress entry 記 CRITICAL / INFORMATIONAL 數、review-tip SHA、Step5 獨立發現數 | 無 gstack /review → 內建 /code-review + 一個 adversarial-reviewer | untested | — | — |
 | CTRL-MEM-001 | 三層行為守則 | ① | `manual` | `CLAUDE.md` | Part 1(工作原則)/ Part 2(協作偏好)/ Part 3(放寬規則);D 編號可否決機制 | — | agent | record-only | none(行為守則無機器強制;偏差由 Owner redirect) | plan file 的 Sensible Defaults 段;Owner 否決紀錄 | 無 | untested | — | CLAUDE.md 屬 PROTECTED_DOCS(CTRL-HOOK-001 / 003 擋直推) |
 | CTRL-GOV-002 | Baseline 變更授權(人工段) | ⑤ | `pull_request` | `docs/architecture/source-term-history-baseline.md` | H2「baseline 變更授權」:baseline 是治理決策,改動走 PR + Owner 拍板 | — | owner | block | Owner | PR 描述 + Owner approve 紀錄 | 無 | untested | — | 機器守門(同 PR 推 baseline 洗白)屬 ADR 已知限制第 2 條,由 catalog 批次處置 |
+| CTRL-GOV-003 | 長命 pre-baseline 分支的清理程序(ADR 已知限制第 3 條) | ⑤ | `manual` | `docs/architecture/source-term-history-baseline.md` | H2「長命 pre-baseline 分支的清理程序」:先 rebase 到 post-baseline;不行則走獨立 baseline PR(受 CTRL-CI-012);再不行 admin override 留紀錄 | — | owner | block | Owner(admin override 屬本程序第 3 步,須留紀錄) | PR 描述列出誤紅 hit 與 grandfathered 來源;Owner override 紀錄 | 無;本程序承接的是誤紅方向,漏抓方向(第 8 條)另案 | untested | — | 刻意不修掃描器(混合掃描策略屬架構級變更);catalog 登錄 + 明文程序即為本條的處置 |
 
 ## advisory
 
@@ -110,7 +111,7 @@ type: reference
 | ② | CTRL-SOP-001 |
 | ③ | CTRL-CI-008, CTRL-MEM-002 |
 | ④ | CTRL-CI-002, CTRL-CI-003, CTRL-CI-010 |
-| ⑤ | CTRL-CI-009, CTRL-CI-012, CTRL-HOOK-001, CTRL-HOOK-002, CTRL-HOOK-003, CTRL-GOV-002 |
+| ⑤ | CTRL-CI-009, CTRL-CI-012, CTRL-HOOK-001, CTRL-HOOK-002, CTRL-HOOK-003, CTRL-GOV-002, CTRL-GOV-003 |
 | ⑥ | CTRL-GUARD-001 |
 | ⑦ | CTRL-SOP-002, CTRL-SOP-006 |
 | ⑧ | CTRL-SOP-003 |

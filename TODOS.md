@@ -83,6 +83,25 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 
 ## P3
 
+### ✅ long-lived pre-baseline branch merge grandfathered false positive(PR #___)
+- **來源**:PR A1 sprint entry(`.claude/memory/progress-archive/progress-2026-08.md`「2026-08-29 ① PR A1」):
+  「R7 剩一條 P2 false positive(long-lived pre-baseline branch merge 誤紅 cleanup PR),Owner 拍板 A defer 給 A3」;
+  ADR〈已知限制〉第 3 條。本條由上述已 commit 證據重建(PR A3 P3b),未取用任何未 commit 內容
+- **內容**:`--first-parent` 語意下,pre-baseline 建立的長命分支合併後做清理,對 pre-baseline parent 的 diff 把
+  grandfathered 標為 add → 阻擋合法 cleanup PR(誤紅、非漏抓)
+- **交付**:PR A3 —— **不修掃描器**(混合掃描策略屬架構級變更);ADR 新增〈長命 pre-baseline 分支的清理程序〉
+  (rebase 到 post-baseline / 走獨立 baseline PR 受 CTRL-CI-012 守門 / admin override 留紀錄),登錄 control catalog
+  CTRL-GOV-003(manual-mandatory)
+
+### ✅ baseline 治理旁路(同 PR 內把 baseline 往前推洗白 forbidden)(PR #___)
+- **來源**:PR A1 sprint entry(同上):「Step 5 adversarial-reviewer … conf ≥ 6 一條(治理旁路)defer 給 A3」;
+  ADR〈已知限制〉第 2 條。由已 commit 證據重建(PR A3 P3b)
+- **內容**:一個 PR 同時改 baseline 到 PR tip、中間 commit 加 forbidden、後續刪 → `baseline..HEAD` 幾近空、
+  current tree 乾淨 → gate 假綠;原本只靠 Owner review、machine face 零守門
+- **交付**:PR A3 —— `scripts/check-baseline-governance.ts` + CI step「Baseline Governance Check」(CTRL-CI-012,
+  pull_request only):baseline 值改變時 PR 只准動 config / ADR / bookkeeping allowlist,新值須為 merge-base 祖先
+  (不得指向 PR 內 commit)且為舊值後裔;16 條 e2e + 7 條探針
+
 ### ✅ buildDeliveryRefs 前三條 fallback 路徑 e2e 覆蓋 (#33)
 - **來源**:2026-08-28 批 7 Step 5 F2(adversarial-reviewer,confidence 7);TODOS 措辭原寫「check-todos-markers」但正確目標是 `scripts/check-no-source-terms.ts`(D0 修正)
 - **內容**:e2e 全部走 last-resort 本地 main fallback、①origin/HEAD ②DELIVERY_REFS env ③origin/develop 三條路徑無對照
