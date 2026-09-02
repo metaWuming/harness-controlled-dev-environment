@@ -57,13 +57,21 @@ staged="$(git diff --cached --name-only --no-renames)"
 #       路徑不會被當成選項)。
 #    🔴 `--diff-filter=d`(Step 5 C2):排除刪除——「把誤入版控的產物 `git rm --cached` 掉」正是本規則
 #       最該放行的修復路徑;rename-out 的 delete 端同理。只在本段排除,下面 default-deny 段維持原樣。
+#    🔴 先落地到暫存檔、git 失敗就 exit 1(Step 5 r3 F2):`< <(git …)` 的子程序 exit 非 0 不觸發 set -e,
+#       迴圈會看到 0 筆 → 靜默放行(fail-open)。寫檔 + `|| exit` 才是 fail-closed。
+artifact_list="$(mktemp "${TMPDIR:-/tmp}/pre-commit-artifacts.XXXXXX")" || exit 1
+trap 'rm -f "$artifact_list"' EXIT
+git diff --cached --name-only -z --no-renames --diff-filter=d > "$artifact_list" || {
+  echo "✗ pre-commit:git diff --cached -z 失敗,無法判定工具產物 → 拒絕放行(fail-closed)" >&2
+  exit 1
+}
 artifacts=""
 while IFS= read -r -d '' artifact_path; do
   if printf '%s' "$artifact_path" | grep -qE "$TOOL_ARTIFACT_PATTERN"; then
     artifacts="${artifacts}${artifacts:+
 }${artifact_path}"
   fi
-done < <(git diff --cached --name-only -z --no-renames --diff-filter=d)
+done < "$artifact_list"
 if [ -n "$artifacts" ]; then
   {
     echo ""

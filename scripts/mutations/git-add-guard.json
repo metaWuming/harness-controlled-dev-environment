@@ -19,14 +19,14 @@
   },
   {
     "file": "scripts/git-hooks/pre-commit",
-    "find": "done < <(git diff --cached --name-only -z --no-renames --diff-filter=d)",
-    "replace": "done < <(git -c core.quotePath=false diff --cached --name-only --no-renames --diff-filter=d | tr '\\n' '\\0')",
+    "find": "git diff --cached --name-only -z --no-renames --diff-filter=d > \"$artifact_list\" || {",
+    "replace": "git -c core.quotePath=false diff --cached --name-only --no-renames --diff-filter=d | tr '\\n' '\\0' > \"$artifact_list\" || {",
     "label": "GA-M4 放棄 -z 原始位元組、改回 quotePath=false → TAB 檔名測試轉紅"
   },
   {
     "file": "scripts/git-hooks/pre-commit",
-    "find": "done < <(git diff --cached --name-only -z --no-renames --diff-filter=d)",
-    "replace": "done < <(git diff --cached --name-only -z --no-renames)",
+    "find": "git diff --cached --name-only -z --no-renames --diff-filter=d > \"$artifact_list\" || {",
+    "replace": "git diff --cached --name-only -z --no-renames > \"$artifact_list\" || {",
     "label": "GA-M5 拿掉 --diff-filter=d → rm --cached 清理放行測試轉紅"
   },
   {

@@ -391,7 +391,9 @@ describe("pre-commit — 工具產物守門(git add -A 誤加 untracked 的機�
     const symStaged = spawnSync("git", ["-C", symDir, "diff", "--cached", "--name-only"], { encoding: "utf-8" }).stdout;
     expect(symStaged).not.toContain(".codegraph"); // 第一道:.gitignore(無尾斜線)已擋
     gitc(symDir, "add", "-f", ".codegraph");
-    expect(gitc(symDir, "commit", "-q", "-m", "symlink").code).toBe(1); // 縱深:pattern (/|$) 擋
+    const symR = gitc(symDir, "commit", "-q", "-m", "symlink");
+    expect(symR.code).toBe(1); // 縱深:pattern (/|$) 擋
+    expect(symR.err).toContain("TOOL_ARTIFACT_PATTERN"); // r3 F3:nothing-to-commit 也回 1,要驗訊息
     mkdirSync(join(dir, "packages/app/.codegraph"), { recursive: true });
     writeFileSync(join(dir, "packages/app/.codegraph/x"), "bin");
     gitc(dir, "add", "-f", "packages/app/.codegraph/x");
@@ -422,6 +424,7 @@ describe("pre-commit — 工具產物守門(git add -A 誤加 untracked 的機�
       gitc(dir, "add", "-f", rel);
       const r = gitc(dir, "commit", "-q", "-m", "oops");
       expect(r.code, rel).toBe(1);
+      expect(r.err, rel).toContain("TOOL_ARTIFACT_PATTERN");
       gitc(dir, "restore", "--staged", rel);
     }
   });
