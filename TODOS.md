@@ -38,6 +38,42 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 
 ## P2
 
+### 🟡 模板作者的簿記契約仍套在採用者身上(G2 / G4)
+- **來源**:2026-09-01 PR A1.1 Step 5 r2 I4 / r3 C2(adversarial-reviewer,confidence 7-10)
+- **內容**:`tests/check-doc-refs.test.ts` 的 G2 把 `.claude/memory/progress.md` 與 2026-08 archive 的 ADR 引用數釘成 1、G4 斷言 progress.md 不含 `/Users/`。這兩條是**模板作者的簿記**,卻會隨模板複製、由採用者的 `npm test` 執行:採用者改寫自己的 progress、或在 macOS 寫自己的路徑就紅,而 checker 是綠的。
+  A1.1 曾用 runtime 判別式(`isTemplateRepo()`)處理,r3 證明那個做法更糟(對族群判反、同時是一行斷路器、fail-open),已整組移除。G6 已改成靜態的模板出貨路徑前綴清單,G2/G4 尚未處理。
+- **可能方向**:比照 G6 改成靜態清單;或把這類「模板出貨前的自我檢查」移出交付給採用者的測試套件。**不要**再引入 runtime 判別式。
+- **工時**:2-3h
+
+### 🟡 `DELIVERY_REFS=HEAD` 可從環境變數還原「未合併分支進 allowlist」
+- **來源**:2026-09-01 PR A1.1 Step 5 r3 I9(confidence 6)
+- **內容**:`DELIVERY_REFS` 只過 `SAFE_REF_RE` + `rev-parse --verify`(option injection 已擋住),但 `HEAD` 或任何 feature branch 名都解得開。在 feature branch 上設 `DELIVERY_REFS=HEAD`,未 merge commit 的 subject 就進了 `allowedPrs` —— round 2 P1-1 的修法可被整條還原,目前無守門。
+- **工時**:1-2h
+
+### 🟡 mutation spec 漂移無 CI 守門
+- **來源**:2026-09-01 PR A1.1 Step 5 r2 I16(confidence 6);A1.1 內實際發生過一次(M14 隨串流改寫失效、M23 隨編碼釘法插入失效)
+- **內容**:29 條探針是高風險車道的覆蓋率佐證,但 CI 只跑 `vitest`、不跑 `mutate`。spec 的 `find` 是原始碼逐字樣本,改到那些行就會對不上;`mutate.ts` 對此 fail-closed(exit 2),但**只有人工重跑時才會發現**。
+- **可能方向**:CI 加一支只驗「所有 spec 的 find 樣本仍能在原始碼中找到」的輕量檢查(不跑完整 mutation,避免 CI 時間爆掉)。
+- **工時**:1-2h
+
+## P3
+
+### 🟢 `grep.column=true` 時 `git grep -z` 是三個 NUL,顯示會錯位
+- **來源**:2026-09-01 PR A1.1 Step 5 r3 I11(confidence 8)
+- **內容**:`grep.column=true` 下輸出是 `path\0line\0column\0content`,`parseGrepZLine` 只切前兩個,content 多帶一段欄號前綴。**對判定無安全影響**(CA extractor 仍抽得到全部引用、方向是多保留),但 `displayGrepHit` 印出的 `path:line:content` 會錯位。這個形狀不在〈hit framing〉表格的三種之內。
+- **工時**:0.5-1h
+
+### 🟢 `mutate.ts` 被 SIGTERM 殺掉不會還原原始碼
+- **來源**:2026-09-01 PR A1.1 Step 5 r3 I12(confidence 8,reviewer 實測留下污染工作樹)
+- **內容**:外層 timeout 或 CI 取消時,mutate 已改壞的原始碼不會還原。README 對 spec 的 fail-closed 講得清楚,但沒提這個。
+- **可能方向**:signal handler 還原 + README 補一句。
+- **工時**:1h
+
+### 🟢 doc governance 測試的其餘缺口(A1.1 defer 集合)
+- **來源**:2026-09-01 PR A1.1 Step 5 r1-r3 的 INFORMATIONAL(confidence ≤7,逐條見各輪 review;A1.1 共 defer 23 條)
+- **內容**:G2 錨點視窗仍容易被兩字的「決策」誤中;`SCAN_DIRS` 是手維護的非遞迴清單;G1/G3/G5 無條件執行,採用者照 ADR 導入步驟第 4 條刪掉 checker 後會崩而非漂亮地紅;ADR 導入步驟第 1 條描述了採用者不會處在的狀態;ADR 已知限制第 6 條把非 UTF-8 對 CJK 條目的影響講得偏無害。
+- **工時**:逐條 0.5-2h
+
 ## P3
 
 ### ✅ buildDeliveryRefs 前三條 fallback 路徑 e2e 覆蓋 (#33)
