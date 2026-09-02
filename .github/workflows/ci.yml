@@ -149,6 +149,12 @@ jobs:
         # ciSetupSteps 明文豁免;新增 step 沒登錄 → 紅)、docs/CONTROL-CATALOG.md 與 JSON 逐位元組一致。
         run: npm run check:catalog
 
+      - name: Mutation Spec Drift Check
+        # P2#3:scripts/mutations/*.json 的 find 是原始碼逐字樣本,改碼後對不上只有人工重跑 mutate 才會發現
+        # (前兩 sprint 內 4 次)。本 step 只驗每條探針的樣本仍能精準對上(不跑 mutation);spec 檔與目標檔
+        # 都先經 checkTarget(repo 內、tracked、非 symlink)取 bytes。exit 1 = 漂移、exit 2 = 輸入不可信。
+        run: npm run check:mutation-specs
+
       - name: Fetch delivery refs (for TODOS Markers Check)
         # check-todos-markers 用主線分支的 git 史判 PR merge 證據;pull_request event 下
         # checkout 是 detached merge ref,顯式 fetch 建 remote-tracking ref(best-effort:
