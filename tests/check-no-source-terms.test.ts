@@ -486,9 +486,10 @@ function makeRepo(opts: {
   mkdirSync(join(dir, "scripts"), { recursive: true });
   const git = (...a: string[]) =>
     execFileSync("git", a, { cwd: dir, stdio: "ignore" });
-  // round 2 P1-1 相關:確保 default branch = main,讓 buildDeliveryRefs 的
-  // last-resort fallback(本地 main / develop)找得到 ref。避免因 host git
-  // config init.defaultBranch = master 導致 allowedPrs 空 → 假紅
+  // 確保 default branch = main:makeRepo 稍後會 push main 並 `remote set-head origin main`,
+  // 受驗 origin/HEAD 才會指向已宣告的 main(避免 host git config init.defaultBranch = master
+  // 讓 origin/HEAD 指向未宣告分支 → base.undeclared 假紅)。【歷史】round 2 P1-1 時這裡是為了
+  // 本地 main fallback,該 fallback 已移除。
   git("init", "-q", "-b", "main");
   git("config", "user.email", "t@example.com");
   git("config", "user.name", "t");
@@ -567,7 +568,7 @@ function makeRepo(opts: {
       // 一次性 temp branch 從 main tip 分岔 → 加獨立 commit(commitSubject 含
       // 該 case 想測的 PR #)→ push 上 origin 作 `refs/heads/${b.name}` →
       // 回 main → 刪 temp。刪 temp 後,那個獨立 commit 只留在 origin/${b.name}
-      // 上、local main 不含 → 若對應 fallback 路徑失效,ε local main 查不到 PR#
+      // 上、local main / origin/HEAD 不含 → 現行契約下該 PR # **不得**進 allowedPrs(負對照素材)
       if (b.commitSubject === undefined) {
         // P2#2:不加獨立 commit → 該分支 tip == main tip(是 origin/main 的祖先,相等也算)
         git("push", "-q", "origin", `main:refs/heads/${b.name}`);
@@ -823,7 +824,7 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     expect(code).toBe(1);
   });
 
-  // ─────────────────── 批 8 Phase A:buildDeliveryRefs 前三條 fallback 路徑 e2e ───────────────────
+  // ─────────────────── 交付 ref 來源 e2e:唯一受驗 origin/HEAD 路徑(批 8 Phase A 引入、本版改寫)───────────────────
   //
   // 現行契約:交付證據唯一路徑 = 受驗的 origin/HEAD(scripts/lib/delivery-refs.ts);無 env、無 fallback。
   // makeRepo 預設建 bare origin + set-head main,所以既有 case 都走這條路徑;noOrigin 負對照 → base.missing → exit 2。
@@ -936,10 +937,10 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
   });
 
   it("🔴 批 8 Phase A A-e4:所有 delivery ref log 內無 PR # → allowedPrs 空 → CA hit 全擋", () => {
-    // 無 origin、無 envOverride、local main log 內無 PR#(僅 init commit)。
-    // 四條 fallback ①②③失敗、④拿到 local main 但 log 內無 PR # → allowedPrs
-    // 空 set → 工作樹的 CA hit 一律未知 → exit 1。若未來把 allowedPrs 空的處理
-    // 錯改成放行(例:「空 set 視為信任所有」),此 case 會轉綠 → 該 bug 被抓
+    // makeRepo 預設建 origin + set-head main;origin/HEAD(= main)log 內無 PR#(僅 init commit)
+    // → 受驗 base 合格、allowedPrs 為空 set → 工作樹的 CA hit 一律未知 → exit 1。若未來把
+    // allowedPrs 空的處理錯改成放行(例:「空 set 視為信任所有」),此 case 會轉綠 → 該 bug 被抓。
+    // (無 origin 的形狀是另一條 noOrigin 負對照:base.missing → exit 2)
     const dir = makeRepo({
       deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
       commits: [
