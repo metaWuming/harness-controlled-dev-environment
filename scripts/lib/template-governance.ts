@@ -37,8 +37,12 @@ export const EXPECTED_ADR_REFS: ReadonlyArray<readonly [string, number]> = [
   // 主檔現無引用。之後的 sprint entry 不得再引用 ADR 路徑(否則要回來改這張表)。
   ['.claude/memory/progress-archive/progress-2026-08.md', 1],
   ['.claude/memory/progress-archive/progress-2026-09.md', 1],
+  // PR A3:control catalog 把 ADR 登錄為人工控制(CTRL-GOV-002)的實作路徑;JSON 正本與
+  // 渲染檔各 1 處(渲染檔的引用數必然等於 JSON 的引用數,渲染器不增刪路徑)。
+  ['scripts/control-catalog.json', 1],
+  ['docs/CONTROL-CATALOG.md', 1],
 ];
-export const EXPECTED_ADR_REF_TOTAL = 6;
+export const EXPECTED_ADR_REF_TOTAL = 8;
 
 /** 原 G4:progress.md 不得含個人絕對路徑。回傳違規描述清單(空 = 通過)。 */
 export function checkNoPersonalPaths(text: string): string[] {

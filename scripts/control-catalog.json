@@ -158,7 +158,7 @@
       "legacyGate": "⑤",
       "class": "hard-automated",
       "triggers": ["push", "pull_request"],
-      "implementation": [".github/workflows/ci.yml", "scripts/check-no-source-terms.ts", "scripts/deny-terms.txt", "scripts/source-term-baseline.json", "docs/architecture/source-term-history-baseline.md"],
+      "implementation": [".github/workflows/ci.yml", "scripts/check-no-source-terms.ts", "scripts/deny-terms.txt", "scripts/source-term-baseline.json"],
       "locator": "CI step「Source-term scan (de-identification gate)」;current tree 全量 + baseline..HEAD per-commit diff + commit 訊息",
       "ciStep": "Source-term scan (de-identification gate)",
       "owner": "github",

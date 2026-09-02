@@ -23,6 +23,7 @@
     "check:no-source-terms": "tsx scripts/check-no-source-terms.ts",
     "check:bookkeeping": "tsx scripts/check-bookkeeping-commit.ts",
     "check:adoption": "tsx scripts/check-adoption-readiness.ts",
+    "catalog:render": "tsx scripts/render-control-catalog.ts --write",
     "mutate": "tsx scripts/mutate.ts"
   },
   "devDependencies": {
