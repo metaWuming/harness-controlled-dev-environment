@@ -75,6 +75,11 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+## 🤝 hi5 交棒紀錄 — 2026-09-03 13:08
+- 交棒時 commit:`454c3325e2dbc1f8882a045caaadc52c76bf0611`(main;PR #53 squash;工作樹乾淨、無 WIP)
+- 交接檔:`_handoffs/HANDOFF.md`(本機檔、`.gitignore` 忽略)
+- 暫停點:下一 sprint 已由 Codex supervisor 拍板 = P2#3 defer ⑤(mutation-spec discovery)、Step 1 plan mode、read-only 蒐證尚未啟動;Owner「plan approve = go」持續授權
+
 📅 2026-09-03 ⑥ — **A3 defer ⑩:CTRL-CI-014 protectedBranches drift gate(strict fail-closed、無 PR-controlled bypass)**
 
 > **緣起**:TODOS A3 defer 集合 ⑩(conf 6):`protectedBranches` 集合擴大無 gate 警示、promotion 豁免健全性依賴人審 + branch protection(GOV-005 advisory)。Owner + supervisor 2026-09-03 拍板本 sprint 挑此**單條**(不併其餘 20 條)。frozen base `7c32fd6b81a4f45b08b6b7ce20cb35082ad33b0b`(main post-⑤ defer ③ 收條)。plan 5 rev(rev2 P1-1 刪 PR-controlled marker/opt-out、P1-2 trust-boundary mb 兩側讀 + 既有 parser、P1-3 CI 跑所有 pull_request 不縮窄;rev3 P1-A CI --base=immutable base.sha、P1-B if 唯一 event 條件;rev4 P1 YAML structural test 非 grep;rev5 純同步收剩)。
