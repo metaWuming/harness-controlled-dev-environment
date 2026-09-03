@@ -48,7 +48,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { detectInvocation, reportIfNotMain } from "./lib/invoked-as-main";
-import { applyMutation, checkTarget, parseSpecs } from "./mutate";
+import { applyMutation, parseSpecs, readCheckedTarget } from "./mutate";
 
 export const SPEC_DIR = "scripts/mutations";
 
@@ -213,9 +213,10 @@ export function discoverSpecFiles(repoRootReal: string, io: WalkerIO = DEFAULT_I
 
 /** 單一 spec 檔的完整判定。純函式(只讀)。 */
 export function checkSpecFile(repoRootReal: string, rel: string): SpecFileResult {
-  const self = checkTarget(repoRootReal, rel);
-  // `original` 在 ok 時必有;缺了就是 mutate.ts 契約被改,一樣當不可信(fail-closed)
-  if (!self.ok || !self.original) {
+  const self = readCheckedTarget(repoRootReal, rel);
+  // discriminated union narrowing:if (!self.ok) 分支保證 self.reason 存在,
+  // else 分支保證 self.original 是 Buffer(P2#3 defer ⑥ ReadTargetCheck union)
+  if (!self.ok) {
     return { rel, status: "untrusted", probes: 0, problems: [`spec 檔 ${rel}:${self.reason}`] };
   }
   let specs;
@@ -226,9 +227,9 @@ export function checkSpecFile(repoRootReal: string, rel: string): SpecFileResult
   }
   const problems: string[] = [];
   specs.forEach((spec, i) => {
-    const target = checkTarget(repoRootReal, spec.file);
-    if (!target.ok || !target.original) {
-      problems.push(`${rel}[${i}] ${spec.label} → 目標 ${spec.file}:${target.reason ?? "讀不到內容"}`);
+    const target = readCheckedTarget(repoRootReal, spec.file);
+    if (!target.ok) {
+      problems.push(`${rel}[${i}] ${spec.label} → 目標 ${spec.file}:${target.reason}`);
       return;
     }
     const applied = applyMutation(target.original.toString("utf8"), spec);

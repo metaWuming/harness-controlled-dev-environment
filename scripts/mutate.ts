@@ -160,19 +160,42 @@ export interface TargetCheck {
 }
 
 /**
- * 目標檔的完整安全檢查。**閘① 的保險只覆蓋 git 工作樹**,所以這裡要把
- * 「不在工作樹裡」的每一種形狀擋掉,否則 repo 看起來全乾淨、卻已經改壞了別的東西。
- * (Codex review round 1 P1,已用 `../outside.txt` 實際重現。)
+ * 純讀 caller 專用的目標檔安全檢查結果(P2#3 defer ⑥)。
  *
- * 🔴 Codex review round 4 P2:舊版在這裡讀內容、**稍後才另外 lstat 一次**記下 inode。
- * 兩者之間目標被換掉的話,工具會把新 inode 當成合法目標,最後卻拿舊 inode 的 bytes
- * 去還原——覆蓋並吃掉競態期間寫進去的新內容。
- * 現在:**開一次 fd**,`fstat` 與讀內容都來自同一個 fd,identity 一路帶下去。
+ * 🔴 **僅供純讀 caller、絕不可供破壞性寫回**——寫回請用 `checkTarget`。
  *
- * 🔴 Codex review round 4 P2:也擋 hardlink(`nlink > 1`)——原地覆寫會同時改動
- * 所有 alias,其中可能有 repo 外的檔案,而 `treeDirt` 看不見 repo 外的副作用。
+ * 型別刻意設計為 discriminated union(非 interface + optional)、且**刻意不含**
+ * `dev` / `ino` / `mode` / `abs`:
+ *   - `dev` / `ino` / `mode` 是 `writeCheckedSync` 的**寫入身分能力**——只有需要
+ *     覆寫檔案的 caller 才需要,由型別編譯期阻斷純讀 API 誤接寫回(TypeScript
+ *     narrowing 讓 `if (result.ok)` 分支只暴露 `original`,傳給
+ *     `writeCheckedSync` 會 compile error)。
+ *   - `abs` 目前純讀 caller 不用,刪以進一步收窄能力;若日後有寫回需求,必須改用
+ *     `checkTarget`、不得從此型別擴增。
+ *
+ * `if (result.ok)` 由 TS type narrowing 證明 `original` 是 `Buffer`(非
+ * optional)——這是 union 相對 `interface + optional` 的關鍵差別。
  */
-export function checkTarget(repoRootReal: string, rel: string): TargetCheck {
+export type ReadTargetCheck =
+  | { ok: true; original: Buffer }
+  | { ok: false; reason: string };
+
+/**
+ * 私有共用 helper(P2#3 defer ⑥):把六道 fail-closed 邊界 + `O_NOFOLLOW` +
+ * 同 fd fstat/read 集中在此,供 `checkTarget`(破壞性 mutate 用)與
+ * `readCheckedTarget`(純讀用)共用。
+ *
+ * **不做 `nlink` 檢查**——由 caller 決定:
+ *   - `checkTarget` 呼叫本 helper 後補 `nlink=1` 拒判(既有 observable behavior 不變)
+ *   - `readCheckedTarget` 呼叫本 helper 後**跳過** `nlink` 檢查(純讀不寫回、
+ *     hardlink alias 不受影響)
+ *
+ * 回傳含 `fst` 供 caller 判斷 nlink 與取得 dev/ino/mode。
+ */
+function openAndReadTracked(
+  repoRootReal: string,
+  rel: string,
+): { ok: true; abs: string; fst: fs.Stats; original: Buffer } | { ok: false; reason: string } {
   if (path.isAbsolute(rel)) return { ok: false, reason: "要用 repo 相對路徑,不收絕對路徑" };
 
   const abs = path.resolve(repoRootReal, rel);
@@ -229,22 +252,66 @@ export function checkTarget(repoRootReal: string, rel: string): TargetCheck {
   try {
     const fst = fs.fstatSync(fd);
     if (!fst.isFile()) return { ok: false, reason: "目標不是一般檔案(目錄／裝置／FIFO)" };
-    if (fst.nlink !== 1) {
-      return {
-        ok: false,
-        reason: `目標有 ${fst.nlink} 個 hardlink——原地覆寫會一併改到其他 alias(可能在 repo 外),拒跑`,
-      };
-    }
     const original = fs.readFileSync(fd);
     if (!isUtf8Text(original)) {
       return { ok: false, reason: "不是 UTF-8 文字檔——用字串改再寫回去會破壞原 bytes,拒跑" };
     }
-    return { ok: true, abs: targetReal, original, dev: fst.dev, ino: fst.ino, mode: fst.mode & 0o7777 };
+    return { ok: true, abs: targetReal, fst, original };
   } catch (e) {
     return { ok: false, reason: `讀不到檔案:${(e as Error).message}` };
   } finally {
     fs.closeSync(fd);
   }
+}
+
+/**
+ * 目標檔的完整安全檢查。**閘① 的保險只覆蓋 git 工作樹**,所以這裡要把
+ * 「不在工作樹裡」的每一種形狀擋掉,否則 repo 看起來全乾淨、卻已經改壞了別的東西。
+ * (Codex review round 1 P1,已用 `../outside.txt` 實際重現。)
+ *
+ * 🔴 Codex review round 4 P2:舊版在這裡讀內容、**稍後才另外 lstat 一次**記下 inode。
+ * 兩者之間目標被換掉的話,工具會把新 inode 當成合法目標,最後卻拿舊 inode 的 bytes
+ * 去還原——覆蓋並吃掉競態期間寫進去的新內容。
+ * 現在:**開一次 fd**,`fstat` 與讀內容都來自同一個 fd,identity 一路帶下去。
+ *
+ * 🔴 Codex review round 4 P2:也擋 hardlink(`nlink > 1`)——原地覆寫會同時改動
+ * 所有 alias,其中可能有 repo 外的檔案,而 `treeDirt` 看不見 repo 外的副作用。
+ *
+ * 🔴 P2#3 defer ⑥:純讀 caller 請改用 `readCheckedTarget`。本函式回傳的
+ * `dev` / `ino` / `mode` 是 `writeCheckedSync` 的**寫入身分能力**;
+ * `readCheckedTarget` 型別不含這些欄位、**絕不可供寫回**。
+ */
+export function checkTarget(repoRootReal: string, rel: string): TargetCheck {
+  const inner = openAndReadTracked(repoRootReal, rel);
+  if (!inner.ok) return { ok: false, reason: inner.reason };
+  const { abs, fst, original } = inner;
+  if (fst.nlink !== 1) {
+    return {
+      ok: false,
+      reason: `目標有 ${fst.nlink} 個 hardlink——原地覆寫會一併改到其他 alias(可能在 repo 外),拒跑`,
+    };
+  }
+  return { ok: true, abs, original, dev: fst.dev, ino: fst.ino, mode: fst.mode & 0o7777 };
+}
+
+/**
+ * 純讀 caller 專用的目標檔檢查(P2#3 defer ⑥)。
+ *
+ * 🔴 **僅供純讀 caller、絕不可供破壞性寫回**——寫回請用 `checkTarget`。
+ *
+ * 與 `checkTarget` 共用六道 fail-closed 邊界(absolute path / parent realpath /
+ * repo 邊界 / .git 內 / lstat/symlink/非一般檔 / git untracked)+ `O_NOFOLLOW` +
+ * 同 fd fstat/read;**唯一差別**:`readCheckedTarget` 跳過 `nlink=1` 檢查。
+ * 理由:純讀不寫回,hardlink alias 不會被誤改;破壞性 mutate 路徑仍走
+ * `checkTarget`(nlink 第一道)+ `writeCheckedSync` 內部 nlink=1 檢查(第二道防線)。
+ *
+ * 回傳 `ReadTargetCheck` discriminated union,**刻意不含** `dev` / `ino` /
+ * `mode` / `abs`——由 TypeScript 編譯期阻斷純讀 API 誤接破壞性寫回。
+ */
+export function readCheckedTarget(repoRootReal: string, rel: string): ReadTargetCheck {
+  const inner = openAndReadTracked(repoRootReal, rel);
+  if (!inner.ok) return { ok: false, reason: inner.reason };
+  return { ok: true, original: inner.original };
 }
 
 // ───────────────────────────────────────── 閘② 樣本真的套用
