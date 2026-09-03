@@ -31,7 +31,6 @@
  */
 
 import { spawnSync } from "node:child_process";
-import path from "node:path";
 import { detectInvocation, reportIfNotMain } from "./lib/invoked-as-main";
 
 // ───────────────────────────────────────── 純函式(給測試直接呼叫)
