@@ -44,11 +44,22 @@ function run(scriptPath: string, args: string[] = [], env: Record<string, string
   return { status: r.status, stdout: r.stdout, stderr: r.stderr };
 }
 
+function assertExpectedExit(actual: number | null, expected: number | readonly number[]): void {
+  if (Array.isArray(expected)) {
+    expect(expected).toContain(actual);
+  } else {
+    expect(actual).toBe(expected);
+  }
+}
+
 interface ConsumerSpec {
   label: string;
   scriptName: string;
   wrapperName: string;
-  expectedMainExit: number;
+  // number 或 number[]:某些 consumer(如 check-bookkeeping-commit)的正常 exit code
+  // 依 HEAD 內容變化(bookkeeping commit → exit 0、含 code → exit 1)——用 array
+  // 表示「兩者都是合法 direct 狀態」;matcher 需自行區分共同 stdout 特徵
+  expectedMainExit: number | readonly number[];
   expectedMainMatcher: (r: RunResult) => void;
 }
 
@@ -81,6 +92,104 @@ const CONSUMERS: ConsumerSpec[] = [
       expect(r.stdout).toContain("mutation spec 樣本都對得上");
     },
   },
+  {
+    label: "check-doc-size",
+    scriptName: "check-doc-size.ts",
+    wrapperName: "check-doc-size-wrapper.mjs",
+    // direct exit 依 HEAD 內容變:任一被監控 doc 超額度 → exit 1(印「記錄檔超標」);
+    // 都在額度內 → exit 0(印「記錄檔都在額度內」)。共同前綴「記錄檔」都會印。
+    // (同 check-bookkeeping-commit / check-no-source-terms 的 HEAD-content-dependent 對稱處理)
+    expectedMainExit: [0, 1],
+    expectedMainMatcher: (r) => {
+      // exit 0 走 stdout(console.log),exit 1 走 stderr(console.error);兩者都以「記錄檔」開頭
+      expect(r.stdout + r.stderr).toMatch(/記錄檔/);
+    },
+  },
+  {
+    label: "check-bookkeeping-commit",
+    scriptName: "check-bookkeeping-commit.ts",
+    wrapperName: "check-bookkeeping-commit-wrapper.mjs",
+    // direct exit 依 HEAD 內容 + git 環境變:
+    // - bookkeeping commit → exit 0(印「bookkeeping allowlist 內」)
+    // - code commit → exit 1(印 violations)
+    // - CI shallow clone / rev-parse 失敗 / diff-tree 失敗 → exit 2(git 環境問題;
+    //   see check-bookkeeping-commit.ts:142/150/157/161)
+    // 三者都是 direct 正常執行的合法狀態(fail-closed 本質),共同特徵是有本 script 的
+    // 「目標 commit:」前綴(exit 0/1)或 stderr 有 git 錯誤診斷(exit 2)——這裡放寬
+    // 到 3 種 exit,matcher 用 stdout+stderr regex 涵蓋。
+    // (Step 5 worktree r1 CRITICAL 導出 [0, 1]、CI 又抓到 shallow clone exit 2 → 擴 [0, 1, 2])
+    expectedMainExit: [0, 1, 2],
+    expectedMainMatcher: (r) => {
+      // exit 0/1 印「目標 commit:」到 stdout;exit 2 印 git 錯到 stderr(「不是有效 commit」/
+      // 「讀不到 commit」/「多餘參數」/「沒改任何檔」),共同 pattern 是 script 有輸出
+      expect(r.stdout + r.stderr).toMatch(/目標 commit:|不是有效 commit|讀不到 commit|多餘參數|沒改任何檔/);
+    },
+  },
+  {
+    label: "check-no-source-terms",
+    scriptName: "check-no-source-terms.ts",
+    wrapperName: "check-no-source-terms-wrapper.mjs",
+    // direct exit 依 HEAD 內容變:working tree / git 史含未知 PR 引用(如 TODOS
+    // 新加的 self-PR 號)→ exit 1(fail-closed);沒有未知 PR → exit 0。兩者都
+    // 是 main 執行的合法狀態,共同特徵是 stdout 有「allowedPrs:」前綴。
+    // (同 check-bookkeeping-commit 的 HEAD-content-dependent 情況)
+    expectedMainExit: [0, 1],
+    expectedMainMatcher: (r) => {
+      expect(r.stdout).toContain("allowedPrs");
+    },
+  },
+  {
+    label: "check-cso-trigger",
+    scriptName: "check-cso-trigger.ts",
+    wrapperName: "check-cso-trigger-wrapper.mjs",
+    // 模板 repo cso 路徑表為空 → fail-closed exit 2(正常狀態、非 error)
+    expectedMainExit: 2,
+    expectedMainMatcher: (r) => {
+      expect(r.stdout).toContain("CSO_REQUIRED");
+    },
+  },
+  {
+    label: "check-adoption-readiness",
+    scriptName: "check-adoption-readiness.ts",
+    wrapperName: "check-adoption-readiness-wrapper.mjs",
+    expectedMainExit: 0,
+    expectedMainMatcher: (r) => {
+      expect(r.stdout).toContain("TEMPLATE_MODE");
+    },
+  },
+  {
+    label: "check-doc-refs",
+    scriptName: "check-doc-refs.ts",
+    wrapperName: "check-doc-refs-wrapper.mjs",
+    // direct exit 依 HEAD 內容變:壞引用 / ls-files 錯 / 缺 ROOT_DOCS 等 → exit 1(stderr 印「失效的檔案引用」)
+    // 都好 → exit 0(stdout 印「0 個失效引用」)。⚠️「失效引用」與「失效的檔案引用」非連續 substring,
+    // 用 regex 涵蓋兩者。exit 1 診斷去 stderr,合併 stdout+stderr 才涵蓋。
+    // (round 4 F1 修:承 round 3 F1 propagation,但先前 matcher 只看 stdout+字面 substring 兩重誤鎖 HEAD)
+    expectedMainExit: [0, 1],
+    expectedMainMatcher: (r) => {
+      expect(r.stdout + r.stderr).toMatch(/失效.*引用/);
+    },
+  },
+  {
+    label: "check-baseline-governance",
+    scriptName: "check-baseline-governance.ts",
+    wrapperName: "check-baseline-governance-wrapper.mjs",
+    // direct 無 --base args → fail-closed exit 2 + stderr「--base=<ref> 必填」
+    expectedMainExit: 2,
+    expectedMainMatcher: (r) => {
+      expect(r.stderr).toContain("--base=<ref>");
+    },
+  },
+  {
+    label: "render-control-catalog",
+    scriptName: "render-control-catalog.ts",
+    wrapperName: "render-control-catalog-wrapper.mjs",
+    // direct 無 args → fail-closed exit 2 + stderr「用法:tsx scripts/render-control-catalog.ts」
+    expectedMainExit: 2,
+    expectedMainMatcher: (r) => {
+      expect(r.stderr).toContain("用法:tsx scripts/render-control-catalog.ts");
+    },
+  },
 ];
 
 for (const spec of CONSUMERS) {
@@ -88,7 +197,7 @@ for (const spec of CONSUMERS) {
     it(`#1 direct 呼叫 → main 執行、exit ${spec.expectedMainExit}、無 [invoked-as-main] stderr`, () => {
       const scriptPath = path.join(REPO, "scripts", spec.scriptName);
       const r = run(scriptPath);
-      expect(r.status).toBe(spec.expectedMainExit);
+      assertExpectedExit(r.status, spec.expectedMainExit);
       spec.expectedMainMatcher(r);
       expect(r.stderr).not.toContain("[invoked-as-main]");
       expect(r.stderr).not.toContain("indeterminate");
@@ -98,7 +207,7 @@ for (const spec of CONSUMERS) {
       const { linkedRepo } = mkSymlinkToRepo();
       const linkedScript = path.join(linkedRepo, "scripts", spec.scriptName);
       const r = run(linkedScript);
-      expect(r.status).toBe(spec.expectedMainExit);
+      assertExpectedExit(r.status, spec.expectedMainExit);
       spec.expectedMainMatcher(r);
       expect(r.stderr).not.toContain("[invoked-as-main]");
       expect(r.stderr).not.toContain("indeterminate");

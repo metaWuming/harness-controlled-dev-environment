@@ -55,7 +55,8 @@
 import { execFileSync, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
+import { detectInvocation, reportIfNotMain } from './lib/invoked-as-main';
 
 // CWD-independent root resolution(git 不可用時退回本檔位置的上一層)。
 // isGitRepo flag 給 collectDocFiles 選 strategy:git repo 用 `git ls-files`
@@ -402,9 +403,12 @@ function main() {
   process.exit(1);
 }
 
-// 只在直接 invoke 時跑 main(unit test import 時跳過)。
-// ESM 下沒有 require.main —— 比對 argv[1] 與本模組 URL。
-const invokedPath = process.argv[1];
-if (invokedPath && pathToFileURL(invokedPath).href === import.meta.url) {
+// ESM main 判定改用 scripts/lib/invoked-as-main.ts 共用 lib(P2#3 defer ①② 後續遷移):
+// 兩端 realpath、indeterminate 由 caller 顯式 exit(2)、被當 import 用時完全靜默。
+const outcome = detectInvocation(import.meta.url, process.argv[1]);
+const isMain = reportIfNotMain(outcome, 'check-doc-refs');
+if (isMain) {
   main();
+} else if (outcome.kind === 'indeterminate') {
+  process.exit(2);
 }

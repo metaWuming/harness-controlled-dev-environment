@@ -31,8 +31,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
+import { detectInvocation, reportIfNotMain } from "./lib/invoked-as-main";
 
 // ───────────────────────────────────────── 純函式(給測試直接呼叫)
 
@@ -182,8 +181,10 @@ async function main(): Promise<number> {
   return 1;
 }
 
-const isMain =
-  process.argv[1] !== undefined && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+// ESM main 判定改用 scripts/lib/invoked-as-main.ts 共用 lib(P2#3 defer ①② 後續遷移):
+// 兩端 realpath、indeterminate 由 caller 顯式 exit(2)、被當 import 用時完全靜默。
+const outcome = detectInvocation(import.meta.url, process.argv[1]);
+const isMain = reportIfNotMain(outcome, "check-bookkeeping-commit");
 if (isMain) {
   main()
     .then((code) => process.exit(code))
@@ -191,4 +192,6 @@ if (isMain) {
       console.error(`✗ 未預期例外:${(e as Error)?.stack ?? String(e)}`);
       process.exit(2);
     });
+} else if (outcome.kind === "indeterminate") {
+  process.exit(2);
 }

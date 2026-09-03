@@ -31,6 +31,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { detectInvocation, reportIfNotMain } from "./lib/invoked-as-main";
 
 export interface DocBudget {
   /** repo 相對路徑 */
@@ -138,14 +139,15 @@ function repoRootFromHere(): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 }
 
-// ESM main invocation 檢查:同時支援 `tsx scripts/check-doc-size.ts` 直跑
-// 與被別的檔 import 兩種情境。
-const isMain =
-  process.argv[1] !== undefined &&
-  fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+// ESM main 判定改用 scripts/lib/invoked-as-main.ts 共用 lib(P2#3 defer ①② 後續遷移):
+// 兩端 realpath、indeterminate 由 caller 顯式 exit(2)、被當 import 用時完全靜默。
+const outcome = detectInvocation(import.meta.url, process.argv[1]);
+const isMain = reportIfNotMain(outcome, "check-doc-size");
 
 if (isMain) {
   const { text, ok } = formatReport(checkDocSizes(repoRootFromHere()));
   console[ok ? "log" : "error"](text);
   process.exit(ok ? 0 : 1);
+} else if (outcome.kind === "indeterminate") {
+  process.exit(2);
 }

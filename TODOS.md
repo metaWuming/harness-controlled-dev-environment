@@ -78,13 +78,13 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 ### 🟢 P2#3 Step 5 defer 集合(check-mutation-specs 邊角,13 條 INFORMATIONAL conf ≤8;①② 已交付)
 - **來源**:2026-09-02 PR P2#3 Step 5 worktree 審 r1–r2;0 CRITICAL 未修
 - **內容**:~~①`mutate.ts` / `check-control-catalog.ts` 的 `isMain` 同款未 realpath,經 symlink 目錄呼叫靜默 exit 0(r1 C1 只修了本 checker;conf 7);②`invokedAsMain` realpath 單邊 fallback 仍可能不等 → 靜默 exit 0,根本解是 isMain false 時印 stderr(conf 7)~~;③`fileURLToPath` 對非 file: URL 在模組頂層 throw(conf 6;**新 lib 已歸 indeterminate reason=`selfurl-not-file`、印 stderr、不靜默——本條 pending 剩「模組頂層 throw 讓 caller 端無法 graceful 處理」的更深層問題**);④測試手拼 `'file://'+path` 應改 `pathToFileURL`(conf 7);⑤只認小寫 `.json` 且不遞迴,子目錄 / 大寫副檔名 spec 靜默不受守門(conf 8);⑥`checkTarget` nlink 檢查在純讀情境多餘拒判(conf 7);⑦MSD-M1 / M5 實際 kill 機制是 TypeError 走 exit 2,與 label「判 DRIFT / untrusted」不一致(conf 8);⑧catalog CI-013 `implementation` 未列 `scripts/mutate.ts`(邏輯所在;conf 6);⑨README / catalog degradation 的 exit 2 清單漏 root 解析失敗、argv 錯、未預期例外三種(conf 7);⑩`formatReport([])` 回 code 0,純函式對空輸入 fail-open、只靠 listSpecFiles 前置擋(conf 6);⑪`--root` 指外層 repo 子目錄時「repo 內」與「tracked」兩個邊界不同(conf 5);⑫e2e ⑤「外部檔未成為輸入」斷言靠 `not.toContain('對得上')`、fixture 加第二個 spec 就失效(conf 6);⑬`--allow-empty` 多餘(conf 5);⑭spec 帶 UTF-8 BOM 診斷訊息差(conf 5);⑮`PR #___` 佔位靠 Step 6 補號(A3 defer ② 同形;conf 5)
-- **交付(PR #50)**:①② 一併收——抽 `scripts/lib/invoked-as-main.ts` 共用 lib(discriminated outcome 三態 + 集中式 reporter + sanitize),三支 owner-scoped consumer(mutate / check-control-catalog / check-mutation-specs)接線;caller 對 indeterminate 顯式 `process.exit(2)`。17 unit + 12 e2e + 8 mutant(全被抓,含 3 條 caller-wiring exit(2) branch);catalog CTRL-SOP-003 / CTRL-CI-011 / CTRL-CI-013 追加 implementation;另 7 支同款 fail-open 移出成 P3 新條目(見下方「其他 7 支 script 同款 invoked-as-main 舊寫法」)
+- **交付(PR #50)**:①② 一併收——抽 `scripts/lib/invoked-as-main.ts` 共用 lib(discriminated outcome 三態 + 集中式 reporter + sanitize),三支 owner-scoped consumer(mutate / check-control-catalog / check-mutation-specs)接線;caller 對 indeterminate 顯式 `process.exit(2)`。17 unit + 12 e2e + 8 mutant(全被抓,含 3 條 caller-wiring exit(2) branch);catalog CTRL-SOP-003 / CTRL-CI-011 / CTRL-CI-013 追加 implementation;另 8 支同款 fail-open 移出成 P3 新條目(見下方「其他 8 支 script 同款 invoked-as-main 舊寫法」)
 - **方向(其餘)**:⑤⑨⑧ 各 0.5h;其餘逐條 0.5h
 - **工時**:剩下條目合計 5–8h
 
-### 🟢 其他 7 支 script 同款 invoked-as-main 舊寫法(遷移到 `scripts/lib/invoked-as-main.ts`)
-- **來源**:2026-09-03 PR P2#3 defer ①② 交付 sprint 中,repo-wide grep 發現 owner-scoped 3 支以外仍有 7 支 script 用舊 isMain 寫法(A/B 兩派)、經 symlink 目錄呼叫可能靜默 exit 0
-- **內容**(未修 8 支;分數關係:本 sprint 3 / 未修 8 / 總計 11,含已修 1):
+### ✅ 其他 8 支 script 同款 invoked-as-main 舊寫法(遷移到 `scripts/lib/invoked-as-main.ts`)(PR #51)
+- **來源**:2026-09-03 PR P2#3 defer ①② 交付 sprint 中,repo-wide grep 發現 owner-scoped 3 支以外仍有 8 支 script 用舊 isMain 寫法(A/B 兩派)、經 symlink 目錄呼叫可能靜默 exit 0
+- **內容**(原未修 8 支;分數關係:PR #50 owner-scoped 3 / 本 sprint 遷 8 / 總計 11,含已修 1):
   - A 派(fileURLToPath 直比 path.resolve,無 realpath):
     - `scripts/check-doc-size.ts:143-145`
     - `scripts/check-bookkeeping-commit.ts:185-186`
@@ -97,6 +97,7 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
     - `scripts/render-control-catalog.ts:162`(⚠️ **是 `npm run catalog:render` 的 CLI 入口**;遷移時同時要對 `tests/fixtures/invoked-as-main-wrapper/check-control-catalog-wrapper.mjs` 改 2-step dynamic import,因為 check-control-catalog.ts 頂層 static import render-control-catalog、遷移後會撞 chain 問題,類似 check-mutation-specs → mutate 的處理)
 - **方向**:每支 script 各 ~10 分鐘遷移(import lib + 換 caller pattern + 加 caller 顯式 exit 2 branch);對應 e2e 若既有可覆蓋、就 rely;若無、加 minimal wrapper e2e。catalog 依 D7 grep 規則決定 implementation 是否追加 lib
 - **工時**:遷移 1–2h;e2e 補完 0.5–1h
+- **交付(PR #51)**:8 支全遷完,每支 1 commit(A 派 3、B 派 5);check-baseline-governance 用 3-step wrapper 化解 static-import chain(→ check-bookkeeping-commit + check-no-source-terms);check-control-catalog-wrapper 從 sprint 3 的 defensive 註解升級為真 2-step(render-control-catalog 遷完 chain 假設成真);新 `invoked-as-main-migration.json` 8 條 caller-wiring mutant 全被抓;catalog 6 個 control(CTRL-CI-005/006/007/009/012 + CTRL-SOP-007)追加 lib 到 implementation(D7 evidence)。32 新 e2e case(8 支 × 4 場景)全綠。**P2#3 defer ③(fileURLToPath 非-file URL 頂層 throw、caller 無法 graceful 處理)不在本 sprint scope 內,仍 pending**
 
 ### 🟢 A3 Step 5 defer 集合(control catalog / baseline governance 邊角,21 條 INFORMATIONAL conf ≤7)
 - **來源**:2026-09-03 PR A3 Step 5 worktree 審 r1–r5;0 CRITICAL 未修

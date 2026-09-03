@@ -28,7 +28,7 @@
 
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { detectInvocation, reportIfNotMain } from './lib/invoked-as-main';
 import { isBookkeepingPath } from './check-bookkeeping-commit';
 import { parseBaselineConfig } from './check-no-source-terms';
 import { HARNESS_CONFIG_PATH, parseHarnessConfig } from './lib/harness-config';
@@ -229,7 +229,15 @@ function main(): number {
   return r.status === 'UNCHANGED' || r.status === 'OK' || r.status === 'SKIPPED' ? 0 : 2;
 }
 
-const invokedPath = process.argv[1];
-if (invokedPath && pathToFileURL(invokedPath).href === import.meta.url) {
+// ESM main 判定改用 scripts/lib/invoked-as-main.ts 共用 lib(P2#3 defer ①② 後續遷移):
+// 兩端 realpath、indeterminate 由 caller 顯式 exit(2)、被當 import 用時完全靜默。
+// ⚠️ 本 script static-import check-bookkeeping-commit + check-no-source-terms,
+//    e2e case #4(indeterminate)必須用 3-step wrapper(先 cache 這兩支再改 argv1),
+//    見 tests/fixtures/invoked-as-main-wrapper/check-baseline-governance-wrapper.mjs。
+const outcome = detectInvocation(import.meta.url, process.argv[1]);
+const isMain = reportIfNotMain(outcome, 'check-baseline-governance');
+if (isMain) {
   process.exit(main());
+} else if (outcome.kind === 'indeterminate') {
+  process.exit(2);
 }
