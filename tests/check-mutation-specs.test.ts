@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { checkSpecFile, formatReport, listSpecFiles, parseRootArg, runCheck, SPEC_DIR } from '../scripts/check-mutation-specs';
+import { checkSpecFile, formatReport, discoverSpecFiles, parseRootArg, runCheck, SPEC_DIR } from '../scripts/check-mutation-specs';
 
 const REPO = path.resolve(__dirname, '..');
 const TSX = path.join(REPO, 'node_modules/.bin/tsx');
@@ -60,17 +60,17 @@ function makeRepo(opts: RepoOpts = {}): string {
   return dir;
 }
 
-describe('listSpecFiles(目錄邊界)', () => {
+describe('discoverSpecFiles(目錄邊界)', () => {
   it('真目錄 → 排序後的 .json 清單,README 不算', () => {
-    const r = listSpecFiles(makeRepo({ specs: { 'b.json': '[]', 'a.json': '[]', 'README.md': '#' } }));
+    const r = discoverSpecFiles(makeRepo({ specs: { 'b.json': '[]', 'a.json': '[]', 'README.md': '#' } }));
     expect(r.ok).toBe(true);
     expect(r.specs).toEqual([`${SPEC_DIR}/a.json`, `${SPEC_DIR}/b.json`]);
   });
   it('目錄不存在 / 0 個 spec 檔 → 拒判', () => {
     const empty = realpathSync(mkdtempSync(path.join(tmpdir(), 'msd-empty-')));
     made.push(empty);
-    expect(listSpecFiles(empty).ok).toBe(false);
-    const r = listSpecFiles(makeRepo({ noDir: true }));
+    expect(discoverSpecFiles(empty).ok).toBe(false);
+    const r = discoverSpecFiles(makeRepo({ noDir: true }));
     expect(r.ok).toBe(false);
     expect(r.reason).toContain('沒有任何 spec 檔');
   });
@@ -79,7 +79,7 @@ describe('listSpecFiles(目錄邊界)', () => {
     const real = path.join(dir, SPEC_DIR);
     execFileSync('mv', [real, path.join(dir, 'elsewhere')]);
     symlinkSync(path.join(dir, 'elsewhere'), real);
-    const r = listSpecFiles(dir);
+    const r = discoverSpecFiles(dir);
     expect(r.ok).toBe(false);
     expect(r.reason).toContain('symlink');
   });
