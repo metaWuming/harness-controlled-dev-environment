@@ -172,6 +172,33 @@ describe("check-protectedbranches-drift e2e(A3 defer ⑩ CTRL-CI-014)", () => {
     expect(r.err).toContain("--base=<sha> 必填");
   });
 
+  it("#10a --base=HEAD → exit 2(拒 branch ref、Codex Step 4 r1 P1 kill)", () => {
+    const fx = fixture(["main"]);
+    fx.write(CONFIG_PATH, makeHarnessCfg(["main", "release"]));
+    fx.commit("B: expand");
+    const r = run(fx.dir, ["--base=HEAD"]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("必為 immutable 完整 40 字元 hex SHA");
+  });
+
+  it("#10b --base=origin/main → exit 2(拒 branch ref)", () => {
+    const fx = fixture(["main"]);
+    fx.write("README.md", "b\n");
+    fx.commit("B");
+    const r = run(fx.dir, ["--base=origin/main"]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("必為 immutable 完整 40 字元 hex SHA");
+  });
+
+  it("#10c --base=<短 SHA> → exit 2(拒短 SHA)", () => {
+    const fx = fixture(["main"]);
+    fx.write("README.md", "b\n");
+    fx.commit("B");
+    const r = run(fx.dir, [`--base=${fx.A.slice(0, 7)}`]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("必為 immutable 完整 40 字元 hex SHA");
+  });
+
   it("#10 大小寫差異(擴大 'Main' vs base 'main')→ exit 2(字面 Set 敏感、依 parseHarnessConfig 語意)", () => {
     // 「Main」與「main」是不同字面 → parseHarnessConfig 通過(LITERAL_BRANCH_RE 允許)
     // → Set 視為不同元素 → 擴大

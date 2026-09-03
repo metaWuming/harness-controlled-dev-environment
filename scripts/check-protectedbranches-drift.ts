@@ -35,7 +35,18 @@ export interface CheckResult {
   text: string;
 }
 
-/** argv 只收單一 `--base=<sha>`;其他一律 fail-closed exit 2。 */
+/**
+ * argv 只收單一 `--base=<40-char hex SHA>`;其他一律 fail-closed exit 2。
+ *
+ * ⚠️ **必為 immutable 完整 40 字元 hex SHA**——拒絕 branch ref(HEAD / origin/main /
+ * refs/heads/...)、短 SHA、tag。原因(Codex Step 4 r1 P1):`--base=HEAD` 會讓
+ * merge-base(HEAD, HEAD)=HEAD → base config 與 head config 讀同 tree → 已擴大
+ * 集合誤判 exit 0(fail-open)。CI step 已用 immutable `github.event.pull_request.base.sha`
+ * (由 ci-step-conditions.test.ts YAML structural lock 守),CLI 也必補 trust-boundary
+ * 驗、避免本地誤呼叫或未來 CI 退化到 branch ref。
+ */
+const IMMUTABLE_SHA_RE = /^[0-9a-f]{40}$/;
+
 export function parseArgs(argv: string[]): { ok: true; base: string } | { ok: false; reason: string } {
   const baseArgs = argv.filter((a) => a.startsWith("--base="));
   const unknown = argv.filter((a) => !a.startsWith("--base="));
@@ -43,6 +54,12 @@ export function parseArgs(argv: string[]): { ok: true; base: string } | { ok: fa
   if (baseArgs.length !== 1) return { ok: false, reason: `--base=<sha> 必填且只能一個(收到 ${baseArgs.length} 個)` };
   const val = baseArgs[0]!.slice("--base=".length);
   if (val === "") return { ok: false, reason: `--base=<sha> 值不得為空` };
+  if (!IMMUTABLE_SHA_RE.test(val)) {
+    return {
+      ok: false,
+      reason: `--base=<sha> 必為 immutable 完整 40 字元 hex SHA(收到:${val});拒絕 branch ref(如 HEAD、origin/main)、短 SHA、tag——避免 merge-base(HEAD,HEAD) 誤判擴大為 exit 0。CI 用 github.event.pull_request.base.sha。`,
+    };
+  }
   return { ok: true, base: val };
 }
 
