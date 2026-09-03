@@ -25,9 +25,10 @@
   },
   {
     "file": "scripts/check-mutation-specs.ts",
-    "find": "    const arr = groups.get(key) ?? [];",
-    "replace": "    const arr = groups.get(key.split(\"/\").pop()!.toLowerCase()) ?? [];",
-    "label": "MSD-D4b collision key 退回 basename(fail-open:合法不同目錄同名誤判)→ pure unit 「不同目錄同 basename → 合法不衝突」轉紅"
+    "find": "    const key = p.toLowerCase();",
+    "replace": "    const key = p.split(\"/\").pop()!.toLowerCase();",
+    "label": "MSD-D4b collision key 退回 basename lowercase(false-positive:合法不同目錄同名誤判)→ pure unit 「不同目錄同 basename → 合法不衝突」轉紅",
+    "all": false
   },
   {
     "file": "scripts/check-mutation-specs.ts",
