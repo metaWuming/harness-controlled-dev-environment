@@ -109,15 +109,20 @@ const CONSUMERS: ConsumerSpec[] = [
     label: "check-bookkeeping-commit",
     scriptName: "check-bookkeeping-commit.ts",
     wrapperName: "check-bookkeeping-commit-wrapper.mjs",
-    // direct exit 依 HEAD 內容變:code commit → exit 1(印 violations)、
-    // bookkeeping commit → exit 0(印「全部檔案都在 bookkeeping allowlist 內」)。
-    // 兩者都是 direct 正常執行的合法狀態,共同特徵是「目標 commit:」前綴。
-    // (Step 5 高風險 worktree 審 CRITICAL:sprint 中段跑時 HEAD 是 code commit
-    //  → exit 1、綠;round 1 P2 散文 fix 只碰 TODOS 屬 bookkeeping → HEAD 變
-    //  bookkeeping commit → exit 0、舊硬綁 1 斷言紅。修:接受 [0, 1]。)
-    expectedMainExit: [0, 1],
+    // direct exit 依 HEAD 內容 + git 環境變:
+    // - bookkeeping commit → exit 0(印「bookkeeping allowlist 內」)
+    // - code commit → exit 1(印 violations)
+    // - CI shallow clone / rev-parse 失敗 / diff-tree 失敗 → exit 2(git 環境問題;
+    //   see check-bookkeeping-commit.ts:142/150/157/161)
+    // 三者都是 direct 正常執行的合法狀態(fail-closed 本質),共同特徵是有本 script 的
+    // 「目標 commit:」前綴(exit 0/1)或 stderr 有 git 錯誤診斷(exit 2)——這裡放寬
+    // 到 3 種 exit,matcher 用 stdout+stderr regex 涵蓋。
+    // (Step 5 worktree r1 CRITICAL 導出 [0, 1]、CI 又抓到 shallow clone exit 2 → 擴 [0, 1, 2])
+    expectedMainExit: [0, 1, 2],
     expectedMainMatcher: (r) => {
-      expect(r.stdout).toContain("目標 commit:");
+      // exit 0/1 印「目標 commit:」到 stdout;exit 2 印 git 錯到 stderr(「不是有效 commit」/
+      // 「讀不到 commit」/「多餘參數」/「沒改任何檔」),共同 pattern 是 script 有輸出
+      expect(r.stdout + r.stderr).toMatch(/目標 commit:|不是有效 commit|讀不到 commit|多餘參數|沒改任何檔/);
     },
   },
   {
