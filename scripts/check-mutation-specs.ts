@@ -11,12 +11,17 @@
  *   每條探針的 `find` 樣本現在還能不能在原始碼裡精準對上。對得上不代表探針仍會 kill,
  *   對不上則必然是 mutate 會拒跑的形狀——所以它是 mutate 的**前置守門**,不是替代品。
  *
- * 安全邊界(supervisor plan rev 2 P1):spec 檔本身是 PR 作者可改的 CI 輸入。
+ * 安全邊界(supervisor plan rev 2 P1;P2#3 defer ⑥ 更新):spec 檔本身是 PR 作者可改的 CI 輸入。
  *   - `scripts/mutations` 目錄必須是 repo 內的真目錄(非 symlink、realpath 等於正規路徑)。
- *   - 每個 spec 檔**讀之前**先過 `mutate.ts` 的 `checkTarget`(repo 內、git 追蹤、非 symlink、
- *     一般檔、nlink=1、UTF-8;`O_NOFOLLOW` 開一次 fd 取 bytes)。之後**只用那份 bytes** 解析,
- *     不再依路徑讀檔——tracked spec 被換成指向 repo 外的 symlink 時,外部檔不會成為 CI 輸入。
- *   - 探針目標同樣經 `checkTarget` 取 bytes,再交給 `applyMutation`。
+ *   - 每個 spec 檔**讀之前**先過 `mutate.ts` 的 `readCheckedTarget`(repo 內、git 追蹤、
+ *     非 symlink、一般檔、UTF-8;`O_NOFOLLOW` 開一次 fd 取 bytes)——**放寬 nlink=1**
+ *     (P2#3 defer ⑥):純讀 caller 不寫回、hardlink alias 不受影響;破壞性 mutate 路徑
+ *     仍走 `checkTarget`(nlink=1 第一道)+ `writeCheckedSync` 內部 nlink=1 第二道防線。
+ *     `readCheckedTarget` 回傳 `ReadTargetCheck` discriminated union、**刻意不含**
+ *     `dev` / `ino` / `mode` / `abs`——由 TS 型別編譯期擋純讀 API 誤接破壞性寫回。
+ *     之後**只用那份 bytes** 解析,不再依路徑讀檔——tracked spec 被換成指向 repo 外的
+ *     symlink 時,外部檔不會成為 CI 輸入。
+ *   - 探針目標同樣經 `readCheckedTarget` 取 bytes,再交給 `applyMutation`。
  *   所有路徑 / bytes 的判斷**只複用 `mutate.ts` 的純函式**,本檔不另寫一套安全邏輯。
  *
  * spec discovery 契約(P2#3 defer ⑤,D1-D7 拍板;見 plan file):
@@ -24,7 +29,8 @@
  *   D2 副檔名大小寫:大小寫無關(.json / .JSON / .Json 都收)
  *   D3 walker 邊界:頂層 + 遞迴途中任一 symlink dir → fail-closed exit 2;
  *                    walker 每層 lstat / readdir / stat 的 I/O 失敗或型別無法判定 → fail-closed。
- *                    (檔案級 tracked / non-symlink / nlink=1 仍交給 checkTarget,禁區不動)
+ *                    (檔案級 tracked / non-symlink 仍交給 readCheckedTarget;純讀放寬
+ *                     nlink=1、P2#3 defer ⑥;破壞性 mutate 走 checkTarget 保留 nlink=1)
  *   D4 同名衝突:collision key = lowercased 完整 POSIX repo-relative path;命中 → fail-closed。
  *                排序:posix 完整路徑排序。
  *   D5 0-spec:遞迴後總數 0 → fail-closed(既有已擋、寫進契約);
