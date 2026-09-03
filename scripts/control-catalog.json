@@ -123,7 +123,8 @@
       ],
       "implementation": [
         ".github/workflows/ci.yml",
-        "scripts/check-doc-refs.ts"
+        "scripts/check-doc-refs.ts",
+        "scripts/lib/invoked-as-main.ts"
       ],
       "locator": "CI step「Doc Refs Check」;掃 docs/**、.claude/sop、.claude/memory 的檔案引用",
       "ciStep": "Doc Refs Check",
@@ -151,7 +152,8 @@
       ],
       "implementation": [
         ".github/workflows/ci.yml",
-        "scripts/check-doc-size.ts"
+        "scripts/check-doc-size.ts",
+        "scripts/lib/invoked-as-main.ts"
       ],
       "locator": "CI step「Doc Size Check」;progress.md 20 KB / LESSONS.md 60 KB,額度數字由測試釘住",
       "ciStep": "Doc Size Check",
@@ -183,7 +185,8 @@
         ".github/workflows/ci.yml",
         "scripts/check-adoption-readiness.ts",
         "scripts/lib/harness-config.ts",
-        "scripts/harness.config.json"
+        "scripts/harness.config.json",
+        "scripts/lib/invoked-as-main.ts"
       ],
       "locator": "CI step「Adoption Readiness Check」;template mode 列 exception、adopted mode fail-closed",
       "ciStep": "Adoption Readiness Check",
@@ -253,7 +256,8 @@
         "scripts/check-no-source-terms.ts",
         "scripts/lib/delivery-refs.ts",
         "scripts/deny-terms.txt",
-        "scripts/source-term-baseline.json"
+        "scripts/source-term-baseline.json",
+        "scripts/lib/invoked-as-main.ts"
       ],
       "locator": "CI step「Source-term scan (de-identification gate)」;current tree 全量 + baseline..HEAD per-commit diff + commit 訊息",
       "ciStep": "Source-term scan (de-identification gate)",
@@ -349,7 +353,8 @@
       ],
       "implementation": [
         ".github/workflows/ci.yml",
-        "scripts/check-baseline-governance.ts"
+        "scripts/check-baseline-governance.ts",
+        "scripts/lib/invoked-as-main.ts"
       ],
       "locator": "CI step「Baseline Governance Check」(pull_request only);對 PR 的 base 分支取 merge-base 比 source-term baseline 值;同 repo PR 另傳 --head,∈ merge-base 那側 protectedBranches 者為 promotion PR、明文 SKIPPED",
       "ciStep": "Baseline Governance Check",
@@ -680,7 +685,8 @@
         "sop-step"
       ],
       "implementation": [
-        "scripts/check-bookkeeping-commit.ts"
+        "scripts/check-bookkeeping-commit.ts",
+        "scripts/lib/invoked-as-main.ts"
       ],
       "locator": "Step 5 收尾;純檔名 allowlist(progress / TODOS / BACKLOG / progress-archive 非 README)",
       "ciStep": null,
