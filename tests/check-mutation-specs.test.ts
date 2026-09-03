@@ -8,7 +8,8 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { checkSpecFile, formatReport, discoverSpecFiles, parseRootArg, runCheck, SPEC_DIR } from '../scripts/check-mutation-specs';
+import { checkSpecFile, findCaseCollisions, formatReport, discoverSpecFiles, parseRootArg, runCheck, SPEC_DIR, walkSpecDir, type WalkerIO } from '../scripts/check-mutation-specs';
+import type { Stats } from 'node:fs';
 
 const REPO = path.resolve(__dirname, '..');
 const TSX = path.join(REPO, 'node_modules/.bin/tsx');
@@ -82,6 +83,140 @@ describe('discoverSpecFiles(目錄邊界)', () => {
     const r = discoverSpecFiles(dir);
     expect(r.ok).toBe(false);
     expect(r.reason).toContain('symlink');
+  });
+});
+
+describe('findCaseCollisions(collision key = lowercased 完整 POSIX repo-relative path)', () => {
+  it('同層同 basename 不同大小寫 → 1 組衝突', () => {
+    const r = findCaseCollisions(['a/foo.json', 'a/FOO.json']);
+    expect(r).toEqual([{ key: 'a/foo.json', members: ['a/FOO.json', 'a/foo.json'] }]);
+  });
+  it('頂層同 basename 不同大小寫 → 1 組衝突', () => {
+    const r = findCaseCollisions(['foo.json', 'FOO.json']);
+    expect(r).toEqual([{ key: 'foo.json', members: ['FOO.json', 'foo.json'] }]);
+  });
+  it('不同目錄同 basename → 合法不同 spec、不衝突', () => {
+    // supervisor P1-2 明列:sprint-a/guard.json 與 sprint-b/guard.json 是合法不同 spec
+    expect(findCaseCollisions(['sprint-a/guard.json', 'sprint-b/guard.json'])).toEqual([]);
+  });
+  it('多對衝突 → 全列出、依 key 排序', () => {
+    const r = findCaseCollisions(['z/foo.json', 'z/Foo.json', 'a/bar.json', 'a/BAR.json']);
+    expect(r.map((g) => g.key)).toEqual(['a/bar.json', 'z/foo.json']);
+    expect(r[0]!.members).toEqual(['a/BAR.json', 'a/bar.json']);
+    expect(r[1]!.members).toEqual(['z/Foo.json', 'z/foo.json']);
+  });
+  it('單筆 / 空陣列 → 空', () => {
+    expect(findCaseCollisions([])).toEqual([]);
+    expect(findCaseCollisions(['foo.json'])).toEqual([]);
+  });
+});
+
+describe('walkSpecDir(可注入 IO 的 traversal fail-closed 邊界)', () => {
+  // 建構 mock Stats — 只設定 walker 會問的三個判別式
+  function mockStat(kind: 'file' | 'dir' | 'symlink' | 'other'): Stats {
+    return {
+      isFile: () => kind === 'file',
+      isDirectory: () => kind === 'dir',
+      isSymbolicLink: () => kind === 'symlink',
+    } as Stats;
+  }
+
+  it('readdir throw → fail-closed 帶 rel + message', () => {
+    const io: WalkerIO = {
+      readdir: () => { throw new Error('EACCES: permission denied'); },
+      lstat: () => mockStat('file'),
+      stat: () => mockStat('file'),
+    };
+    const r = walkSpecDir('/fake/abs', 'sub', io);
+    expect(r.ok).toBe(false);
+    if (r.ok === false) {
+      expect(r.reason).toContain('readdir 失敗於 sub');
+      expect(r.reason).toContain('permission denied');
+    }
+  });
+
+  it('readdir throw 在頂層 → rel 用 "." 佔位', () => {
+    const io: WalkerIO = {
+      readdir: () => { throw new Error('EIO'); },
+      lstat: () => mockStat('file'),
+      stat: () => mockStat('file'),
+    };
+    const r = walkSpecDir('/fake/abs', '', io);
+    expect(r.ok).toBe(false);
+    if (r.ok === false) expect(r.reason).toContain('readdir 失敗於 .');
+  });
+
+  it('lstat throw → fail-closed 帶 rel + message', () => {
+    const io: WalkerIO = {
+      readdir: () => ['weird.json'],
+      lstat: () => { throw new Error('ENOENT: no such file'); },
+      stat: () => mockStat('file'),
+    };
+    const r = walkSpecDir('/fake/abs', '', io);
+    expect(r.ok).toBe(false);
+    if (r.ok === false) {
+      expect(r.reason).toContain('lstat 失敗於 weird.json');
+      expect(r.reason).toContain('no such file');
+    }
+  });
+
+  it('symlink 指向 dir → fail-closed(不可靜默略過)', () => {
+    // supervisor P1-1:遞迴途中任一 symlink dir 一律 fail-closed
+    const io: WalkerIO = {
+      readdir: () => ['link-to-dir'],
+      lstat: () => mockStat('symlink'),
+      stat: () => mockStat('dir'),
+    };
+    const r = walkSpecDir('/fake/abs', '', io);
+    expect(r.ok).toBe(false);
+    if (r.ok === false) expect(r.reason).toBe('symlink directory:link-to-dir');
+  });
+
+  it('symlink 目標 stat throw → fail-closed', () => {
+    const io: WalkerIO = {
+      readdir: () => ['dangling.json'],
+      lstat: () => mockStat('symlink'),
+      stat: () => { throw new Error('ENOENT: dangling'); },
+    };
+    const r = walkSpecDir('/fake/abs', '', io);
+    expect(r.ok).toBe(false);
+    if (r.ok === false) {
+      expect(r.reason).toContain('symlink 目標無法讀於 dangling.json');
+      expect(r.reason).toContain('dangling');
+    }
+  });
+
+  it('symlink 指向 file(.json)→ 收入(交給 checkTarget 拒 symlink)', () => {
+    const io: WalkerIO = {
+      readdir: () => ['ok.json'],
+      lstat: () => mockStat('symlink'),
+      stat: () => mockStat('file'),
+    };
+    const r = walkSpecDir('/fake/abs', '', io);
+    expect(r.ok).toBe(true);
+    if (r.ok === true) expect(r.entries).toEqual(['ok.json']);
+  });
+
+  it('lstat 回異常型別(非 file / dir / symlink)→ fail-closed', () => {
+    const io: WalkerIO = {
+      readdir: () => ['socket.json'],
+      lstat: () => mockStat('other'),
+      stat: () => mockStat('other'),
+    };
+    const r = walkSpecDir('/fake/abs', '', io);
+    expect(r.ok).toBe(false);
+    if (r.ok === false) expect(r.reason).toContain('未預期型別於 socket.json');
+  });
+
+  it('副檔名 lowercase 收(.JSON / .Json / .json 都收)', () => {
+    const io: WalkerIO = {
+      readdir: () => ['A.JSON', 'b.Json', 'c.json', 'README.md'],
+      lstat: () => mockStat('file'),
+      stat: () => mockStat('file'),
+    };
+    const r = walkSpecDir('/fake/abs', '', io);
+    expect(r.ok).toBe(true);
+    if (r.ok === true) expect(r.entries).toEqual(['A.JSON', 'b.Json', 'c.json']);
   });
 });
 
