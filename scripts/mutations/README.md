@@ -107,7 +107,10 @@ CI step「Mutation Spec Drift Check」對本目錄每個 spec 檔的每條探針
 (存在、恰一處或已標 `all`、replace 有差)。它**不跑 mutation**,只是 `mutate.ts` 閘② 的前置版:
 對得上不代表探針仍會 kill(那要 Step 4.5 人工跑 mutate 綁 HEAD),對不上則 mutate 必然拒跑。
 - exit **1** = 漂移(內容層):改了那幾行就同步改 spec 的 `find`;JSON / 欄位壞也算這類
-- exit **2** = 無法判定:`scripts/mutations` 不是真目錄、0 個 spec 檔、spec 檔本身是 symlink / 未追蹤 / 非一般檔 / hardlink / 非 UTF-8
-  (spec 檔與目標檔都先經 `mutate.ts` 的 `checkTarget` 取 bytes,再解析——PR 把 tracked spec 換成指向 repo 外的
-  symlink 時,外部檔不會成為 CI 輸入)
+- exit **2** = 無法判定:`scripts/mutations` 不是真目錄、0 個 spec 檔、spec 檔本身是 symlink / 未追蹤 / 非一般檔 / 非 UTF-8
+  (spec 檔與目標檔先經 `mutate.ts` 的 `readCheckedTarget` 取 bytes——P2#3 defer ⑥:
+  純讀 caller 專用、**放寬 `nlink=1`**、hardlink spec / target 對本 CI 不拒判;
+  破壞性 mutate main CLI 仍走 `checkTarget`(含 nlink=1 第一道)+ `writeCheckedSync`
+  L731 nlink 第二道防線。PR 把 tracked spec 換成指向 repo 外的 symlink 時,
+  外部檔不會成為 CI 輸入)
 兩者在 CI 都是紅;分開只為診斷語意。

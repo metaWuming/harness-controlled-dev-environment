@@ -29,6 +29,7 @@ import { join, dirname } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   applyMutation,
+  checkTarget,
   classify,
   classifyRun,
   formatSummary,
@@ -1160,6 +1161,22 @@ describe("readCheckedTarget — 純讀變體(P2#3 defer ⑥)", () => {
     ]);
     expect(code).toBe(2);
     expect(out).toContain("個 hardlink——原地覆寫");
+  });
+
+  it("🔴 P2-1 regression:hardlink + 非 UTF-8 → checkTarget 仍回 hardlink 拒(diagnostic precedence 不變)", () => {
+    // Codex Step 4 P2-1:若 helper 順序把 read+UTF-8 放在 nlink 之前,
+    // 則此 case 會回「非 UTF-8」而非「hardlink」——precedence 破壞。
+    // 修法:gateAfterFstat(nlink)在 fstat 後、read 前執行、優先返回。
+    const bin = Buffer.from([0x00, 0x01, 0x02, 0xff]);
+    const dir = makeRepo({ "src/bin.dat": bin }, (d) => {
+      execFileSync("ln", [join(d, "src/bin.dat"), join(d, "src/bin-alias.dat")]);
+    });
+    // 直接呼叫 checkTarget lib(避免 mutate CLI 閘① 乾淨工作樹檢查干擾)
+    const r = checkTarget(realpathSync(dir), "src/bin.dat");
+    expect(r.ok).toBe(false);
+    // 診斷順序:hardlink 拒判必須先出現、不能回「UTF-8」
+    expect(r.reason).toContain("hardlink");
+    expect(r.reason).not.toContain("UTF-8");
   });
 
   it("🔴 未追蹤 → 拒(共用 helper 六道邊界之一)", () => {

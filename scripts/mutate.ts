@@ -181,20 +181,23 @@ export type ReadTargetCheck =
   | { ok: false; reason: string };
 
 /**
- * 私有共用 helper(P2#3 defer ⑥):把六道 fail-closed 邊界 + `O_NOFOLLOW` +
- * 同 fd fstat/read 集中在此,供 `checkTarget`(破壞性 mutate 用)與
+ * 私有共用 helper(P2#3 defer ⑥;Codex Step 4 P2-1 修:diagnostic precedence
+ * 與 base checkTarget 完全一致)。把六道 fail-closed 邊界 + `O_NOFOLLOW` +
+ * 同 fd fstat 集中在此,供 `checkTarget`(破壞性 mutate 用)與
  * `readCheckedTarget`(純讀用)共用。
  *
- * **不做 `nlink` 檢查**——由 caller 決定:
- *   - `checkTarget` 呼叫本 helper 後補 `nlink=1` 拒判(既有 observable behavior 不變)
- *   - `readCheckedTarget` 呼叫本 helper 後**跳過** `nlink` 檢查(純讀不寫回、
- *     hardlink alias 不受影響)
+ * caller 傳 `gateAfterFstat` 決定「fstat 後、read 前」的額外拒判:
+ *   - `checkTarget` 傳 `nlink !== 1` 拒判 → 保住 base observable behavior
+ *     (hardlink 拒判優先於 UTF-8 拒判 / read 錯誤)
+ *   - `readCheckedTarget` 傳 `null`(不 gate)→ 純讀跳 nlink 檢查
  *
- * 回傳含 `fst` 供 caller 判斷 nlink 與取得 dev/ino/mode。
+ * 順序 = 六道邊界 → open → fstat → gateAfterFstat(caller 拒判時機)
+ *      → read → UTF-8 檢 → close。UTF-8 / read 錯誤絕不搶在 gateAfterFstat 之前。
  */
 function openAndReadTracked(
   repoRootReal: string,
   rel: string,
+  gateAfterFstat: (fst: fs.Stats) => string | null,
 ): { ok: true; abs: string; fst: fs.Stats; original: Buffer } | { ok: false; reason: string } {
   if (path.isAbsolute(rel)) return { ok: false, reason: "要用 repo 相對路徑,不收絕對路徑" };
 
@@ -252,6 +255,10 @@ function openAndReadTracked(
   try {
     const fst = fs.fstatSync(fd);
     if (!fst.isFile()) return { ok: false, reason: "目標不是一般檔案(目錄／裝置／FIFO)" };
+    // 🔴 gateAfterFstat 拒判優先於 read + UTF-8——保住 base checkTarget 的
+    //    「hardlink 拒判先於 read/UTF-8 錯誤」diagnostic precedence(Codex Step 4 P2-1)。
+    const gateReason = gateAfterFstat(fst);
+    if (gateReason !== null) return { ok: false, reason: gateReason };
     const original = fs.readFileSync(fd);
     if (!isUtf8Text(original)) {
       return { ok: false, reason: "不是 UTF-8 文字檔——用字串改再寫回去會破壞原 bytes,拒跑" };
@@ -282,15 +289,15 @@ function openAndReadTracked(
  * `readCheckedTarget` 型別不含這些欄位、**絕不可供寫回**。
  */
 export function checkTarget(repoRootReal: string, rel: string): TargetCheck {
-  const inner = openAndReadTracked(repoRootReal, rel);
+  // 🔴 gateAfterFstat 傳 nlink 拒判,保住 base observable behavior:
+  //    hardlink 拒判優先於 read + UTF-8 錯誤(Codex Step 4 P2-1)。
+  const inner = openAndReadTracked(repoRootReal, rel, (fst) =>
+    fst.nlink !== 1
+      ? `目標有 ${fst.nlink} 個 hardlink——原地覆寫會一併改到其他 alias(可能在 repo 外),拒跑`
+      : null,
+  );
   if (!inner.ok) return { ok: false, reason: inner.reason };
   const { abs, fst, original } = inner;
-  if (fst.nlink !== 1) {
-    return {
-      ok: false,
-      reason: `目標有 ${fst.nlink} 個 hardlink——原地覆寫會一併改到其他 alias(可能在 repo 外),拒跑`,
-    };
-  }
   return { ok: true, abs, original, dev: fst.dev, ino: fst.ino, mode: fst.mode & 0o7777 };
 }
 
@@ -309,7 +316,8 @@ export function checkTarget(repoRootReal: string, rel: string): TargetCheck {
  * `mode` / `abs`——由 TypeScript 編譯期阻斷純讀 API 誤接破壞性寫回。
  */
 export function readCheckedTarget(repoRootReal: string, rel: string): ReadTargetCheck {
-  const inner = openAndReadTracked(repoRootReal, rel);
+  // 純讀不 gate nlink;UTF-8 檢查仍在 helper 內對 read 後的 bytes 執行(既有邊界一致)
+  const inner = openAndReadTracked(repoRootReal, rel, () => null);
   if (!inner.ok) return { ok: false, reason: inner.reason };
   return { ok: true, original: inner.original };
 }

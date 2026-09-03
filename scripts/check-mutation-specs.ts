@@ -35,8 +35,13 @@
  *                排序:posix 完整路徑排序。
  *   D5 0-spec:遞迴後總數 0 → fail-closed(既有已擋、寫進契約);
  *              + formatReport([]) fail-closed 第二道防線(P2#3 defer ⑩、前置失效兜底)
- *   D6 checkTarget 呼叫端邊界:本檔對 checkTarget 的呼叫可配合 discovery 調整;
- *                              mutate.ts 的 checkTarget **定義**為禁區、不動(sprint 3-5 拍板)
+ *   D6 checkTarget / readCheckedTarget 呼叫端邊界:本檔的**呼叫端**可配合 discovery
+ *                              調整;`mutate.ts` 的 `checkTarget` 公開 signature 與
+ *                              nlink=1 observable behavior **不動**(sprint 3-5 拍板 +
+ *                              P2#3 defer ⑥ supervisor 再拍板);本檔純讀改走
+ *                              `readCheckedTarget`(放寬 nlink=1、hardlink alias 對純讀
+ *                              無風險),破壞性 mutate main CLI 仍走 checkTarget +
+ *                              writeCheckedSync L731 nlink 第二道防線
  *   D7 discovery 函式命名:`discoverSpecFiles`(rev 2 supervisor P2-2)
  *
  * 純讀:不跑測試、不寫檔、不改工作樹、不需要乾淨工作樹。無 env override、無 allowlist。
@@ -124,11 +129,13 @@ export function findCaseCollisions(paths: string[]): CollisionGroup[] {
  *   - lstat throw   → `lstat 失敗於 <rel>:<message>`
  *   - symlink 且 stat 失敗 → `symlink 目標無法讀於 <rel>:<message>`
  *   - symlink 指向 dir     → `symlink directory:<rel>`(supervisor P1-1:不能靜默略過)
- *   - symlink 指向 file    → 收入(交給 checkTarget 檔案讀前防線判 untrusted)
+ *   - symlink 指向 file    → 收入(交給檔案讀前防線判 untrusted:本檔純讀走 readCheckedTarget、
+ *                            仍拒 symlink;破壞性 mutate 走 checkTarget)
  *   - 既非 file / dir / symlink 的異常型別 → `未預期型別於 <rel>`
  *
- * 只做 traversal + 副檔名過濾;檔案本身的 tracked / non-symlink / nlink=1 判定
- * 交給 checkTarget(mutate.ts 讀前防線,禁區不動)。
+ * 只做 traversal + 副檔名過濾;檔案本身的 tracked / non-symlink 判定交給 mutate.ts
+ * 讀前防線——本檔純讀走 `readCheckedTarget`(放寬 nlink=1、P2#3 defer ⑥),破壞性
+ * mutate main CLI 仍走 `checkTarget`(額外含 nlink=1 拒判 + writeCheckedSync L731 第二道)。
  */
 export function walkSpecDir(
   absDir: string,
