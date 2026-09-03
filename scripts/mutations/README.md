@@ -75,6 +75,7 @@ npx tsx scripts/mutate.ts --file src/example.ts \
 - `delivery-refs.json` — 8 條探針,守 `lib/delivery-refs.ts` 共用契約(受驗 origin/HEAD 的正規 / 存在 / 宣告檢查、拒絕不靜默、無 fallback、**不讀 env**)與兩個 consumer 的 exit 2 接線
 - `invoked-as-main.json` — 8 條探針(全被抓),守 `lib/invoked-as-main.ts` 五態(discriminated outcome 三態、reporter 對 indeterminate 印診斷 / 對 import 靜默、sanitize 契約、argv1 undefined 走 indeterminate)+ 三支 owner-scoped consumer 的 caller-wiring exit(2) branch(mutate / check-control-catalog / check-mutation-specs)
 - `invoked-as-main-migration.json` — 8 條探針(全被抓),守 remaining 8 支 script 的 caller-wiring exit(2) branch(check-doc-size / check-bookkeeping-commit / check-no-source-terms / check-cso-trigger / check-adoption-readiness / check-doc-refs / check-baseline-governance / render-control-catalog)。每支對應 e2e case #4 精確斷言 label 必殺
+- `protectedbranches-drift.json` — 7 條探針(全被抓),守 CTRL-CI-014「Protected Branches Drift Check」(A3 defer ⑩):diff 對稱性(擴大方向)、trust-boundary(讀 merge-base 那側 config bytes、非 PR tree)、fail-closed 判定(added>0 exit 2)、parseHarnessConfig 失敗不吞、merge-base 失敗不 fallback、CI step 條件 structural(if 逐字等於 pull_request 事件、run 含 immutable base SHA)、caller-wiring exit(2)
 
 ## CI 守樣本漂移(`npm run check:mutation-specs`)
 

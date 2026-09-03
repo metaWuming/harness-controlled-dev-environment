@@ -127,6 +127,14 @@ type: guide
 - [ ] `Baseline Governance Check` step(pull_request only)要保留:同 repo PR 會帶 `--head`,保護分支之間的 promotion PR
       (例 develop → main)依你宣告的 `protectedBranches` 明文跳過;fork PR 不帶 `--head`。⚠️ 這個豁免只在所有
       `protectedBranches` 都真的開了 branch protection / ruleset(必須經 PR、不得直接 push)時成立
+      —— GOV-005 branch-protection advisory 屬組織治理層,由 Owner/admin 稽核。
+- [ ] **CTRL-CI-014「Protected Branches Drift Check」**(A3 defer ⑩ 交付):對 PR
+      內 `harness.config.json` 的 `protectedBranches` 集合擴大(加分支)fail-closed
+      exit 2。**無 PR-controlled marker / opt-out**;合法擴大需 Owner/admin 組織治理
+      層 override(branch protection allow + 稽核),rollback = full revert PR。
+      CI step `if:` 為 `github.event_name == 'pull_request'`(唯一允許條件、無 branch
+      filter);`--base` 用 `github.event.pull_request.base.sha`(immutable PR base SHA);
+      checkout `fetch-depth: 0` 保證 merge-base object 可用。
 - [ ] 用 Next.js+Prisma → 照 `stack/nextjs-prisma/README.md` 把 L2 層裝上
       (ESLint AST 規則 + migration 守衛 + CI 片段)
 - [ ] `Source-term scan` step:本模板用它防「來源專案識別詞」殘留。
