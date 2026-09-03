@@ -4,7 +4,7 @@
 // 0 個 spec 檔 → exit 2 且外部檔內容**不得**成為輸入。1 與 2 在 CI 都是紅,分開只為診斷語意。
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -14,6 +14,18 @@ import type { Stats } from 'node:fs';
 const REPO = path.resolve(__dirname, '..');
 const TSX = path.join(REPO, 'node_modules/.bin/tsx');
 const SCRIPT = path.join(REPO, 'scripts/check-mutation-specs.ts');
+
+// FS 大小寫敏感度探測(supervisor Step 3 明列:temp dir 建 + finally 清、不污染 repo)。
+// 供 Vitest 註冊期條件 `it.skipIf(!caseSensitive)`(supervisor P2-2 明列:不在 test body 內臨時 skip)。
+const caseSensitive: boolean = (() => {
+  const probe = mkdtempSync(path.join(tmpdir(), 'msd-case-probe-'));
+  try {
+    writeFileSync(path.join(probe, 'x.json'), '');
+    return !existsSync(path.join(probe, 'X.JSON'));
+  } finally {
+    rmSync(probe, { recursive: true, force: true });
+  }
+})();
 
 function run(args: string[]): { code: number | null; out: string; err: string } {
   const r = spawnSync(TSX, [SCRIPT, ...args], { cwd: REPO, encoding: 'utf-8' });
@@ -354,5 +366,54 @@ describe('CLI e2e(真子程序、真 git fixture)', () => {
     const r = spawnSync(TSX, [path.join(linkDir, 'scripts/check-mutation-specs.ts'), '--bogus'], { cwd: REPO, encoding: 'utf-8' });
     expect(r.status).toBe(2);
     expect(r.stderr).toContain('參數錯誤');
+  });
+
+  // ─────────── P2#3 defer ⑤ 新增 e2e:遞迴 / 大小寫 / symlink 子目錄 fail-closed / 深巢狀 / collision ───────────
+
+  it('⑪ 子目錄 spec 對得上 → exit 0、印子目錄相對路徑', () => {
+    const r = run([`--root=${makeRepo({ specs: { 'sub/x.json': JSON.stringify(GOOD_SPEC), 'top.json': JSON.stringify(GOOD_SPEC) } })}`]);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain(`${SPEC_DIR}/sub/x.json`);
+    expect(r.out).toContain(`${SPEC_DIR}/top.json`);
+  });
+
+  it('⑫ 子目錄 spec 有 drift → exit 1、點名子目錄探針 label', () => {
+    const r = run([`--root=${makeRepo({ src: SRC.replace('x < 0', 'x <= 0'), specs: { 'sub/nested.json': JSON.stringify(GOOD_SPEC) } })}`]);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain(`${SPEC_DIR}/sub/nested.json`);
+    expect(r.err).toContain('M1 拿掉負數守衛');
+  });
+
+  it('⑬ 大寫副檔名(.JSON / .Json)對得上 → exit 0', () => {
+    const r = run([`--root=${makeRepo({ specs: { 'A.JSON': JSON.stringify(GOOD_SPEC) } })}`]);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain(`${SPEC_DIR}/A.JSON`);
+  });
+
+  it('⑭ symlink 子目錄 fail-closed(即使同時有合法 top-level spec 也仍 exit 2)', () => {
+    // supervisor P1-1 明列:遞迴途中 symlink dir 不能被合法 spec 掩蓋
+    const dir = makeRepo({ specs: { 'top.json': JSON.stringify(GOOD_SPEC) } });
+    const linkTarget = mkdtempSync(path.join(tmpdir(), 'msd-linktarget-'));
+    made.push(linkTarget);
+    mkdirSync(path.join(dir, SPEC_DIR, 'sub-link-parent'), { recursive: true });
+    symlinkSync(linkTarget, path.join(dir, SPEC_DIR, 'sub-link-parent', 'sub'));
+    const r = run([`--root=${dir}`]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain('symlink directory:sub-link-parent/sub');
+  });
+
+  it('⑮ 深巢狀 a/b/c/x.json → exit 0(遞迴無深度上限)', () => {
+    const r = run([`--root=${makeRepo({ specs: { 'a/b/c/x.json': JSON.stringify(GOOD_SPEC) } })}`]);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain(`${SPEC_DIR}/a/b/c/x.json`);
+  });
+
+  it.skipIf(!caseSensitive)('⑯ collision 在 case-sensitive FS(sub/foo.json + sub/FOO.json)→ exit 2 帶「同名衝突」', () => {
+    // Vitest 註冊期條件(supervisor P2-2 明列:不在 test body 內臨時 skip)。
+    // 這條**不是** collision 唯一證據;deterministic pure findCaseCollisions unit 才是必要覆蓋。
+    const dir = makeRepo({ specs: { 'sub/foo.json': JSON.stringify(GOOD_SPEC), 'sub/FOO.json': JSON.stringify(GOOD_SPEC) } });
+    const r = run([`--root=${dir}`]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain('同名衝突');
   });
 });
