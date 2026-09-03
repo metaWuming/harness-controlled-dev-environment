@@ -120,7 +120,11 @@ const CONSUMERS: ConsumerSpec[] = [
     label: "check-no-source-terms",
     scriptName: "check-no-source-terms.ts",
     wrapperName: "check-no-source-terms-wrapper.mjs",
-    expectedMainExit: 0,
+    // direct exit 依 HEAD 內容變:working tree / git 史含未知 PR 引用(如 TODOS
+    // 新加的 self-PR 號)→ exit 1(fail-closed);沒有未知 PR → exit 0。兩者都
+    // 是 main 執行的合法狀態,共同特徵是 stdout 有「allowedPrs:」前綴。
+    // (同 check-bookkeeping-commit 的 HEAD-content-dependent 情況)
+    expectedMainExit: [0, 1],
     expectedMainMatcher: (r) => {
       expect(r.stdout).toContain("allowedPrs");
     },
