@@ -4,15 +4,28 @@
 // 0 個 spec 檔 → exit 2 且外部檔內容**不得**成為輸入。1 與 2 在 CI 都是紅,分開只為診斷語意。
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { checkSpecFile, formatReport, listSpecFiles, parseRootArg, runCheck, SPEC_DIR } from '../scripts/check-mutation-specs';
+import { checkSpecFile, findCaseCollisions, formatReport, discoverSpecFiles, parseRootArg, runCheck, SPEC_DIR, walkSpecDir, type WalkerIO } from '../scripts/check-mutation-specs';
+import type { Stats } from 'node:fs';
 
 const REPO = path.resolve(__dirname, '..');
 const TSX = path.join(REPO, 'node_modules/.bin/tsx');
 const SCRIPT = path.join(REPO, 'scripts/check-mutation-specs.ts');
+
+// FS 大小寫敏感度探測(supervisor Step 3 明列:temp dir 建 + finally 清、不污染 repo)。
+// 供 Vitest 註冊期條件 `it.skipIf(!caseSensitive)`(supervisor P2-2 明列:不在 test body 內臨時 skip)。
+const caseSensitive: boolean = (() => {
+  const probe = mkdtempSync(path.join(tmpdir(), 'msd-case-probe-'));
+  try {
+    writeFileSync(path.join(probe, 'x.json'), '');
+    return !existsSync(path.join(probe, 'X.JSON'));
+  } finally {
+    rmSync(probe, { recursive: true, force: true });
+  }
+})();
 
 function run(args: string[]): { code: number | null; out: string; err: string } {
   const r = spawnSync(TSX, [SCRIPT, ...args], { cwd: REPO, encoding: 'utf-8' });
@@ -60,17 +73,17 @@ function makeRepo(opts: RepoOpts = {}): string {
   return dir;
 }
 
-describe('listSpecFiles(目錄邊界)', () => {
+describe('discoverSpecFiles(目錄邊界)', () => {
   it('真目錄 → 排序後的 .json 清單,README 不算', () => {
-    const r = listSpecFiles(makeRepo({ specs: { 'b.json': '[]', 'a.json': '[]', 'README.md': '#' } }));
+    const r = discoverSpecFiles(makeRepo({ specs: { 'b.json': '[]', 'a.json': '[]', 'README.md': '#' } }));
     expect(r.ok).toBe(true);
     expect(r.specs).toEqual([`${SPEC_DIR}/a.json`, `${SPEC_DIR}/b.json`]);
   });
   it('目錄不存在 / 0 個 spec 檔 → 拒判', () => {
     const empty = realpathSync(mkdtempSync(path.join(tmpdir(), 'msd-empty-')));
     made.push(empty);
-    expect(listSpecFiles(empty).ok).toBe(false);
-    const r = listSpecFiles(makeRepo({ noDir: true }));
+    expect(discoverSpecFiles(empty).ok).toBe(false);
+    const r = discoverSpecFiles(makeRepo({ noDir: true }));
     expect(r.ok).toBe(false);
     expect(r.reason).toContain('沒有任何 spec 檔');
   });
@@ -79,9 +92,155 @@ describe('listSpecFiles(目錄邊界)', () => {
     const real = path.join(dir, SPEC_DIR);
     execFileSync('mv', [real, path.join(dir, 'elsewhere')]);
     symlinkSync(path.join(dir, 'elsewhere'), real);
-    const r = listSpecFiles(dir);
+    const r = discoverSpecFiles(dir);
     expect(r.ok).toBe(false);
     expect(r.reason).toContain('symlink');
+  });
+});
+
+describe('findCaseCollisions(collision key = lowercased 完整 POSIX repo-relative path)', () => {
+  it('同層同 basename 不同大小寫 → 1 組衝突', () => {
+    const r = findCaseCollisions(['a/foo.json', 'a/FOO.json']);
+    expect(r).toEqual([{ key: 'a/foo.json', members: ['a/FOO.json', 'a/foo.json'] }]);
+  });
+  it('頂層同 basename 不同大小寫 → 1 組衝突', () => {
+    const r = findCaseCollisions(['foo.json', 'FOO.json']);
+    expect(r).toEqual([{ key: 'foo.json', members: ['FOO.json', 'foo.json'] }]);
+  });
+  it('不同目錄同 basename → 合法不同 spec、不衝突', () => {
+    // supervisor P1-2 明列:sprint-a/guard.json 與 sprint-b/guard.json 是合法不同 spec
+    expect(findCaseCollisions(['sprint-a/guard.json', 'sprint-b/guard.json'])).toEqual([]);
+  });
+  it('多對衝突 → 全列出、依 key 排序', () => {
+    const r = findCaseCollisions(['z/foo.json', 'z/Foo.json', 'a/bar.json', 'a/BAR.json']);
+    expect(r.map((g) => g.key)).toEqual(['a/bar.json', 'z/foo.json']);
+    expect(r[0]!.members).toEqual(['a/BAR.json', 'a/bar.json']);
+    expect(r[1]!.members).toEqual(['z/Foo.json', 'z/foo.json']);
+  });
+  it('單筆 / 空陣列 → 空', () => {
+    expect(findCaseCollisions([])).toEqual([]);
+    expect(findCaseCollisions(['foo.json'])).toEqual([]);
+  });
+});
+
+describe('walkSpecDir(可注入 IO 的 traversal fail-closed 邊界)', () => {
+  // 建構 mock Stats — 只設定 walker 會問的三個判別式
+  function mockStat(kind: 'file' | 'dir' | 'symlink' | 'other'): Stats {
+    return {
+      isFile: () => kind === 'file',
+      isDirectory: () => kind === 'dir',
+      isSymbolicLink: () => kind === 'symlink',
+    } as Stats;
+  }
+
+  it('readdir throw → fail-closed 帶 rel + message', () => {
+    const io: WalkerIO = {
+      readdir: () => { throw new Error('EACCES: permission denied'); },
+      lstat: () => mockStat('file'),
+      stat: () => mockStat('file'),
+    };
+    const r = walkSpecDir('/fake/abs', 'sub', io);
+    expect(r.ok).toBe(false);
+    if (r.ok === false) {
+      expect(r.reason).toContain('readdir 失敗於 sub');
+      expect(r.reason).toContain('permission denied');
+    }
+  });
+
+  it('readdir throw 在頂層 → rel 用 "." 佔位', () => {
+    const io: WalkerIO = {
+      readdir: () => { throw new Error('EIO'); },
+      lstat: () => mockStat('file'),
+      stat: () => mockStat('file'),
+    };
+    const r = walkSpecDir('/fake/abs', '', io);
+    expect(r.ok).toBe(false);
+    if (r.ok === false) expect(r.reason).toContain('readdir 失敗於 .');
+  });
+
+  it('lstat throw → fail-closed 帶 rel + message', () => {
+    const io: WalkerIO = {
+      readdir: () => ['weird.json'],
+      lstat: () => { throw new Error('ENOENT: no such file'); },
+      stat: () => mockStat('file'),
+    };
+    const r = walkSpecDir('/fake/abs', '', io);
+    expect(r.ok).toBe(false);
+    if (r.ok === false) {
+      expect(r.reason).toContain('lstat 失敗於 weird.json');
+      expect(r.reason).toContain('no such file');
+    }
+  });
+
+  it('symlink 指向 dir → fail-closed(不可靜默略過)', () => {
+    // supervisor P1-1:遞迴途中任一 symlink dir 一律 fail-closed
+    const io: WalkerIO = {
+      readdir: () => ['link-to-dir'],
+      lstat: () => mockStat('symlink'),
+      stat: () => mockStat('dir'),
+    };
+    const r = walkSpecDir('/fake/abs', '', io);
+    expect(r.ok).toBe(false);
+    if (r.ok === false) expect(r.reason).toBe('symlink directory:link-to-dir');
+  });
+
+  it('symlink 目標 stat throw → fail-closed', () => {
+    const io: WalkerIO = {
+      readdir: () => ['dangling.json'],
+      lstat: () => mockStat('symlink'),
+      stat: () => { throw new Error('ENOENT: dangling'); },
+    };
+    const r = walkSpecDir('/fake/abs', '', io);
+    expect(r.ok).toBe(false);
+    if (r.ok === false) {
+      expect(r.reason).toContain('symlink 目標無法讀於 dangling.json');
+      expect(r.reason).toContain('dangling');
+    }
+  });
+
+  it('symlink 指向 file(.json)→ 收入(交給 checkTarget 拒 symlink)', () => {
+    const io: WalkerIO = {
+      readdir: () => ['ok.json'],
+      lstat: () => mockStat('symlink'),
+      stat: () => mockStat('file'),
+    };
+    const r = walkSpecDir('/fake/abs', '', io);
+    expect(r.ok).toBe(true);
+    if (r.ok === true) expect(r.entries).toEqual(['ok.json']);
+  });
+
+  it('lstat 回異常型別(非 file / dir / symlink)→ fail-closed', () => {
+    const io: WalkerIO = {
+      readdir: () => ['socket.json'],
+      lstat: () => mockStat('other'),
+      stat: () => mockStat('other'),
+    };
+    const r = walkSpecDir('/fake/abs', '', io);
+    expect(r.ok).toBe(false);
+    if (r.ok === false) expect(r.reason).toContain('未預期型別於 socket.json');
+  });
+
+  it('副檔名 lowercase 收(.JSON / .Json / .json 都收)', () => {
+    const io: WalkerIO = {
+      readdir: () => ['A.JSON', 'b.Json', 'c.json', 'README.md'],
+      lstat: () => mockStat('file'),
+      stat: () => mockStat('file'),
+    };
+    const r = walkSpecDir('/fake/abs', '', io);
+    expect(r.ok).toBe(true);
+    if (r.ok === true) expect(r.entries).toEqual(['A.JSON', 'b.Json', 'c.json']);
+  });
+
+  it('symlink → file 且大寫副檔名 .JSON → 收入(Step 5 F1/W2 補:D2 case-insensitive 覆蓋 symlink 分支)', () => {
+    // MSD-D2b mutant 對 line 155 symlink→file 分支拿掉 .toLowerCase() 時本 unit 轉紅
+    const io: WalkerIO = {
+      readdir: () => ['A.JSON'],
+      lstat: () => mockStat('symlink'),
+      stat: () => mockStat('file'),
+    };
+    const r = walkSpecDir('/fake/abs', '', io);
+    expect(r.ok).toBe(true);
+    if (r.ok === true) expect(r.entries).toEqual(['A.JSON']);
   });
 });
 
@@ -219,5 +378,54 @@ describe('CLI e2e(真子程序、真 git fixture)', () => {
     const r = spawnSync(TSX, [path.join(linkDir, 'scripts/check-mutation-specs.ts'), '--bogus'], { cwd: REPO, encoding: 'utf-8' });
     expect(r.status).toBe(2);
     expect(r.stderr).toContain('參數錯誤');
+  });
+
+  // ─────────── P2#3 defer ⑤ 新增 e2e:遞迴 / 大小寫 / symlink 子目錄 fail-closed / 深巢狀 / collision ───────────
+
+  it('⑪ 子目錄 spec 對得上 → exit 0、印子目錄相對路徑', () => {
+    const r = run([`--root=${makeRepo({ specs: { 'sub/x.json': JSON.stringify(GOOD_SPEC), 'top.json': JSON.stringify(GOOD_SPEC) } })}`]);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain(`${SPEC_DIR}/sub/x.json`);
+    expect(r.out).toContain(`${SPEC_DIR}/top.json`);
+  });
+
+  it('⑫ 子目錄 spec 有 drift → exit 1、點名子目錄探針 label', () => {
+    const r = run([`--root=${makeRepo({ src: SRC.replace('x < 0', 'x <= 0'), specs: { 'sub/nested.json': JSON.stringify(GOOD_SPEC) } })}`]);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain(`${SPEC_DIR}/sub/nested.json`);
+    expect(r.err).toContain('M1 拿掉負數守衛');
+  });
+
+  it('⑬ 大寫副檔名(.JSON / .Json)對得上 → exit 0', () => {
+    const r = run([`--root=${makeRepo({ specs: { 'A.JSON': JSON.stringify(GOOD_SPEC) } })}`]);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain(`${SPEC_DIR}/A.JSON`);
+  });
+
+  it('⑭ symlink 子目錄 fail-closed(即使同時有合法 top-level spec 也仍 exit 2)', () => {
+    // supervisor P1-1 明列:遞迴途中 symlink dir 不能被合法 spec 掩蓋
+    const dir = makeRepo({ specs: { 'top.json': JSON.stringify(GOOD_SPEC) } });
+    const linkTarget = mkdtempSync(path.join(tmpdir(), 'msd-linktarget-'));
+    made.push(linkTarget);
+    mkdirSync(path.join(dir, SPEC_DIR, 'sub-link-parent'), { recursive: true });
+    symlinkSync(linkTarget, path.join(dir, SPEC_DIR, 'sub-link-parent', 'sub'));
+    const r = run([`--root=${dir}`]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain('symlink directory:sub-link-parent/sub');
+  });
+
+  it('⑮ 深巢狀 a/b/c/x.json → exit 0(遞迴無深度上限)', () => {
+    const r = run([`--root=${makeRepo({ specs: { 'a/b/c/x.json': JSON.stringify(GOOD_SPEC) } })}`]);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain(`${SPEC_DIR}/a/b/c/x.json`);
+  });
+
+  it.skipIf(!caseSensitive)('⑯ collision 在 case-sensitive FS(sub/foo.json + sub/FOO.json)→ exit 2 帶「同名衝突」', () => {
+    // Vitest 註冊期條件(supervisor P2-2 明列:不在 test body 內臨時 skip)。
+    // 這條**不是** collision 唯一證據;deterministic pure findCaseCollisions unit 才是必要覆蓋。
+    const dir = makeRepo({ specs: { 'sub/foo.json': JSON.stringify(GOOD_SPEC), 'sub/FOO.json': JSON.stringify(GOOD_SPEC) } });
+    const r = run([`--root=${dir}`]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain('同名衝突');
   });
 });

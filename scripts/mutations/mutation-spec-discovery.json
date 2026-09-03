@@ -1,0 +1,51 @@
+[
+  {
+    "file": "scripts/check-mutation-specs.ts",
+    "find": "      entries.push(...sub.entries);",
+    "replace": "      // MSD-D1 mutant",
+    "label": "MSD-D1 遞迴取消(子目錄 entries 不上傳)→ e2e ⑪⑫ 子目錄 spec 靜默漏、轉紅"
+  },
+  {
+    "file": "scripts/check-mutation-specs.ts",
+    "find": "    if (st.isFile()) {\n      if (name.toLowerCase().endsWith(\".json\")) entries.push(rel);\n      continue;\n    }",
+    "replace": "    if (st.isFile()) {\n      if (name.endsWith(\".json\")) entries.push(rel);\n      continue;\n    }",
+    "label": "MSD-D2 case-insensitive 取消(real file 分支)→ 大寫副檔名 .JSON 漏收、e2e ⑬ 轉紅"
+  },
+  {
+    "file": "scripts/check-mutation-specs.ts",
+    "find": "      if (target.isFile()) {\n        if (name.toLowerCase().endsWith(\".json\")) entries.push(rel);\n        continue;\n      }",
+    "replace": "      if (target.isFile()) {\n        if (name.endsWith(\".json\")) entries.push(rel);\n        continue;\n      }",
+    "label": "MSD-D2b case-insensitive 取消(symlink→file 分支;Step 5 F1/W2 補)→ walker unit「symlink→file .JSON 也收」轉紅"
+  },
+  {
+    "file": "scripts/check-mutation-specs.ts",
+    "find": "if (target.isDirectory()) return { ok: false, reason: `symlink directory:${rel}` };",
+    "replace": "if (target.isDirectory()) continue;",
+    "label": "MSD-D3 symlink dir 靜默略過(舊壞行為 fail-open;Step 4 r1 P1 修)→ e2e ⑭ 合法 top.json fixture 會 exit 0、真正殺到 D3"
+  },
+  {
+    "file": "scripts/check-mutation-specs.ts",
+    "find": "    const key = p.toLowerCase();",
+    "replace": "    const key = p;",
+    "label": "MSD-D4a collision key 取消 lowercase(fail-open:大小寫 collision 漏掉;Step 4 r1 P1 修)→ pure unit 頂層同 basename 不同大小寫失去 collision、轉紅"
+  },
+  {
+    "file": "scripts/check-mutation-specs.ts",
+    "find": "    const key = p.toLowerCase();",
+    "replace": "    const key = p.split(\"/\").pop()!.toLowerCase();",
+    "label": "MSD-D4b collision key 退回 basename lowercase(false-positive:合法不同目錄同名誤判)→ pure unit 「不同目錄同 basename → 合法不衝突」轉紅",
+    "all": false
+  },
+  {
+    "file": "scripts/check-mutation-specs.ts",
+    "find": "  const specs = walked.entries.map((rel) => path.posix.join(SPEC_DIR, rel)).sort();",
+    "replace": "  const specs = walked.entries.map((rel) => path.posix.join(SPEC_DIR, rel)).sort().reverse();",
+    "label": "MSD-D5 POSIX 排序反轉 → discoverSpecFiles unit 排序斷言轉紅"
+  },
+  {
+    "file": "scripts/check-mutation-specs.ts",
+    "find": "if (specs.length === 0) return { ok: false, reason: `${SPEC_DIR} 沒有任何 spec 檔——空表 = 這道閘門形同虛設` };",
+    "replace": "if (false) return { ok: false, reason: `${SPEC_DIR} 沒有任何 spec 檔——空表 = 這道閘門形同虛設` };",
+    "label": "MSD-D6 遞迴後 0 spec 不 fail-closed → e2e ④ 轉紅"
+  }
+]

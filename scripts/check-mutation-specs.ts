@@ -19,6 +19,19 @@
  *   - 探針目標同樣經 `checkTarget` 取 bytes,再交給 `applyMutation`。
  *   所有路徑 / bytes 的判斷**只複用 `mutate.ts` 的純函式**,本檔不另寫一套安全邏輯。
  *
+ * spec discovery 契約(P2#3 defer ⑤,D1-D7 拍板;見 plan file):
+ *   D1 遞迴子目錄:收(避免子目錄 spec 靜默漏門)
+ *   D2 副檔名大小寫:大小寫無關(.json / .JSON / .Json 都收)
+ *   D3 walker 邊界:頂層 + 遞迴途中任一 symlink dir → fail-closed exit 2;
+ *                    walker 每層 lstat / readdir / stat 的 I/O 失敗或型別無法判定 → fail-closed。
+ *                    (檔案級 tracked / non-symlink / nlink=1 仍交給 checkTarget,禁區不動)
+ *   D4 同名衝突:collision key = lowercased 完整 POSIX repo-relative path;命中 → fail-closed。
+ *                排序:posix 完整路徑排序。
+ *   D5 0-spec:遞迴後總數 0 → fail-closed(既有已擋、寫進契約)
+ *   D6 checkTarget 呼叫端邊界:本檔對 checkTarget 的呼叫可配合 discovery 調整;
+ *                              mutate.ts 的 checkTarget **定義**為禁區、不動(sprint 3-5 拍板)
+ *   D7 discovery 函式命名:`discoverSpecFiles`(rev 2 supervisor P2-2)
+ *
  * 純讀:不跑測試、不寫檔、不改工作樹、不需要乾淨工作樹。無 env override、無 allowlist。
  *
  * Usage:  npm run check:mutation-specs
@@ -56,11 +69,117 @@ export interface DirCheck {
   specs?: string[];
 }
 
+/** walker 的 I/O 介面(可注入,供 unit 測試 mock IO 失敗場景;預設 = node fs sync API)。 */
+export interface WalkerIO {
+  lstat: (p: string) => fs.Stats;
+  stat: (p: string) => fs.Stats;
+  readdir: (p: string) => string[];
+}
+
+const DEFAULT_IO: WalkerIO = {
+  lstat: fs.lstatSync,
+  stat: fs.statSync,
+  readdir: fs.readdirSync,
+};
+
+/** collision 分組:key 是 lowercased posix repo-relative path,members 是原始 path 集合。 */
+export interface CollisionGroup {
+  key: string;
+  members: string[];
+}
+
 /**
- * 目錄邊界:`scripts/mutations` 必須是 repo 內的真目錄。
- * 目錄被換成 symlink(即使指向 repo 內別處)→ 拒判,因為列舉結果不再對應 tracked tree。
+ * 對 lowercased posix 完整路徑分組、回 members 陣列 length > 1 的清單。純函式,無 IO。
+ * key 用完整 path(非 basename)→ `sprint-a/guard.json` 與 `sprint-b/guard.json`
+ * 是**合法不同 spec**、不算衝突。
  */
-export function listSpecFiles(repoRootReal: string): DirCheck {
+export function findCaseCollisions(paths: string[]): CollisionGroup[] {
+  const groups = new Map<string, string[]>();
+  for (const p of paths) {
+    const key = p.toLowerCase();
+    const arr = groups.get(key) ?? [];
+    arr.push(p);
+    groups.set(key, arr);
+  }
+  const collisions: CollisionGroup[] = [];
+  for (const [key, members] of groups.entries()) {
+    if (members.length > 1) collisions.push({ key, members: [...members].sort() });
+  }
+  return collisions.sort((a, b) => a.key.localeCompare(b.key));
+}
+
+/**
+ * 遞迴走 `scripts/mutations` 底下,回 basename lowercase 結尾 `.json` 的相對路徑。
+ *
+ * fail-closed 邊界(P2#3 defer ⑤ D3):
+ *   - readdir throw → `readdir 失敗於 <rel>:<message>`
+ *   - lstat throw   → `lstat 失敗於 <rel>:<message>`
+ *   - symlink 且 stat 失敗 → `symlink 目標無法讀於 <rel>:<message>`
+ *   - symlink 指向 dir     → `symlink directory:<rel>`(supervisor P1-1:不能靜默略過)
+ *   - symlink 指向 file    → 收入(交給 checkTarget 檔案讀前防線判 untrusted)
+ *   - 既非 file / dir / symlink 的異常型別 → `未預期型別於 <rel>`
+ *
+ * 只做 traversal + 副檔名過濾;檔案本身的 tracked / non-symlink / nlink=1 判定
+ * 交給 checkTarget(mutate.ts 讀前防線,禁區不動)。
+ */
+export function walkSpecDir(
+  absDir: string,
+  relPrefix: string,
+  io: WalkerIO = DEFAULT_IO,
+): { ok: true; entries: string[] } | { ok: false; reason: string } {
+  let names: string[];
+  try {
+    names = io.readdir(absDir);
+  } catch (e) {
+    return { ok: false, reason: `readdir 失敗於 ${relPrefix || "."}:${(e as Error).message}` };
+  }
+  const entries: string[] = [];
+  for (const name of [...names].sort()) {
+    const abs = path.join(absDir, name);
+    const rel = relPrefix ? path.posix.join(relPrefix, name) : name;
+    let st: fs.Stats;
+    try {
+      st = io.lstat(abs);
+    } catch (e) {
+      return { ok: false, reason: `lstat 失敗於 ${rel}:${(e as Error).message}` };
+    }
+    if (st.isSymbolicLink()) {
+      let target: fs.Stats;
+      try {
+        target = io.stat(abs);
+      } catch (e) {
+        return { ok: false, reason: `symlink 目標無法讀於 ${rel}:${(e as Error).message}` };
+      }
+      if (target.isDirectory()) return { ok: false, reason: `symlink directory:${rel}` };
+      if (target.isFile()) {
+        if (name.toLowerCase().endsWith(".json")) entries.push(rel);
+        continue;
+      }
+      return { ok: false, reason: `未預期 symlink 目標型別於 ${rel}` };
+    }
+    if (st.isDirectory()) {
+      const sub = walkSpecDir(abs, rel, io);
+      if (!sub.ok) return sub;
+      entries.push(...sub.entries);
+      continue;
+    }
+    if (st.isFile()) {
+      if (name.toLowerCase().endsWith(".json")) entries.push(rel);
+      continue;
+    }
+    return { ok: false, reason: `未預期型別於 ${rel}` };
+  }
+  return { ok: true, entries };
+}
+
+/**
+ * 目錄邊界 + 遞迴 discovery:`scripts/mutations` 必須是 repo 內的真目錄。
+ * 目錄被換成 symlink(即使指向 repo 內別處)→ 拒判,因為列舉結果不再對應 tracked tree。
+ * 遞迴 walker 邊界見 `walkSpecDir` docstring。契約總覽見檔頭 D1-D7。
+ *
+ * `io` 參數供 unit 測試 mock walker IO 失敗場景;預設 = node fs sync API。
+ */
+export function discoverSpecFiles(repoRootReal: string, io: WalkerIO = DEFAULT_IO): DirCheck {
   const dir = path.join(repoRootReal, SPEC_DIR);
   let st: fs.Stats;
   try {
@@ -78,17 +197,14 @@ export function listSpecFiles(repoRootReal: string): DirCheck {
   }
   if (real !== dir) return { ok: false, reason: `${SPEC_DIR} 的 realpath 與正規路徑不同(${real})` };
 
-  let names: string[];
-  try {
-    names = fs.readdirSync(dir);
-  } catch (e) {
-    return { ok: false, reason: `讀不到 ${SPEC_DIR}:${(e as Error).message}` };
+  const walked = walkSpecDir(dir, "", io);
+  if (!walked.ok) return { ok: false, reason: walked.reason };
+  const specs = walked.entries.map((rel) => path.posix.join(SPEC_DIR, rel)).sort();
+  const collisions = findCaseCollisions(specs);
+  if (collisions.length > 0) {
+    const msg = collisions.map((c) => `${c.key} → [${c.members.join(", ")}]`).join(";");
+    return { ok: false, reason: `同名衝突(大小寫差異):${msg}` };
   }
-  // 只看名稱;型別 / symlink / tracked 全交給 checkTarget(不用 dirent 當安全依據)
-  const specs = names
-    .filter((n) => n.endsWith(".json"))
-    .sort()
-    .map((n) => path.posix.join(SPEC_DIR, n));
   if (specs.length === 0) return { ok: false, reason: `${SPEC_DIR} 沒有任何 spec 檔——空表 = 這道閘門形同虛設` };
   return { ok: true, specs };
 }
@@ -159,7 +275,7 @@ export function runCheck(root: string): Report {
   } catch (e) {
     return { code: 2, text: `✗ 無法判定:root 解析失敗:${(e as Error).message}` };
   }
-  const dir = listSpecFiles(repoRootReal);
+  const dir = discoverSpecFiles(repoRootReal);
   if (!dir.ok || !dir.specs) return { code: 2, text: `✗ 無法判定:${dir.reason}` };
   return formatReport(dir.specs.map((rel) => checkSpecFile(repoRootReal, rel)));
 }
