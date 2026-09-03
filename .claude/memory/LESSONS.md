@@ -68,6 +68,41 @@ type: note
 
 <!-- 教訓從這裡開始,新的在最上面 -->
 
+## [2026-09-03] `npm run lint` 是 silent no-op — `"lint": "eslint"`(無 target)不掃任何檔,CI `npx eslint .` 才會抓 lint 錯
+
+**情境**
+本 sprint(P2#3 defer ①② 後續、8 支 script 遷 invoked-as-main lib)Phase 2 遷 check-bookkeeping-commit 後,fileURLToPath import 已移除,但 `path` import 仍在(原本給 path.resolve 用、遷後失去 caller)。本地 `npm run typecheck` + `npm run lint` 皆綠、push 到 CI 撞紅:
+
+```
+scripts/check-bookkeeping-commit.ts:34:8  error  'path' is defined but never used  @typescript-eslint/no-unused-vars
+```
+
+需要補 1f76deb「移除 unused path import」commit(單行修)、加上重跑 mutate 綁新 SHA + 重派 Step 5 worktree round 3。gate 循環一整輪多做了。
+
+**錯誤**
+`package.json:24` 寫 `"lint": "eslint"`(單字、無 target)。 eslint 無 target 且無 flat config `files:` 匹配時,退化成 no-op:exit 0、無 output、**不掃任何檔**。
+
+CI `.github/workflows/ci.yml:109` 是 `npx eslint .`(帶當前目錄 target)→ 才會遞迴掃。
+
+所以 dev loop 的 `npm run lint` 完全是假綠。
+
+**原因**
+- eslint 9 flat config 對「無 target + 無 config `files:` 全域匹配」的行為是 silent no-op,不 fail-closed 提示「請指定 target」
+- `package.json` 寫 script 時沒加 `.` target,只想著「命令名字短」
+- 本地 dev loop 從未撞紅,累積了「lint 綠 == CI lint 綠」的錯覺
+- CI Lint 撞紅時第一直覺是「我改了什麼觸發 lint」而非「本地 lint 根本沒跑」
+
+**避免方式**
+- **機器化(本次已做)**:改 `package.json:24` 為 `"lint": "eslint ."`——與 CI 命令對齊
+- **對稱原則**:任何 dev loop 命令要與 CI 命令**逐字相同**——不然 dev 綠 CI 紅時歸因會偏(懷疑 CI env 差、其實是命令不同)
+- **未來寫新 script 時**:tool binary 無 target 預設行為要**顯式驗證**——`npx <tool>` vs `npx <tool> .` 兩個都跑一次比對 exit + output
+
+**相關**
+- 本 sprint fix commit 1f76deb(移除 unused path import)、round 3 worktree F2 抓到根因
+- CLAUDE.md「教訓的升級階梯」明訊「第 1 次踩寫 LESSONS → 重複踩標 ⚠️ → 預期再踩就機器化」——本條**已同時完成 LESSONS 記錄 + 機器化**(一字修 package.json),不留待下次踩
+
+---
+
 ## ⚠️ [2026-08-29] `git add -A` 把 pre-existing untracked 誤加進 commit(跨專案第 ≥4 次踩;已機器化:.gitignore + pre-commit TOOL_ARTIFACT_PATTERN)
 
 **情境**

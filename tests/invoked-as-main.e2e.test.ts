@@ -96,9 +96,13 @@ const CONSUMERS: ConsumerSpec[] = [
     label: "check-doc-size",
     scriptName: "check-doc-size.ts",
     wrapperName: "check-doc-size-wrapper.mjs",
-    expectedMainExit: 0,
+    // direct exit 依 HEAD 內容變:任一被監控 doc 超額度 → exit 1(印「記錄檔超標」);
+    // 都在額度內 → exit 0(印「記錄檔都在額度內」)。共同前綴「記錄檔」都會印。
+    // (同 check-bookkeeping-commit / check-no-source-terms 的 HEAD-content-dependent 對稱處理)
+    expectedMainExit: [0, 1],
     expectedMainMatcher: (r) => {
-      expect(r.stdout).toContain("記錄檔都在額度內");
+      // exit 0 走 stdout(console.log),exit 1 走 stderr(console.error);兩者都以「記錄檔」開頭
+      expect(r.stdout + r.stderr).toMatch(/記錄檔/);
     },
   },
   {
@@ -152,7 +156,9 @@ const CONSUMERS: ConsumerSpec[] = [
     label: "check-doc-refs",
     scriptName: "check-doc-refs.ts",
     wrapperName: "check-doc-refs-wrapper.mjs",
-    expectedMainExit: 0,
+    // direct exit 依 HEAD 內容變:壞引用 / ls-files 錯 / 缺 ROOT_DOCS 等 → exit 1;都好 → exit 0
+    // 兩條分支都印「失效引用」(exit 0「0 個失效引用」/ exit 1「N 個失效的檔案引用」)
+    expectedMainExit: [0, 1],
     expectedMainMatcher: (r) => {
       expect(r.stdout).toContain("失效引用");
     },
