@@ -90,6 +90,17 @@ const CONSUMERS: ConsumerSpec[] = [
       expect(r.stdout).toContain("記錄檔都在額度內");
     },
   },
+  {
+    label: "check-bookkeeping-commit",
+    scriptName: "check-bookkeeping-commit.ts",
+    wrapperName: "check-bookkeeping-commit-wrapper.mjs",
+    // HEAD 是 sprint 遷移 commit(含 code)→ direct 應 exit 1 + 印「目標 commit:」與「violations」
+    expectedMainExit: 1,
+    expectedMainMatcher: (r) => {
+      expect(r.stdout).toContain("目標 commit:");
+      expect(r.stdout).toMatch(/violations/);
+    },
+  },
 ];
 
 for (const spec of CONSUMERS) {
