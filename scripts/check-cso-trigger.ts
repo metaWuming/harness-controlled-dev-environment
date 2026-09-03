@@ -26,7 +26,7 @@
 //   讀成「不需要跑安全審」= fail-open。任何「無法判定」都必須回 2。
 
 import { execSync } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
+import { detectInvocation, reportIfNotMain } from './lib/invoked-as-main';
 import { CSO_TRIGGER_PATTERNS, type CsoDomain } from './cso-trigger.config';
 
 export type { CsoDomain };
@@ -211,9 +211,12 @@ function main(): void {
   process.exit(0);
 }
 
-// 只在直接 invoke 時跑 main(unit test import 時跳過)。ESM 下沒有 `require.main`,
-// 用 `pathToFileURL(process.argv[1]).href === import.meta.url` 才能可靠判斷。
-const invokedPath = process.argv[1];
-if (invokedPath && pathToFileURL(invokedPath).href === import.meta.url) {
+// ESM main 判定改用 scripts/lib/invoked-as-main.ts 共用 lib(P2#3 defer ①② 後續遷移):
+// 兩端 realpath、indeterminate 由 caller 顯式 exit(2)、被當 import 用時完全靜默。
+const outcome = detectInvocation(import.meta.url, process.argv[1]);
+const isMain = reportIfNotMain(outcome, 'check-cso-trigger');
+if (isMain) {
   main();
+} else if (outcome.kind === 'indeterminate') {
+  process.exit(2);
 }

@@ -110,6 +110,16 @@ const CONSUMERS: ConsumerSpec[] = [
       expect(r.stdout).toContain("allowedPrs");
     },
   },
+  {
+    label: "check-cso-trigger",
+    scriptName: "check-cso-trigger.ts",
+    wrapperName: "check-cso-trigger-wrapper.mjs",
+    // 模板 repo cso 路徑表為空 → fail-closed exit 2(正常狀態、非 error)
+    expectedMainExit: 2,
+    expectedMainMatcher: (r) => {
+      expect(r.stdout).toContain("CSO_REQUIRED");
+    },
+  },
 ];
 
 for (const spec of CONSUMERS) {
