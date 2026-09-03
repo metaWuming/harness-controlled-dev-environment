@@ -129,6 +129,15 @@ const CONSUMERS: ConsumerSpec[] = [
       expect(r.stdout).toContain("TEMPLATE_MODE");
     },
   },
+  {
+    label: "check-doc-refs",
+    scriptName: "check-doc-refs.ts",
+    wrapperName: "check-doc-refs-wrapper.mjs",
+    expectedMainExit: 0,
+    expectedMainMatcher: (r) => {
+      expect(r.stdout).toContain("失效引用");
+    },
+  },
 ];
 
 for (const spec of CONSUMERS) {
