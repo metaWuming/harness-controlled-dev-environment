@@ -302,6 +302,14 @@ describe('formatReport / parseRootArg', () => {
     expect(formatReport([ok, drift, un]).code).toBe(2);
     expect(formatReport([drift, un]).text).toContain('b[0] L → x');
   });
+  it('空 results → code 2 defense-in-depth(P2#3 defer ⑩;M7 direct killer)', () => {
+    // discoverSpecFiles 前置 0-spec 守門是第一道防線(M2);formatReport([]) fail-closed
+    // 是第二道防線(M7)。此 unit 精確驗 formatReport 對 [] 的判定契約、只依賴
+    // 純函式行為、不透過 runCheck / CLI e2e(避免與第一道混淆)。
+    const r = formatReport([]);
+    expect(r.code).toBe(2);
+    expect(r.text).toContain('結果集為空');
+  });
   it('argv 只收單一 --root=<dir>', () => {
     expect(parseRootArg([])).toEqual({ ok: true, root: null });
     expect(parseRootArg(['--root=/x'])).toEqual({ ok: true, root: '/x' });

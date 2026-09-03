@@ -27,7 +27,8 @@
  *                    (檔案級 tracked / non-symlink / nlink=1 仍交給 checkTarget,禁區不動)
  *   D4 同名衝突:collision key = lowercased 完整 POSIX repo-relative path;命中 → fail-closed。
  *                排序:posix 完整路徑排序。
- *   D5 0-spec:遞迴後總數 0 → fail-closed(既有已擋、寫進契約)
+ *   D5 0-spec:遞迴後總數 0 → fail-closed(既有已擋、寫進契約);
+ *              + formatReport([]) fail-closed 第二道防線(P2#3 defer ⑩、前置失效兜底)
  *   D6 checkTarget 呼叫端邊界:本檔對 checkTarget 的呼叫可配合 discovery 調整;
  *                              mutate.ts 的 checkTarget **定義**為禁區、不動(sprint 3-5 拍板)
  *   D7 discovery 函式命名:`discoverSpecFiles`(rev 2 supervisor P2-2)
@@ -38,7 +39,8 @@
  *         npx tsx scripts/check-mutation-specs.ts --root=<dir>   # e2e fixture
  * Exit:   0 = 所有探針樣本都對得上
  *         1 = DRIFT(內容層:JSON / schema 壞、目標檔對不上、樣本消失或多處或無變化)——改 spec 或改碼
- *         2 = 無法判定(目錄邊界失敗、0 個 spec 檔、spec 檔本身不可信、argv 錯、未預期例外)——先查 repo 形狀
+ *         2 = 無法判定(目錄邊界失敗、0 個 spec 檔、spec 檔本身不可信、argv 錯、未預期例外、
+ *              或 formatReport 結果集為空(defense-in-depth 第二道,前置 discoverSpecFiles 失效兜底))——先查 repo 形狀
  *         1 與 2 在 CI 都是紅;分開只為診斷語意,對齊 `mutate.ts` / `check:cso` 的「無法判定當沒過」。
  */
 
@@ -242,6 +244,15 @@ export interface Report {
 }
 
 export function formatReport(results: SpecFileResult[]): Report {
+  // Preflight:空 results 一律拒判(defense-in-depth 第二道,P2#3 defer ⑩;
+  // 前置 discoverSpecFiles 應先攔;放函式最頂表達 preflight 意圖、避免依賴
+  // 後續 untrusted/drift 判定的 short-circuit chain)
+  if (results.length === 0) {
+    return {
+      code: 2,
+      text: "✗ 無法判定:formatReport 結果集為空——沒有任何 spec 檔被檢查(defense-in-depth 第二道);runCheck 前置 discoverSpecFiles 應先攔,若走到這裡 = 前置守門失效",
+    };
+  }
   const untrusted = results.filter((r) => r.status === "untrusted");
   const drift = results.filter((r) => r.status === "drift");
   const total = results.reduce((n, r) => n + r.probes, 0);
