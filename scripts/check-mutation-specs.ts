@@ -268,7 +268,7 @@ export function formatReport(results: SpecFileResult[]): Report {
   if (results.length === 0) {
     return {
       code: 2,
-      text: "✗ 無法判定:formatReport 結果集為空——沒有 spec 檔被檢查(defense-in-depth 第二道);runCheck 前置 discoverSpecFiles 應先攔,若走到這裡 = 前置守門失效",
+      text: "✗ 無法判定:formatReport 結果集為空——沒有任何 spec 檔被檢查(defense-in-depth 第二道);runCheck 前置 discoverSpecFiles 應先攔,若走到這裡 = 前置守門失效",
     };
   }
   return { code: 0, text: [`✅ mutation spec 樣本都對得上(${results.length} 個 spec 檔、${total} 條探針)`, ...lines].join("\n") };

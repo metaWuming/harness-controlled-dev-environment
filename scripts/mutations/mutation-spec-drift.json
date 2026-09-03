@@ -13,8 +13,8 @@
   },
   {
     "file": "scripts/check-mutation-specs.ts",
-    "find": "  if (results.length === 0) {\n    return {\n      code: 2,\n      text: \"✗ 無法判定:formatReport 結果集為空——沒有 spec 檔被檢查(defense-in-depth 第二道);runCheck 前置 discoverSpecFiles 應先攔,若走到這裡 = 前置守門失效\",\n    };\n  }",
-    "replace": "  if (false) {\n    return {\n      code: 2,\n      text: \"✗ 無法判定:formatReport 結果集為空——沒有 spec 檔被檢查(defense-in-depth 第二道);runCheck 前置 discoverSpecFiles 應先攔,若走到這裡 = 前置守門失效\",\n    };\n  }",
+    "find": "  if (results.length === 0) {\n    return {\n      code: 2,\n      text: \"✗ 無法判定:formatReport 結果集為空——沒有任何 spec 檔被檢查(defense-in-depth 第二道);runCheck 前置 discoverSpecFiles 應先攔,若走到這裡 = 前置守門失效\",\n    };\n  }",
+    "replace": "  if (false) {\n    return {\n      code: 2,\n      text: \"✗ 無法判定:formatReport 結果集為空——沒有任何 spec 檔被檢查(defense-in-depth 第二道);runCheck 前置 discoverSpecFiles 應先攔,若走到這裡 = 前置守門失效\",\n    };\n  }",
     "label": "MSD-M7 formatReport 空 results 第二道防線失效(P2#3 defer ⑩)→ 純函式對 [] 回 code 0(fail-open)而非 code 2 → direct unit「formatReport([]).code === 2」轉紅"
   },
   {
