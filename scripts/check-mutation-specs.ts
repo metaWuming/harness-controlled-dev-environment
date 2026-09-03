@@ -89,7 +89,7 @@ export interface CollisionGroup {
 }
 
 /**
- * 對 lowercased posix 完整路徑分組、回 group.size > 1 的清單。純函式,無 IO。
+ * 對 lowercased posix 完整路徑分組、回 members 陣列 length > 1 的清單。純函式,無 IO。
  * key 用完整 path(非 basename)→ `sprint-a/guard.json` 與 `sprint-b/guard.json`
  * 是**合法不同 spec**、不算衝突。
  */

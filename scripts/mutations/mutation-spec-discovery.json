@@ -9,7 +9,13 @@
     "file": "scripts/check-mutation-specs.ts",
     "find": "    if (st.isFile()) {\n      if (name.toLowerCase().endsWith(\".json\")) entries.push(rel);\n      continue;\n    }",
     "replace": "    if (st.isFile()) {\n      if (name.endsWith(\".json\")) entries.push(rel);\n      continue;\n    }",
-    "label": "MSD-D2 case-insensitive 取消(real file 路徑)→ 大寫副檔名 .JSON 漏收、e2e ⑬ 轉紅"
+    "label": "MSD-D2 case-insensitive 取消(real file 分支)→ 大寫副檔名 .JSON 漏收、e2e ⑬ 轉紅"
+  },
+  {
+    "file": "scripts/check-mutation-specs.ts",
+    "find": "      if (target.isFile()) {\n        if (name.toLowerCase().endsWith(\".json\")) entries.push(rel);\n        continue;\n      }",
+    "replace": "      if (target.isFile()) {\n        if (name.endsWith(\".json\")) entries.push(rel);\n        continue;\n      }",
+    "label": "MSD-D2b case-insensitive 取消(symlink→file 分支;Step 5 F1/W2 補)→ walker unit「symlink→file .JSON 也收」轉紅"
   },
   {
     "file": "scripts/check-mutation-specs.ts",

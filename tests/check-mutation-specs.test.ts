@@ -230,6 +230,18 @@ describe('walkSpecDir(可注入 IO 的 traversal fail-closed 邊界)', () => {
     expect(r.ok).toBe(true);
     if (r.ok === true) expect(r.entries).toEqual(['A.JSON', 'b.Json', 'c.json']);
   });
+
+  it('symlink → file 且大寫副檔名 .JSON → 收入(Step 5 F1/W2 補:D2 case-insensitive 覆蓋 symlink 分支)', () => {
+    // MSD-D2b mutant 對 line 155 symlink→file 分支拿掉 .toLowerCase() 時本 unit 轉紅
+    const io: WalkerIO = {
+      readdir: () => ['A.JSON'],
+      lstat: () => mockStat('symlink'),
+      stat: () => mockStat('file'),
+    };
+    const r = walkSpecDir('/fake/abs', '', io);
+    expect(r.ok).toBe(true);
+    if (r.ok === true) expect(r.entries).toEqual(['A.JSON']);
+  });
 });
 
 describe('checkSpecFile(單檔判定)', () => {
