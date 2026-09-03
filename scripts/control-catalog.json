@@ -387,12 +387,12 @@
         "scripts/check-mutation-specs.ts",
         "scripts/lib/invoked-as-main.ts"
       ],
-      "locator": "CI step「Mutation Spec Drift Check」;對 scripts/mutations/*.json 每條探針驗 find 樣本仍能在目標原始碼精準對上(不跑 mutation);spec 檔與目標檔都先經 mutate.ts checkTarget(repo 內、tracked、非 symlink)取 bytes",
+      "locator": "CI step「Mutation Spec Drift Check」;對 scripts/mutations/**/*.json(遞迴、大小寫無關)每條探針驗 find 樣本仍能在目標原始碼精準對上(不跑 mutation);discovery 邊界:遞迴子目錄、大小寫無關(.JSON 也收)、full-relative-path collision 拒判、posix 完整路徑排序、頂層 + 遞迴途中任一 symlink dir fail-closed、walker 每層 lstat / readdir / stat I/O 或型別無法判定 fail-closed;spec 檔與目標檔都先經 mutate.ts checkTarget(repo 內、tracked、非 symlink)取 bytes",
       "ciStep": "Mutation Spec Drift Check",
       "owner": "github",
       "failureBehavior": "block",
-      "evidence": "CI check 狀態;本機 npm run check:mutation-specs 印每個 spec 檔的探針數,exit 1 = DRIFT(內容層、改 spec 或碼)/ exit 2 = 無法判定(spec 目錄或檔案不可信、0 個 spec 檔)",
-      "degradation": "spec 目錄非真目錄 / 0 個 spec 檔 / spec 檔本身 symlink、未追蹤、非一般檔、hardlink、非 UTF-8 → exit 2(無法判定,不放行)",
+      "evidence": "CI check 狀態;本機 npm run check:mutation-specs 印每個 spec 檔的探針數,exit 1 = DRIFT(內容層、改 spec 或碼)/ exit 2 = 無法判定(spec 目錄或檔案不可信、0 個 spec 檔、walker I/O 失敗、collision 命中)",
+      "degradation": "spec 目錄非真目錄 / 0 個 spec 檔 / spec 檔本身 symlink、未追蹤、非一般檔、hardlink、非 UTF-8 / walker 遇 symlink 子目錄 / walker lstat / readdir / stat I/O 失敗或型別無法判定 / 同名衝突(大小寫差異) → exit 2(無法判定,不放行)",
       "tested": [
         "unit",
         "e2e",
@@ -400,10 +400,11 @@
       ],
       "testRefs": [
         "tests/check-mutation-specs.test.ts",
-        "scripts/mutations/mutation-spec-drift.json"
+        "scripts/mutations/mutation-spec-drift.json",
+        "scripts/mutations/mutation-spec-discovery.json"
       ],
       "bypass": "admin override",
-      "notes": "只驗「樣本對得上」,不證明探針仍會 kill;完整 mutation 仍由 Step 4.5 人工跑並綁 HEAD。是 mutate.ts 閘② 的 CI 前置版"
+      "notes": "只驗「樣本對得上」,不證明探針仍會 kill;完整 mutation 仍由 Step 4.5 人工跑並綁 HEAD。是 mutate.ts 閘② 的 CI 前置版。discovery 契約 D1-D7 見 check-mutation-specs.ts 檔頭 docstring(P2#3 defer ⑤)"
     },
     {
       "id": "CTRL-HOOK-001",
