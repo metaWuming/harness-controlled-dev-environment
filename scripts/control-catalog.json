@@ -314,6 +314,7 @@
         ".github/workflows/ci.yml",
         "scripts/check-control-catalog.ts",
         "scripts/lib/control-catalog.ts",
+        "scripts/lib/invoked-as-main.ts",
         "scripts/control-catalog.json",
         "scripts/render-control-catalog.ts",
         "docs/CONTROL-CATALOG.md"
@@ -378,7 +379,8 @@
       ],
       "implementation": [
         ".github/workflows/ci.yml",
-        "scripts/check-mutation-specs.ts"
+        "scripts/check-mutation-specs.ts",
+        "scripts/lib/invoked-as-main.ts"
       ],
       "locator": "CI step「Mutation Spec Drift Check」;對 scripts/mutations/*.json 每條探針驗 find 樣本仍能在目標原始碼精準對上(不跑 mutation);spec 檔與目標檔都先經 mutate.ts checkTarget(repo 內、tracked、非 symlink)取 bytes",
       "ciStep": "Mutation Spec Drift Check",
@@ -571,6 +573,7 @@
         "scripts/check-cso-trigger.ts",
         "scripts/cso-trigger.config.ts",
         "scripts/mutate.ts",
+        "scripts/lib/invoked-as-main.ts",
         ".claude/sop/plan-mode-checklist.md"
       ],
       "locator": "Step 4.5;判定機器化(完整變更面 vs 路徑表,fail-closed exit 2)、探針執行靠人",

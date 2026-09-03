@@ -65,7 +65,7 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { detectInvocation, reportIfNotMain } from "./lib/invoked-as-main";
 
 // ───────────────────────────────────────── 型別
 
@@ -1370,10 +1370,10 @@ function beginShutdown(code: number, why?: string): void {
   })().catch(() => process.exit(2));
 }
 
-// ESM main invocation 檢查:對齊 check-doc-size / check-cso 的寫法。
-const isMain =
-  process.argv[1] !== undefined &&
-  fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+// ESM main invocation 檢查(P2#3 defer ①):共用 lib、兩端 realpath、
+// indeterminate 由 caller 顯式 exit(2)、import 用時完全靜默。
+const outcome = detectInvocation(import.meta.url, process.argv[1]);
+const isMain = reportIfNotMain(outcome, 'mutate');
 
 if (isMain) {
   process.on("SIGINT", (sig) => beginShutdown(2, `\n收到 ${sig},終止子程序並還原…`));
@@ -1383,4 +1383,6 @@ if (isMain) {
   process.on("unhandledRejection", onFatal);
 
   main().then(beginShutdown).catch(onFatal);
+} else if (outcome.kind === "indeterminate") {
+  process.exit(2);
 }

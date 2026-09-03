@@ -1,0 +1,50 @@
+[
+  {
+    "file": "scripts/lib/invoked-as-main.ts",
+    "find": "if (selfReal === argvReal) {",
+    "replace": "if (false) {",
+    "label": "IAM-M1 兩端 realpath 相等不再歸 main → unit #1 #3 轉紅(兩端相等應歸 main)"
+  },
+  {
+    "file": "scripts/lib/invoked-as-main.ts",
+    "find": "process.stderr.write(",
+    "replace": "((..._args) => {})(",
+    "label": "IAM-M2 reporter 對 indeterminate 不再印 stderr → unit #11 #12 #13 與 e2e case #4 轉紅"
+  },
+  {
+    "file": "scripts/lib/invoked-as-main.ts",
+    "find": "if (outcome.kind === \"import-or-not-main\") return false;",
+    "replace": "if (outcome.kind === \"import-or-not-main\") { process.stderr.write(`fake\\n`); return false; }",
+    "label": "IAM-M3 reporter 對 import-or-not-main 改為印 stderr(破壞靜默契約)→ unit #10 與 e2e case #3 轉紅"
+  },
+  {
+    "file": "scripts/lib/invoked-as-main.ts",
+    "find": "const escaped = value.replace(/[\\x00-\\x1f\\x7f]/g, (c) => {",
+    "replace": "const escaped = value.replace(/NEVER_MATCH_THIS_REGEX_XYZ/g, (c) => {",
+    "label": "IAM-M4 sanitize 不再 escape 控制字元 → unit #12 sanitizeDiag 控制字元轉紅"
+  },
+  {
+    "file": "scripts/lib/invoked-as-main.ts",
+    "find": "if (argv1 === undefined) {",
+    "replace": "if (false) {",
+    "label": "IAM-M5 argv1 undefined 不再走 argv1-missing 分支 → unit #2 轉紅"
+  },
+  {
+    "file": "scripts/mutate.ts",
+    "find": "} else if (outcome.kind === \"indeterminate\") {\n  process.exit(2);\n}",
+    "replace": "}",
+    "label": "IAM-M6 caller-wiring:mutate.ts 刪 indeterminate exit(2) branch → e2e case #4 (mutate) 轉紅(gate 回 silent 0)"
+  },
+  {
+    "file": "scripts/check-control-catalog.ts",
+    "find": "} else if (outcome.kind === 'indeterminate') {\n  process.exit(2);\n}",
+    "replace": "}",
+    "label": "IAM-M7 caller-wiring:check-control-catalog.ts 刪 indeterminate exit(2) branch → e2e case #4 (check-control-catalog) 轉紅"
+  },
+  {
+    "file": "scripts/check-mutation-specs.ts",
+    "find": "} else if (outcome.kind === \"indeterminate\") {\n  process.exit(2);\n}",
+    "replace": "}",
+    "label": "IAM-M8 caller-wiring:check-mutation-specs.ts 刪 indeterminate exit(2) branch → e2e case #4 (check-mutation-specs) 轉紅"
+  }
+]

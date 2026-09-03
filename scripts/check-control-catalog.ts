@@ -25,8 +25,8 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { CI_TRIGGERS, loadControlCatalog, type ControlCatalog } from './lib/control-catalog';
+import { detectInvocation, reportIfNotMain } from './lib/invoked-as-main';
 import { CATALOG_DOC_PATH, renderCatalog } from './render-control-catalog';
 
 export const CI_YML = '.github/workflows/ci.yml';
@@ -236,7 +236,10 @@ function main(): number {
   return 2;
 }
 
-const invokedPath = process.argv[1];
-if (invokedPath && pathToFileURL(invokedPath).href === import.meta.url) {
+const outcome = detectInvocation(import.meta.url, process.argv[1]);
+const isMain = reportIfNotMain(outcome, 'check-control-catalog');
+if (isMain) {
   process.exit(main());
+} else if (outcome.kind === 'indeterminate') {
+  process.exit(2);
 }
