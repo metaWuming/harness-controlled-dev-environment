@@ -148,6 +148,16 @@ const CONSUMERS: ConsumerSpec[] = [
       expect(r.stderr).toContain("--base=<ref>");
     },
   },
+  {
+    label: "render-control-catalog",
+    scriptName: "render-control-catalog.ts",
+    wrapperName: "render-control-catalog-wrapper.mjs",
+    // direct 無 args → fail-closed exit 2 + stderr「用法:tsx scripts/render-control-catalog.ts」
+    expectedMainExit: 2,
+    expectedMainMatcher: (r) => {
+      expect(r.stderr).toContain("用法:tsx scripts/render-control-catalog.ts");
+    },
+  },
 ];
 
 for (const spec of CONSUMERS) {
