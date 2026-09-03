@@ -1,0 +1,50 @@
+[
+  {
+    "file": "scripts/check-doc-size.ts",
+    "find": "} else if (outcome.kind === \"indeterminate\") {\n  process.exit(2);\n}",
+    "replace": "}",
+    "label": "IAMM-M1 caller-wiring:check-doc-size.ts 刪 indeterminate exit(2) branch → e2e case #4 (check-doc-size) 轉紅"
+  },
+  {
+    "file": "scripts/check-bookkeeping-commit.ts",
+    "find": "} else if (outcome.kind === \"indeterminate\") {\n  process.exit(2);\n}",
+    "replace": "}",
+    "label": "IAMM-M2 caller-wiring:check-bookkeeping-commit.ts 刪 indeterminate exit(2) branch → e2e case #4 轉紅"
+  },
+  {
+    "file": "scripts/check-no-source-terms.ts",
+    "find": "} else if (outcome.kind === \"indeterminate\") {\n  process.exit(2);\n}",
+    "replace": "}",
+    "label": "IAMM-M3 caller-wiring:check-no-source-terms.ts 刪 indeterminate exit(2) branch → e2e case #4 轉紅"
+  },
+  {
+    "file": "scripts/check-cso-trigger.ts",
+    "find": "} else if (outcome.kind === 'indeterminate') {\n  process.exit(2);\n}",
+    "replace": "}",
+    "label": "IAMM-M4 caller-wiring:check-cso-trigger.ts 刪 indeterminate exit(2) branch → e2e case #4 轉紅"
+  },
+  {
+    "file": "scripts/check-adoption-readiness.ts",
+    "find": "} else if (outcome.kind === 'indeterminate') {\n  process.exit(2);\n}",
+    "replace": "}",
+    "label": "IAMM-M5 caller-wiring:check-adoption-readiness.ts 刪 indeterminate exit(2) branch → e2e case #4 轉紅"
+  },
+  {
+    "file": "scripts/check-doc-refs.ts",
+    "find": "} else if (outcome.kind === 'indeterminate') {\n  process.exit(2);\n}",
+    "replace": "}",
+    "label": "IAMM-M6 caller-wiring:check-doc-refs.ts 刪 indeterminate exit(2) branch → e2e case #4 轉紅"
+  },
+  {
+    "file": "scripts/check-baseline-governance.ts",
+    "find": "} else if (outcome.kind === 'indeterminate') {\n  process.exit(2);\n}",
+    "replace": "}",
+    "label": "IAMM-M7 caller-wiring:check-baseline-governance.ts 刪 indeterminate exit(2) branch → e2e case #4 轉紅"
+  },
+  {
+    "file": "scripts/render-control-catalog.ts",
+    "find": "} else if (outcome.kind === 'indeterminate') {\n  process.exit(2);\n}",
+    "replace": "}",
+    "label": "IAMM-M8 caller-wiring:render-control-catalog.ts 刪 indeterminate exit(2) branch → e2e case #4 轉紅"
+  }
+]
