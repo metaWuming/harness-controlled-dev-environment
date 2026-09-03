@@ -385,6 +385,7 @@
       "implementation": [
         ".github/workflows/ci.yml",
         "scripts/check-mutation-specs.ts",
+        "scripts/mutate.ts",
         "scripts/lib/invoked-as-main.ts"
       ],
       "locator": "CI step「Mutation Spec Drift Check」;對 scripts/mutations/**/*.json(遞迴、大小寫無關)每條探針驗 find 樣本仍能在目標原始碼精準對上(不跑 mutation);discovery 邊界:遞迴子目錄、大小寫無關(.JSON 也收)、full-relative-path collision 拒判、posix 完整路徑排序、頂層 + 遞迴途中任一 symlink dir fail-closed、walker 每層 lstat / readdir / stat I/O 或型別無法判定 fail-closed;spec 檔與目標檔都先經 mutate.ts checkTarget(repo 內、tracked、非 symlink)取 bytes",
