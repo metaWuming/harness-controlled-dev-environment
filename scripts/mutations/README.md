@@ -71,7 +71,7 @@ npx tsx scripts/mutate.ts --file src/example.ts \
   與 `check-hooks.sh` 對第三個 SSOT 的要求
   **spec 的 `find` 是原始碼逐字樣本**——改到那些行就要同步改 spec,否則 mutate 會以
   「樣本沒對上」exit 2(fail-closed,不會靜默通過)。
-- `mutation-spec-drift.json` — 6 條探針,守 `check-mutation-specs.ts`(spec 檔與目標檔的可信邊界、DRIFT 判定、exit 0/1/2 契約)
+- `mutation-spec-drift.json` — 7 條探針,守 `check-mutation-specs.ts`(spec 檔與目標檔的可信邊界、DRIFT 判定、exit 0/1/2 契約、formatReport 空 results defense-in-depth 第二道,P2#3 defer ⑩ M7)
 - `mutation-spec-discovery.json` — 8 條探針(P2#3 defer ⑤),守 `check-mutation-specs.ts` 的 discovery 契約。**mutant ID → 契約 D-ID mapping**(mutant 命名為歷史 label,與契約 D-ID 有錯位;讀「MSD-Dn 存活」時對應此表找契約條款):
   - MSD-D1 → 契約 D1(遞迴子目錄)
   - MSD-D2 → 契約 D2(case-insensitive,real-file 分支)
