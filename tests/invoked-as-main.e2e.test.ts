@@ -44,11 +44,22 @@ function run(scriptPath: string, args: string[] = [], env: Record<string, string
   return { status: r.status, stdout: r.stdout, stderr: r.stderr };
 }
 
+function assertExpectedExit(actual: number | null, expected: number | readonly number[]): void {
+  if (Array.isArray(expected)) {
+    expect(expected).toContain(actual);
+  } else {
+    expect(actual).toBe(expected);
+  }
+}
+
 interface ConsumerSpec {
   label: string;
   scriptName: string;
   wrapperName: string;
-  expectedMainExit: number;
+  // number 或 number[]:某些 consumer(如 check-bookkeeping-commit)的正常 exit code
+  // 依 HEAD 內容變化(bookkeeping commit → exit 0、含 code → exit 1)——用 array
+  // 表示「兩者都是合法 direct 狀態」;matcher 需自行區分共同 stdout 特徵
+  expectedMainExit: number | readonly number[];
   expectedMainMatcher: (r: RunResult) => void;
 }
 
@@ -94,11 +105,15 @@ const CONSUMERS: ConsumerSpec[] = [
     label: "check-bookkeeping-commit",
     scriptName: "check-bookkeeping-commit.ts",
     wrapperName: "check-bookkeeping-commit-wrapper.mjs",
-    // HEAD 是 sprint 遷移 commit(含 code)→ direct 應 exit 1 + 印「目標 commit:」與「violations」
-    expectedMainExit: 1,
+    // direct exit 依 HEAD 內容變:code commit → exit 1(印 violations)、
+    // bookkeeping commit → exit 0(印「全部檔案都在 bookkeeping allowlist 內」)。
+    // 兩者都是 direct 正常執行的合法狀態,共同特徵是「目標 commit:」前綴。
+    // (Step 5 高風險 worktree 審 CRITICAL:sprint 中段跑時 HEAD 是 code commit
+    //  → exit 1、綠;round 1 P2 散文 fix 只碰 TODOS 屬 bookkeeping → HEAD 變
+    //  bookkeeping commit → exit 0、舊硬綁 1 斷言紅。修:接受 [0, 1]。)
+    expectedMainExit: [0, 1],
     expectedMainMatcher: (r) => {
       expect(r.stdout).toContain("目標 commit:");
-      expect(r.stdout).toMatch(/violations/);
     },
   },
   {
@@ -165,7 +180,7 @@ for (const spec of CONSUMERS) {
     it(`#1 direct 呼叫 → main 執行、exit ${spec.expectedMainExit}、無 [invoked-as-main] stderr`, () => {
       const scriptPath = path.join(REPO, "scripts", spec.scriptName);
       const r = run(scriptPath);
-      expect(r.status).toBe(spec.expectedMainExit);
+      assertExpectedExit(r.status, spec.expectedMainExit);
       spec.expectedMainMatcher(r);
       expect(r.stderr).not.toContain("[invoked-as-main]");
       expect(r.stderr).not.toContain("indeterminate");
@@ -175,7 +190,7 @@ for (const spec of CONSUMERS) {
       const { linkedRepo } = mkSymlinkToRepo();
       const linkedScript = path.join(linkedRepo, "scripts", spec.scriptName);
       const r = run(linkedScript);
-      expect(r.status).toBe(spec.expectedMainExit);
+      assertExpectedExit(r.status, spec.expectedMainExit);
       spec.expectedMainMatcher(r);
       expect(r.stderr).not.toContain("[invoked-as-main]");
       expect(r.stderr).not.toContain("indeterminate");
