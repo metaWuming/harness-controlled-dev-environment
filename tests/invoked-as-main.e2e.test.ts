@@ -156,11 +156,13 @@ const CONSUMERS: ConsumerSpec[] = [
     label: "check-doc-refs",
     scriptName: "check-doc-refs.ts",
     wrapperName: "check-doc-refs-wrapper.mjs",
-    // direct exit 依 HEAD 內容變:壞引用 / ls-files 錯 / 缺 ROOT_DOCS 等 → exit 1;都好 → exit 0
-    // 兩條分支都印「失效引用」(exit 0「0 個失效引用」/ exit 1「N 個失效的檔案引用」)
+    // direct exit 依 HEAD 內容變:壞引用 / ls-files 錯 / 缺 ROOT_DOCS 等 → exit 1(stderr 印「失效的檔案引用」)
+    // 都好 → exit 0(stdout 印「0 個失效引用」)。⚠️「失效引用」與「失效的檔案引用」非連續 substring,
+    // 用 regex 涵蓋兩者。exit 1 診斷去 stderr,合併 stdout+stderr 才涵蓋。
+    // (round 4 F1 修:承 round 3 F1 propagation,但先前 matcher 只看 stdout+字面 substring 兩重誤鎖 HEAD)
     expectedMainExit: [0, 1],
     expectedMainMatcher: (r) => {
-      expect(r.stdout).toContain("失效引用");
+      expect(r.stdout + r.stderr).toMatch(/失效.*引用/);
     },
   },
   {

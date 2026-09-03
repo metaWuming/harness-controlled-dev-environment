@@ -68,10 +68,10 @@ type: note
 
 <!-- 教訓從這裡開始,新的在最上面 -->
 
-## [2026-09-03] `npm run lint` 是 silent no-op — `"lint": "eslint"`(無 target)不掃任何檔,CI `npx eslint .` 才會抓 lint 錯
+## [2026-09-03] Dev loop `npm run lint` 與 CI `npx eslint .` 命令不對稱,CI Lint 抓到本地未見的 unused import(真根因待查、對稱原則先套)
 
 **情境**
-本 sprint(P2#3 defer ①② 後續、8 支 script 遷 invoked-as-main lib)Phase 2 遷 check-bookkeeping-commit 後,fileURLToPath import 已移除,但 `path` import 仍在(原本給 path.resolve 用、遷後失去 caller)。本地 `npm run typecheck` + `npm run lint` 皆綠、push 到 CI 撞紅:
+本 sprint(P2#3 defer ①② 後續、8 支 script 遷 invoked-as-main lib)Phase 2 遷 check-bookkeeping-commit 後,fileURLToPath import 已移除,但 `path` import 仍在(原本給 path.resolve 用、遷後失去 caller)。本地 `npm run typecheck` + `npm run lint` 均無 output、push 到 CI 撞紅:
 
 ```
 scripts/check-bookkeeping-commit.ts:34:8  error  'path' is defined but never used  @typescript-eslint/no-unused-vars
@@ -79,27 +79,22 @@ scripts/check-bookkeeping-commit.ts:34:8  error  'path' is defined but never use
 
 需要補 1f76deb「移除 unused path import」commit(單行修)、加上重跑 mutate 綁新 SHA + 重派 Step 5 worktree round 3。gate 循環一整輪多做了。
 
-**錯誤**
-`package.json:24` 寫 `"lint": "eslint"`(單字、無 target)。 eslint 無 target 且無 flat config `files:` 匹配時,退化成 no-op:exit 0、無 output、**不掃任何檔**。
-
-CI `.github/workflows/ci.yml:109` 是 `npx eslint .`(帶當前目錄 target)→ 才會遞迴掃。
-
-所以 dev loop 的 `npm run lint` 完全是假綠。
-
-**原因**
-- eslint 9 flat config 對「無 target + 無 config `files:` 全域匹配」的行為是 silent no-op,不 fail-closed 提示「請指定 target」
-- `package.json` 寫 script 時沒加 `.` target,只想著「命令名字短」
-- 本地 dev loop 從未撞紅,累積了「lint 綠 == CI lint 綠」的錯覺
-- CI Lint 撞紅時第一直覺是「我改了什麼觸發 lint」而非「本地 lint 根本沒跑」
+**觀察 vs 假設**
+- **觀察**:本地 `npm run lint` 無 output/exit 0、CI `npx eslint .` exit 1 印出精確錯誤
+- **原本假設(round 3 worktree F2 提出)**:`"lint": "eslint"`(無 target)= silent no-op、不掃任何檔
+- **round 4 worktree F2 實測推翻**:當前 eslint 10.9.0 環境下,`./node_modules/.bin/eslint`(無 target)**其實有掃 17+ 檔**、加 `_lint_probe.ts` 內含 unused import **有抓到**、exit 1;所以「silent no-op」在**這個環境**不成立
+- **真根因待查**:可能是(a) commit 前 dev 沒實際跑 `npm run lint` 就 push、(b) editor 保存快取讓實際檔內容與磁碟不同步、(c) 先前 npm cache / node_modules 版本錯配、(d) 我未查明的別因;forensic 需要回頭 git log / node_modules 狀態 / editor 未存追蹤,尚未做
 
 **避免方式**
-- **機器化(本次已做)**:改 `package.json:24` 為 `"lint": "eslint ."`——與 CI 命令對齊
-- **對稱原則**:任何 dev loop 命令要與 CI 命令**逐字相同**——不然 dev 綠 CI 紅時歸因會偏(懷疑 CI env 差、其實是命令不同)
-- **未來寫新 script 時**:tool binary 無 target 預設行為要**顯式驗證**——`npx <tool>` vs `npx <tool> .` 兩個都跑一次比對 exit + output
+- **對稱原則(保留、獨立於真根因)**:任何 dev loop 命令要與 CI 命令**逐字相同**——即使當下語意等價、也避免未來因某方環境改變出現「dev 綠 CI 紅」歸因偏差
+- **機器化(已做,無害)**:`package.json:24` 從 `"lint": "eslint"` 改為 `"lint": "eslint ."`,對齊 CI 命令。此修是 cosmetic + 對稱、不解真根因,但也不會壞事
+- **commit 前 gate 紀律**:push 前必跑一次 `npm run lint`(對稱後)確認 exit 0 + 有實際輸出行 / stderr;不能只靠 editor 的 lint 提示
 
 **相關**
-- 本 sprint fix commit 1f76deb(移除 unused path import)、round 3 worktree F2 抓到根因
-- CLAUDE.md「教訓的升級階梯」明訊「第 1 次踩寫 LESSONS → 重複踩標 ⚠️ → 預期再踩就機器化」——本條**已同時完成 LESSONS 記錄 + 機器化**(一字修 package.json),不留待下次踩
+- 本 sprint fix commit 1f76deb(移除 unused path import)
+- round 3 worktree F2 抓到「命令不對稱」現象、給了錯誤根因診斷「silent no-op」
+- round 4 worktree F2 實測推翻根因診斷、但「對稱 CI」原則仍成立
+- 真根因 forensic 待未來 sprint(若再踩就升級到 ⚠️、機器化 pre-push hook 強制跑 `npm run lint`)
 
 ---
 
