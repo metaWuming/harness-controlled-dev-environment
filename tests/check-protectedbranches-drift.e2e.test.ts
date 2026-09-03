@@ -199,14 +199,19 @@ describe("check-protectedbranches-drift e2e(A3 defer ⑩ CTRL-CI-014)", () => {
     expect(r.err).toContain("必為 immutable 完整 40 字元 hex SHA");
   });
 
-  it("#10 大小寫差異(擴大 'Main' vs base 'main')→ exit 2(字面 Set 敏感、依 parseHarnessConfig 語意)", () => {
-    // 「Main」與「main」是不同字面 → parseHarnessConfig 通過(LITERAL_BRANCH_RE 允許)
-    // → Set 視為不同元素 → 擴大
+  it("#10 HEAD parseHarnessConfig case-fold 拒重複 → exit 2 fail-closed(parse 路徑遮蔽、非 drift 判定;Step 5 F2 澄清)", () => {
+    // ⚠️ 澄清(Step 5 標準審 F2 + worktree F1):此 case 實際走的是 HEAD parse 失敗
+    // 路徑——harness-config.ts:127-135 assertStringArray 對 protectedBranches
+    // 內 case-fold 重複 throw(「Main」與「main」case-fold 同)、check-protectedbranches-drift.ts
+    // 的 HEAD parse catch 捕、回 exit 2 + stderr 含「"Main"」(來自 JSON.stringify)。
+    // **不是** diffProtectedBranches Set 字面敏感的測試——那條由 unit 覆蓋
+    // (tests/protectedbranches-drift.test.ts #11 case-diff 直接呼叫純函式、避開 parseHarnessConfig)。
     const fx = fixture(["main"]);
     fx.write(CONFIG_PATH, makeHarnessCfg(["main", "Main"]));
-    fx.commit("B: add case-diff");
+    fx.commit("B: HEAD 側 protectedBranches 內 case-fold 重複");
     const r = run(fx.dir, [`--base=${fx.A}`]);
     expect(r.code).toBe(2);
+    expect(r.err).toContain("parse 失敗");
     expect(r.err).toContain('"Main"');
   });
 });

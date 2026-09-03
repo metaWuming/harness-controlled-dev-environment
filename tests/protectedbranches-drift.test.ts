@@ -65,4 +65,16 @@ describe("diffProtectedBranches", () => {
     expect(r.added).toEqual(["release"]);
     expect(r.removed).toEqual([]);
   });
+
+  it("#11 字面 case-sensitive:base=['main'] / head=['Main'] → added=['Main']、removed=['main'](Step 5 F2 補;避開 parseHarnessConfig case-fold 拒)", () => {
+    const r = diffProtectedBranches(["main"], ["Main"]);
+    expect(r.added).toEqual(["Main"]);
+    expect(r.removed).toEqual(["main"]);
+  });
+
+  it("#12 字面 case-sensitive:base=['main'] / head=['main', 'Release'] → 只加 'Release'(不 case-fold 相等)", () => {
+    const r = diffProtectedBranches(["main"], ["main", "Release"]);
+    expect(r.added).toEqual(["Release"]);
+    expect(r.removed).toEqual([]);
+  });
 });

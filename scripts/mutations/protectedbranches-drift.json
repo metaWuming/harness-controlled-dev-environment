@@ -3,7 +3,7 @@
     "file": "scripts/check-protectedbranches-drift.ts",
     "find": "if (drift.added.length > 0) {",
     "replace": "if (false) {",
-    "label": "DP-M1 added.length > 0 判定繞過 → e2e #2 擴大 / #10 大小寫差異 轉紅(核心 fail-closed 契約)"
+    "label": "DP-M1 added.length > 0 判定繞過 → e2e #2 擴大 轉紅(核心 fail-closed 契約;#10 走 HEAD parse-failure 路徑、對此 mutant 無鑑別、不列為 killer——Step 5 F3 澄清)"
   },
   {
     "file": "scripts/lib/protectedbranches-drift.ts",
