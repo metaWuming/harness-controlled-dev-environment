@@ -81,6 +81,15 @@ const CONSUMERS: ConsumerSpec[] = [
       expect(r.stdout).toContain("mutation spec 樣本都對得上");
     },
   },
+  {
+    label: "check-doc-size",
+    scriptName: "check-doc-size.ts",
+    wrapperName: "check-doc-size-wrapper.mjs",
+    expectedMainExit: 0,
+    expectedMainMatcher: (r) => {
+      expect(r.stdout).toContain("記錄檔都在額度內");
+    },
+  },
 ];
 
 for (const spec of CONSUMERS) {
