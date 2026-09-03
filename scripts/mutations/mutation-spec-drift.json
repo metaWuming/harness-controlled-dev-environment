@@ -1,9 +1,9 @@
 [
   {
     "file": "scripts/check-mutation-specs.ts",
-    "find": "if (!self.ok || !self.original) {",
-    "replace": "if (false) {",
-    "label": "MSD-M1 spec 檔自身 checkTarget 失敗不再判 untrusted → symlink / untracked spec e2e 轉紅"
+    "find": "  if (!self.ok || !self.original) {\n    return { rel, status: \"untrusted\", probes: 0, problems: [`spec 檔 ${rel}:${self.reason}`] };\n  }",
+    "replace": "  if (!self.ok || !self.original) {\n    return { rel, status: \"ok\", probes: 0, problems: [] };\n  }",
+    "label": "MSD-M1 spec 檔自身 checkTarget 失敗改判 ok(fail-open、繞開 JSON.parse)→ e2e ⑤/⑦ + unit「spec 檔未追蹤 → untrusted」轉紅、走真實 return 分支非 catch fallback"
   },
   {
     "file": "scripts/check-mutation-specs.ts",
@@ -25,9 +25,9 @@
   },
   {
     "file": "scripts/check-mutation-specs.ts",
-    "find": "if (!target.ok || !target.original) {",
-    "replace": "if (false) {",
-    "label": "MSD-M5 目標檔 checkTarget 失敗不再判 DRIFT → 目標缺 / untracked / symlink 單測轉紅"
+    "find": "    if (!target.ok || !target.original) {\n      problems.push(`${rel}[${i}] ${spec.label} → 目標 ${spec.file}:${target.reason ?? \"讀不到內容\"}`);\n      return;\n    }",
+    "replace": "    if (!target.ok || !target.original) {\n      return;\n    }",
+    "label": "MSD-M5 目標檔 checkTarget 失敗改為 silently skip(fail-open、不 push、不 applyMutation)→ target 失敗但 problems 空 → status ok(而非 drift)→ unit「目標缺 / untracked / symlink」轉紅、走真實 forEach continuation 非 TypeError 傳播"
   },
   {
     "file": "scripts/check-mutation-specs.ts",
