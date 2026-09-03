@@ -129,13 +129,28 @@ const CONSUMERS: ConsumerSpec[] = [
     label: "check-no-source-terms",
     scriptName: "check-no-source-terms.ts",
     wrapperName: "check-no-source-terms-wrapper.mjs",
-    // direct exit 依 HEAD 內容變:working tree / git 史含未知 PR 引用(如 TODOS
-    // 新加的 self-PR 號)→ exit 1(fail-closed);沒有未知 PR → exit 0。兩者都
-    // 是 main 執行的合法狀態,共同特徵是 stdout 有「allowedPrs:」前綴。
-    // (同 check-bookkeeping-commit 的 HEAD-content-dependent 情況)
-    expectedMainExit: [0, 1],
+    // direct exit 依 HEAD 內容 + CI env 變(supervisor 2026-09-03 拍板選 B):
+    //   - working tree / git 史含未知 PR 引用(如 TODOS 新加的 self-PR 號)→ exit 1
+    //     (fail-closed);沒有未知 PR → exit 0。兩者都是 main 執行的合法狀態,
+    //     共同特徵是 stdout 有「allowedPrs:」前綴。
+    //   - push-on-feature CI 情境:fetch-delivery-refs step 對 non-delivery-branch
+    //     push 一律 skip(ci.yml:162 設計、避免 self-PR 死鎖)→ origin/HEAD 未 set
+    //     → loadAllowedPrs 內 resolveDeliveryRefsFromRepo 拒 → exit 2、stderr 印
+    //     「交付 ref 無法判定」(P2#2 sprint 收窄 delivery-refs 契約後的合法 fail-closed
+    //     情境;不是 invocation indeterminate、import/indeterminate 契約不變)。
+    // (同 check-bookkeeping-commit 的 HEAD-content-dependent 情況;此 script 額外對 CI env 敏感)
+    expectedMainExit: [0, 1, 2],
     expectedMainMatcher: (r) => {
-      expect(r.stdout).toContain("allowedPrs");
+      if (r.status === 2) {
+        // push-on-feature CI 合法 fail-closed:delivery-refs 拒(base-missing 類)
+        expect(r.stderr).toContain("交付 ref 無法判定");
+        // import/indeterminate 契約不變:exit 2 不該是 invocation indeterminate
+        expect(r.stderr).not.toContain("[invoked-as-main]");
+        expect(r.stderr).not.toContain("indeterminate");
+      } else {
+        // 0 (clean) / 1 (fail-closed with unknown PR):main 正常執行特徵
+        expect(r.stdout).toContain("allowedPrs");
+      }
     },
   },
   {
