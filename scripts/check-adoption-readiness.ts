@@ -31,6 +31,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { detectInvocation, reportIfNotMain } from './lib/invoked-as-main';
 import {
   HARNESS_CONFIG_PATH,
   KNOWN_ADAPTERS,
@@ -719,8 +720,11 @@ async function main(): Promise<number> {
   return r.ready ? 0 : 2;
 }
 
-const invokedPath = process.argv[1];
-if (invokedPath && pathToFileURL(invokedPath).href === import.meta.url) {
+// ESM main 判定改用 scripts/lib/invoked-as-main.ts 共用 lib(P2#3 defer ①② 後續遷移):
+// 兩端 realpath、indeterminate 由 caller 顯式 exit(2)、被當 import 用時完全靜默。
+const outcome = detectInvocation(import.meta.url, process.argv[1]);
+const isMain = reportIfNotMain(outcome, 'check-adoption-readiness');
+if (isMain) {
   main().then(
     (code) => process.exit(code),
     (e) => {
@@ -728,4 +732,6 @@ if (invokedPath && pathToFileURL(invokedPath).href === import.meta.url) {
       process.exit(2);
     }
   );
+} else if (outcome.kind === 'indeterminate') {
+  process.exit(2);
 }

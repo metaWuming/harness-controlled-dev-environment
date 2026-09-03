@@ -120,6 +120,15 @@ const CONSUMERS: ConsumerSpec[] = [
       expect(r.stdout).toContain("CSO_REQUIRED");
     },
   },
+  {
+    label: "check-adoption-readiness",
+    scriptName: "check-adoption-readiness.ts",
+    wrapperName: "check-adoption-readiness-wrapper.mjs",
+    expectedMainExit: 0,
+    expectedMainMatcher: (r) => {
+      expect(r.stdout).toContain("TEMPLATE_MODE");
+    },
+  },
 ];
 
 for (const spec of CONSUMERS) {
