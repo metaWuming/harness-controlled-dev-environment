@@ -195,6 +195,18 @@ jobs:
             npm run check:baseline-governance -- "--base=origin/$BASE_REF"
           fi
 
+      - name: Protected Branches Drift Check
+        # A3 defer ⑩ CTRL-CI-014:對 harness.config.json 的 protectedBranches 集合擴大
+        # (加分支到 protectedBranches)fail-closed。集合擴大 = 治理擴權(那分支能享
+        # baseline-governance promotion 豁免),PR 內合法擴大需 Owner/admin 組織治理層
+        # 手續(branch protection allow + 稽核)、無 PR-controlled marker/opt-out/--no-verify。
+        # trust-boundary:讀 merge-base(--base, HEAD)那側的 config bytes(git show <mb>:...),
+        # 不讀 PR tree、不讀可移動 base ref。--base 用 PR event 給的 **immutable base SHA**
+        # (github.event.pull_request.base.sha),不是 branch ref;checkout 頂層 fetch-depth: 0 已保證
+        # mb object 存在。此 step if: 唯一允許 pull_request event(避免 slow-burn PR#1 繞過)。
+        if: github.event_name == 'pull_request'
+        run: npx tsx scripts/check-protectedbranches-drift.ts --base=${{ github.event.pull_request.base.sha }}
+
       - name: TODOS Markers Check
         # marker 治理:TODOS.md 完成宣稱(✅/完工)必須引用有 merge 證據的 PR 號,
         # 防打錯號 / 投機性標 ✅。MARKER_SELF_PR 解「同 PR 翻 marker 引用本 PR」死鎖。

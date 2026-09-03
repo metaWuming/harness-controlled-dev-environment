@@ -877,6 +877,41 @@
       "testRefs": [],
       "bypass": "github",
       "notes": "⚠️ 本 repo 的 hard-automated controls 之所以「hard」依賴這條設定存在;目前只能建議、不能驗證"
+    },
+    {
+      "id": "CTRL-CI-014",
+      "name": "protectedBranches 集合擴大 drift 守門",
+      "legacyGate": "⑪",
+      "class": "hard-automated",
+      "triggers": [
+        "pull_request"
+      ],
+      "implementation": [
+        ".github/workflows/ci.yml",
+        "scripts/check-protectedbranches-drift.ts",
+        "scripts/lib/protectedbranches-drift.ts",
+        "scripts/lib/harness-config.ts",
+        "scripts/lib/invoked-as-main.ts",
+        "scripts/harness.config.json"
+      ],
+      "locator": "CI step「Protected Branches Drift Check」(pull_request only);對 PR 的 merge-base(base.sha, HEAD)兩側讀 harness.config.json、同用 parseHarnessConfig,集合 added 非空 → exit 2 fail-closed(無 PR-controlled bypass);trust-boundary:讀 merge-base 那側 config bytes(git show <mb>:...)、不讀 PR tree、不讀可移動 base ref",
+      "ciStep": "Protected Branches Drift Check",
+      "owner": "github",
+      "failureBehavior": "block",
+      "evidence": "CI check 狀態;stderr 明列 added / removed / mb SHA / 兩側 protectedBranches",
+      "degradation": "merge-base 失敗 / 兩側任一 config bytes 讀不到 / parse 失敗 / argv 錯 → exit 2 fail-closed(無法判定);Owner/admin 合法擴大走組織治理層 override(branch protection allow + 稽核)、CI 維持紅、rollback = full revert PR",
+      "tested": [
+        "unit",
+        "e2e",
+        "mutation"
+      ],
+      "testRefs": [
+        "tests/protectedbranches-drift.test.ts",
+        "tests/check-protectedbranches-drift.e2e.test.ts",
+        "scripts/mutations/protectedbranches-drift.json"
+      ],
+      "bypass": "admin override(組織治理層、非 PR-controlled)",
+      "notes": "GOV-005 branch-protection advisory 仍保留;本 control 是機器化 drift gate、獨立於 GOV-005 身分。--base 必用 immutable PR base SHA(github.event.pull_request.base.sha),非 branch ref;checkout 前置需 fetch-depth: 0 或明確 fetch base SHA object"
     }
   ]
 }

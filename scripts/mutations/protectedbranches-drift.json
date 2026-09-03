@@ -1,0 +1,50 @@
+[
+  {
+    "file": "scripts/check-protectedbranches-drift.ts",
+    "find": "if (drift.added.length > 0) {",
+    "replace": "if (false) {",
+    "label": "DP-M1 added.length > 0 判定繞過 → e2e #2 擴大 轉紅(核心 fail-closed 契約;#10 走 HEAD parse-failure 路徑、對此 mutant 無鑑別、不列為 killer——Step 5 F3 澄清)"
+  },
+  {
+    "file": "scripts/lib/protectedbranches-drift.ts",
+    "find": "  for (const b of headSet) {\n    if (!baseSet.has(b)) added.push(b);\n  }",
+    "replace": "  for (const b of baseSet) {\n    if (!headSet.has(b)) added.push(b);\n  }",
+    "label": "DP-M7 diff 對稱性錯換(把 added 用成 removed 邏輯)→ unit #2 #3 #4 #6 #7 #8 轉紅(subset 方向錯)"
+  },
+  {
+    "file": "scripts/check-protectedbranches-drift.ts",
+    "find": "const mb = gitRun([\"merge-base\", baseSha, \"HEAD\"], cwd);",
+    "replace": "const mb = { ok: true as const, stdout: \"HEAD\\n\" };",
+    "label": "DP-M4 merge-base 失敗 fallback 假造 HEAD → e2e #8 unrelated SHA 應 exit 2 但變 exit 0 轉紅(trust-boundary 破壞)"
+  },
+  {
+    "file": "scripts/check-protectedbranches-drift.ts",
+    "find": "  const baseBytes = gitRun([\"show\", `${mbSha}:${CONFIG_PATH}`], cwd);",
+    "replace": "  const baseBytes = gitRun([\"show\", `HEAD:${CONFIG_PATH}`], cwd);",
+    "label": "DP-M2 base 讀 HEAD tree(而非 merge-base 那側)→ trust-boundary 破壞、e2e #2 擴大 base=head 兩側相等變 exit 0 轉紅"
+  },
+  {
+    "file": "scripts/check-protectedbranches-drift.ts",
+    "find": "    baseCfg = parseHarnessConfig(baseBytes.stdout);",
+    "replace": "    baseCfg = { protectedBranches: [] } as ReturnType<typeof parseHarnessConfig>;",
+    "label": "DP-M5 parseHarnessConfig 失敗吞掉、base 假為空 → e2e #7 config JSON 壞應 exit 2 但吞成 base=[] 讓所有 head branches 都算 added → 誤紅但 semantics 錯(mutant 讓 base 永遠空、任何 head 都擴大)、e2e #1 相同案例本應 exit 0 變 exit 2 轉紅"
+  },
+  {
+    "file": "scripts/check-protectedbranches-drift.ts",
+    "find": "} else if (outcome.kind === \"indeterminate\") {\n  process.exit(2);\n}",
+    "replace": "}",
+    "label": "DP-M6 caller-wiring 刪 indeterminate exit(2) branch → e2e case #4(indeterminate)在 invoked-as-main.e2e.test.ts 應會轉紅(若 CONSUMERS 加 check-protectedbranches-drift);未加時暫存留、mutant 標明 fail-open"
+  },
+  {
+    "file": ".github/workflows/ci.yml",
+    "find": "        if: github.event_name == 'pull_request'\n        run: npx tsx scripts/check-protectedbranches-drift.ts --base=${{ github.event.pull_request.base.sha }}",
+    "replace": "        if: github.event_name == 'pull_request' && github.base_ref == 'main'\n        run: npx tsx scripts/check-protectedbranches-drift.ts --base=${{ github.event.pull_request.base.sha }}",
+    "label": "DP-M3 CI step if 加 branch filter(縮窄成只擋 base=main;slow-burn PR#1 可繞)→ tests/ci-step-conditions.test.ts 「if 逐字等於」轉紅"
+  },
+  {
+    "file": "scripts/check-protectedbranches-drift.ts",
+    "find": "  if (!IMMUTABLE_SHA_RE.test(val)) {",
+    "replace": "  if (false) {",
+    "label": "DP-M8 SHA 驗退回僅 nonempty(拿掉 40-char hex 檢查)→ e2e #10a --base=HEAD 應 exit 2 但變 exit 0(merge-base HEAD HEAD 讓擴大變 no drift)轉紅(Codex Step 4 r1 P1 trust-boundary killer)"
+  }
+]

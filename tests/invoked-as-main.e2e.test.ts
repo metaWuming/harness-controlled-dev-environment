@@ -190,6 +190,16 @@ const CONSUMERS: ConsumerSpec[] = [
       expect(r.stderr).toContain("用法:tsx scripts/render-control-catalog.ts");
     },
   },
+  {
+    label: "check-protectedbranches-drift",
+    scriptName: "check-protectedbranches-drift.ts",
+    wrapperName: "check-protectedbranches-drift-wrapper.mjs",
+    // direct 無 args → fail-closed exit 2 + stderr「--base=<sha> 必填」
+    expectedMainExit: 2,
+    expectedMainMatcher: (r) => {
+      expect(r.stderr).toContain("--base=<sha> 必填");
+    },
+  },
 ];
 
 for (const spec of CONSUMERS) {
