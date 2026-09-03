@@ -96,7 +96,7 @@ npx tsx scripts/mutate.ts --file src/example.ts \
 - **D3 walker 邊界**:頂層 + 遞迴途中任一 symlink dir → **fail-closed exit 2**;walker 每層 `lstat` / `readdir` / `stat` I/O 失敗或型別無法判定 → **fail-closed**(檔案級 tracked / non-symlink 仍交給 `mutate.ts` 的純函式讀前防線:純讀 caller 走 `readCheckedTarget`、放寬 nlink=1,P2#3 defer ⑥;破壞性 mutate 走 `checkTarget` 保留 nlink=1 第一道 + `writeCheckedSync` L731 第二道防線)
 - **D4 同名衝突**:collision key = **lowercased 完整 POSIX repo-relative path**(不是 basename)。`sprint-a/guard.json` 與 `sprint-b/guard.json` 是**合法不同 spec**、不算衝突;`sub/foo.json` 與 `sub/Foo.JSON` 才算。命中 → **fail-closed exit 2**。排序 = posix 完整路徑排序
 - **D5 遞迴後 0-spec**:總數 0 → **fail-closed exit 2**(0 spec = 這道閘門形同虛設)
-- **D6 checkTarget 呼叫端邊界**:本檔對 `checkTarget` 的**呼叫**可配合 discovery 調整;`mutate.ts` 的 `checkTarget` **定義**為禁區、不動(sprint 3-5 拍板)
+- **D6 checkTarget / readCheckedTarget 呼叫端邊界**:本檔的**呼叫端**可配合 discovery 調整;`mutate.ts` 的 `checkTarget` **公開 signature 與 nlink=1 observable behavior 不動**(sprint 3-5 拍板 + P2#3 defer ⑥ supervisor 再拍板;內部允許 helper/refactor 抽出);本檔純讀走 `readCheckedTarget`(放寬 nlink=1、hardlink alias 對純讀無風險),破壞性 mutate main CLI 仍走 `checkTarget` + `writeCheckedSync` L731 nlink 第二道防線
 - **D7 discovery 函式命名**:`discoverSpecFiles`(舊名 `listSpecFiles` 已改)
 
 檔內含子目錄 spec(如 `sprint-N/foo.json`)是合法用法。**不要**把 spec 檔存成大寫副檔名之外的其他形式（如 `.jsonc` / `.yaml` — 這些不受 gate 守門）。
