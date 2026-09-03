@@ -41,7 +41,7 @@
  *                              P2#3 defer ⑥ supervisor 再拍板);本檔純讀改走
  *                              `readCheckedTarget`(放寬 nlink=1、hardlink alias 對純讀
  *                              無風險),破壞性 mutate main CLI 仍走 checkTarget +
- *                              writeCheckedSync L731 nlink 第二道防線
+ *                              writeCheckedSync 內的 nlink !== 1 拒判(第二道防線)
  *   D7 discovery 函式命名:`discoverSpecFiles`(rev 2 supervisor P2-2)
  *
  * 純讀:不跑測試、不寫檔、不改工作樹、不需要乾淨工作樹。無 env override、無 allowlist。
@@ -135,7 +135,7 @@ export function findCaseCollisions(paths: string[]): CollisionGroup[] {
  *
  * 只做 traversal + 副檔名過濾;檔案本身的 tracked / non-symlink 判定交給 mutate.ts
  * 讀前防線——本檔純讀走 `readCheckedTarget`(放寬 nlink=1、P2#3 defer ⑥),破壞性
- * mutate main CLI 仍走 `checkTarget`(額外含 nlink=1 拒判 + writeCheckedSync L731 第二道)。
+ * mutate main CLI 仍走 `checkTarget`(額外含 nlink=1 拒判 + writeCheckedSync 內的 nlink !== 1 第二道防線)。
  */
 export function walkSpecDir(
   absDir: string,
