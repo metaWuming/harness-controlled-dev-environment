@@ -28,6 +28,8 @@
  *   D4 同名衝突:collision key = lowercased 完整 POSIX repo-relative path;命中 → fail-closed。
  *                排序:posix 完整路徑排序。
  *   D5 0-spec:遞迴後總數 0 → fail-closed(既有已擋、寫進契約)
+ *   D6 checkTarget 呼叫端邊界:本檔對 checkTarget 的呼叫可配合 discovery 調整;
+ *                              mutate.ts 的 checkTarget **定義**為禁區、不動(sprint 3-5 拍板)
  *   D7 discovery 函式命名:`discoverSpecFiles`(rev 2 supervisor P2-2)
  *
  * 純讀:不跑測試、不寫檔、不改工作樹、不需要乾淨工作樹。無 env override、無 allowlist。

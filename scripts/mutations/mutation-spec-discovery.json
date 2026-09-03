@@ -14,14 +14,20 @@
   {
     "file": "scripts/check-mutation-specs.ts",
     "find": "if (target.isDirectory()) return { ok: false, reason: `symlink directory:${rel}` };",
-    "replace": "if (false) return { ok: false, reason: `symlink directory:${rel}` };",
-    "label": "MSD-D3 symlink dir 不 fail-closed(supervisor P1-1)→ walker 續走、e2e ⑭ 診斷字面轉紅"
+    "replace": "if (target.isDirectory()) continue;",
+    "label": "MSD-D3 symlink dir 靜默略過(舊壞行為 fail-open;Step 4 r1 P1 修)→ e2e ⑭ 合法 top.json fixture 會 exit 0、真正殺到 D3"
   },
   {
     "file": "scripts/check-mutation-specs.ts",
     "find": "    const key = p.toLowerCase();",
-    "replace": "    const key = p.split(\"/\").pop()!.toLowerCase();",
-    "label": "MSD-D4 collision key 由完整 posix path 退回 basename → 合法不同目錄同名 unit 誤判、轉紅"
+    "replace": "    const key = p;",
+    "label": "MSD-D4a collision key 取消 lowercase(fail-open:大小寫 collision 漏掉;Step 4 r1 P1 修)→ pure unit 頂層同 basename 不同大小寫失去 collision、轉紅"
+  },
+  {
+    "file": "scripts/check-mutation-specs.ts",
+    "find": "    const arr = groups.get(key) ?? [];",
+    "replace": "    const arr = groups.get(key.split(\"/\").pop()!.toLowerCase()) ?? [];",
+    "label": "MSD-D4b collision key 退回 basename(fail-open:合法不同目錄同名誤判)→ pure unit 「不同目錄同 basename → 合法不衝突」轉紅"
   },
   {
     "file": "scripts/check-mutation-specs.ts",

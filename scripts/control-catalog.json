@@ -404,7 +404,7 @@
         "scripts/mutations/mutation-spec-discovery.json"
       ],
       "bypass": "admin override",
-      "notes": "只驗「樣本對得上」,不證明探針仍會 kill;完整 mutation 仍由 Step 4.5 人工跑並綁 HEAD。是 mutate.ts 閘② 的 CI 前置版。discovery 契約 D1-D7 見 check-mutation-specs.ts 檔頭 docstring(P2#3 defer ⑤)"
+      "notes": "只驗「樣本對得上」,不證明探針仍會 kill;完整 mutation 仍由 Step 4.5 人工跑並綁 HEAD。是 mutate.ts 閘② 的 CI 前置版。discovery 契約 D1-D7 見 check-mutation-specs.ts 檔頭 docstring(P2#3 defer ⑤;D6 明列 checkTarget 呼叫端可調、定義為禁區、mutate.ts 不動)"
     },
     {
       "id": "CTRL-HOOK-001",
