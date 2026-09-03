@@ -83,8 +83,8 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 - **工時**:剩下條目合計 5–8h
 
 ### ✅ 其他 8 支 script 同款 invoked-as-main 舊寫法(遷移到 `scripts/lib/invoked-as-main.ts`)(PR #___)
-- **來源**:2026-09-03 PR P2#3 defer ①② 交付 sprint 中,repo-wide grep 發現 owner-scoped 3 支以外仍有 7 支 script 用舊 isMain 寫法(A/B 兩派)、經 symlink 目錄呼叫可能靜默 exit 0
-- **內容**(未修 8 支;分數關係:本 sprint 3 / 未修 8 / 總計 11,含已修 1):
+- **來源**:2026-09-03 PR P2#3 defer ①② 交付 sprint 中,repo-wide grep 發現 owner-scoped 3 支以外仍有 8 支 script 用舊 isMain 寫法(A/B 兩派)、經 symlink 目錄呼叫可能靜默 exit 0
+- **內容**(原未修 8 支;分數關係:PR #50 owner-scoped 3 / 本 sprint 遷 8 / 總計 11,含已修 1):
   - A 派(fileURLToPath 直比 path.resolve,無 realpath):
     - `scripts/check-doc-size.ts:143-145`
     - `scripts/check-bookkeeping-commit.ts:185-186`
