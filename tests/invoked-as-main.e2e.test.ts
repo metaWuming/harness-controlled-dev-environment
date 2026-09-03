@@ -101,6 +101,15 @@ const CONSUMERS: ConsumerSpec[] = [
       expect(r.stdout).toMatch(/violations/);
     },
   },
+  {
+    label: "check-no-source-terms",
+    scriptName: "check-no-source-terms.ts",
+    wrapperName: "check-no-source-terms-wrapper.mjs",
+    expectedMainExit: 0,
+    expectedMainMatcher: (r) => {
+      expect(r.stdout).toContain("allowedPrs");
+    },
+  },
 ];
 
 for (const spec of CONSUMERS) {

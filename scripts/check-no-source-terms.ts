@@ -72,7 +72,7 @@ import { StringDecoder } from "node:string_decoder";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { detectInvocation, reportIfNotMain } from "./lib/invoked-as-main";
 // 批 10 P2-1:MARKER_SELF_PR 驗證抽到 shared lib、兩 script 共用單一入口(擋跨檔漂移)
 import { acknowledgeSelfPr } from "./lib/marker-self-pr";
 import { formatRejections, resolveDeliveryRefsFromRepo } from "./lib/delivery-refs";
@@ -1902,9 +1902,10 @@ function main(): number {
 
 // ───────────────────────────────────────── entry
 
-const isDirect =
-  process.argv[1] &&
-  fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+// ESM main 判定改用 scripts/lib/invoked-as-main.ts 共用 lib(P2#3 defer ①② 後續遷移):
+// 兩端 realpath、indeterminate 由 caller 顯式 exit(2)、被當 import 用時完全靜默。
+const outcome = detectInvocation(import.meta.url, process.argv[1]);
+const isDirect = reportIfNotMain(outcome, "check-no-source-terms");
 if (isDirect) {
   try {
     process.exit(main());
@@ -1912,4 +1913,6 @@ if (isDirect) {
     console.error("❌ 內部錯誤:", (e as Error).message || e);
     process.exit(1);
   }
+} else if (outcome.kind === "indeterminate") {
+  process.exit(2);
 }
