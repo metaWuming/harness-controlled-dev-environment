@@ -138,6 +138,16 @@ const CONSUMERS: ConsumerSpec[] = [
       expect(r.stdout).toContain("失效引用");
     },
   },
+  {
+    label: "check-baseline-governance",
+    scriptName: "check-baseline-governance.ts",
+    wrapperName: "check-baseline-governance-wrapper.mjs",
+    // direct 無 --base args → fail-closed exit 2 + stderr「--base=<ref> 必填」
+    expectedMainExit: 2,
+    expectedMainMatcher: (r) => {
+      expect(r.stderr).toContain("--base=<ref>");
+    },
+  },
 ];
 
 for (const spec of CONSUMERS) {
