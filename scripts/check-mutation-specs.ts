@@ -11,12 +11,17 @@
  *   每條探針的 `find` 樣本現在還能不能在原始碼裡精準對上。對得上不代表探針仍會 kill,
  *   對不上則必然是 mutate 會拒跑的形狀——所以它是 mutate 的**前置守門**,不是替代品。
  *
- * 安全邊界(supervisor plan rev 2 P1):spec 檔本身是 PR 作者可改的 CI 輸入。
+ * 安全邊界(supervisor plan rev 2 P1;P2#3 defer ⑥ 更新):spec 檔本身是 PR 作者可改的 CI 輸入。
  *   - `scripts/mutations` 目錄必須是 repo 內的真目錄(非 symlink、realpath 等於正規路徑)。
- *   - 每個 spec 檔**讀之前**先過 `mutate.ts` 的 `checkTarget`(repo 內、git 追蹤、非 symlink、
- *     一般檔、nlink=1、UTF-8;`O_NOFOLLOW` 開一次 fd 取 bytes)。之後**只用那份 bytes** 解析,
- *     不再依路徑讀檔——tracked spec 被換成指向 repo 外的 symlink 時,外部檔不會成為 CI 輸入。
- *   - 探針目標同樣經 `checkTarget` 取 bytes,再交給 `applyMutation`。
+ *   - 每個 spec 檔**讀之前**先過 `mutate.ts` 的 `readCheckedTarget`(repo 內、git 追蹤、
+ *     非 symlink、一般檔、UTF-8;`O_NOFOLLOW` 開一次 fd 取 bytes)——**放寬 nlink=1**
+ *     (P2#3 defer ⑥):純讀 caller 不寫回、hardlink alias 不受影響;破壞性 mutate 路徑
+ *     仍走 `checkTarget`(nlink=1 第一道)+ `writeCheckedSync` 內部 nlink=1 第二道防線。
+ *     `readCheckedTarget` 回傳 `ReadTargetCheck` discriminated union、**刻意不含**
+ *     `dev` / `ino` / `mode` / `abs`——由 TS 型別編譯期擋純讀 API 誤接破壞性寫回。
+ *     之後**只用那份 bytes** 解析,不再依路徑讀檔——tracked spec 被換成指向 repo 外的
+ *     symlink 時,外部檔不會成為 CI 輸入。
+ *   - 探針目標同樣經 `readCheckedTarget` 取 bytes,再交給 `applyMutation`。
  *   所有路徑 / bytes 的判斷**只複用 `mutate.ts` 的純函式**,本檔不另寫一套安全邏輯。
  *
  * spec discovery 契約(P2#3 defer ⑤,D1-D7 拍板;見 plan file):
@@ -24,13 +29,19 @@
  *   D2 副檔名大小寫:大小寫無關(.json / .JSON / .Json 都收)
  *   D3 walker 邊界:頂層 + 遞迴途中任一 symlink dir → fail-closed exit 2;
  *                    walker 每層 lstat / readdir / stat 的 I/O 失敗或型別無法判定 → fail-closed。
- *                    (檔案級 tracked / non-symlink / nlink=1 仍交給 checkTarget,禁區不動)
+ *                    (檔案級 tracked / non-symlink 仍交給 readCheckedTarget;純讀放寬
+ *                     nlink=1、P2#3 defer ⑥;破壞性 mutate 走 checkTarget 保留 nlink=1)
  *   D4 同名衝突:collision key = lowercased 完整 POSIX repo-relative path;命中 → fail-closed。
  *                排序:posix 完整路徑排序。
  *   D5 0-spec:遞迴後總數 0 → fail-closed(既有已擋、寫進契約);
  *              + formatReport([]) fail-closed 第二道防線(P2#3 defer ⑩、前置失效兜底)
- *   D6 checkTarget 呼叫端邊界:本檔對 checkTarget 的呼叫可配合 discovery 調整;
- *                              mutate.ts 的 checkTarget **定義**為禁區、不動(sprint 3-5 拍板)
+ *   D6 checkTarget / readCheckedTarget 呼叫端邊界:本檔的**呼叫端**可配合 discovery
+ *                              調整;`mutate.ts` 的 `checkTarget` 公開 signature 與
+ *                              nlink=1 observable behavior **不動**(sprint 3-5 拍板 +
+ *                              P2#3 defer ⑥ supervisor 再拍板);本檔純讀改走
+ *                              `readCheckedTarget`(放寬 nlink=1、hardlink alias 對純讀
+ *                              無風險),破壞性 mutate main CLI 仍走 checkTarget +
+ *                              writeCheckedSync 內的 nlink !== 1 拒判(第二道防線)
  *   D7 discovery 函式命名:`discoverSpecFiles`(rev 2 supervisor P2-2)
  *
  * 純讀:不跑測試、不寫檔、不改工作樹、不需要乾淨工作樹。無 env override、無 allowlist。
@@ -48,7 +59,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { detectInvocation, reportIfNotMain } from "./lib/invoked-as-main";
-import { applyMutation, checkTarget, parseSpecs } from "./mutate";
+import { applyMutation, parseSpecs, readCheckedTarget } from "./mutate";
 
 export const SPEC_DIR = "scripts/mutations";
 
@@ -118,11 +129,13 @@ export function findCaseCollisions(paths: string[]): CollisionGroup[] {
  *   - lstat throw   → `lstat 失敗於 <rel>:<message>`
  *   - symlink 且 stat 失敗 → `symlink 目標無法讀於 <rel>:<message>`
  *   - symlink 指向 dir     → `symlink directory:<rel>`(supervisor P1-1:不能靜默略過)
- *   - symlink 指向 file    → 收入(交給 checkTarget 檔案讀前防線判 untrusted)
+ *   - symlink 指向 file    → 收入(交給檔案讀前防線判 untrusted:本檔純讀走 readCheckedTarget、
+ *                            仍拒 symlink;破壞性 mutate 走 checkTarget)
  *   - 既非 file / dir / symlink 的異常型別 → `未預期型別於 <rel>`
  *
- * 只做 traversal + 副檔名過濾;檔案本身的 tracked / non-symlink / nlink=1 判定
- * 交給 checkTarget(mutate.ts 讀前防線,禁區不動)。
+ * 只做 traversal + 副檔名過濾;檔案本身的 tracked / non-symlink 判定交給 mutate.ts
+ * 讀前防線——本檔純讀走 `readCheckedTarget`(放寬 nlink=1、P2#3 defer ⑥),破壞性
+ * mutate main CLI 仍走 `checkTarget`(額外含 nlink=1 拒判 + writeCheckedSync 內的 nlink !== 1 第二道防線)。
  */
 export function walkSpecDir(
   absDir: string,
@@ -213,9 +226,10 @@ export function discoverSpecFiles(repoRootReal: string, io: WalkerIO = DEFAULT_I
 
 /** 單一 spec 檔的完整判定。純函式(只讀)。 */
 export function checkSpecFile(repoRootReal: string, rel: string): SpecFileResult {
-  const self = checkTarget(repoRootReal, rel);
-  // `original` 在 ok 時必有;缺了就是 mutate.ts 契約被改,一樣當不可信(fail-closed)
-  if (!self.ok || !self.original) {
+  const self = readCheckedTarget(repoRootReal, rel);
+  // discriminated union narrowing:if (!self.ok) 分支保證 self.reason 存在,
+  // else 分支保證 self.original 是 Buffer(P2#3 defer ⑥ ReadTargetCheck union)
+  if (!self.ok) {
     return { rel, status: "untrusted", probes: 0, problems: [`spec 檔 ${rel}:${self.reason}`] };
   }
   let specs;
@@ -226,9 +240,9 @@ export function checkSpecFile(repoRootReal: string, rel: string): SpecFileResult
   }
   const problems: string[] = [];
   specs.forEach((spec, i) => {
-    const target = checkTarget(repoRootReal, spec.file);
-    if (!target.ok || !target.original) {
-      problems.push(`${rel}[${i}] ${spec.label} → 目標 ${spec.file}:${target.reason ?? "讀不到內容"}`);
+    const target = readCheckedTarget(repoRootReal, spec.file);
+    if (!target.ok) {
+      problems.push(`${rel}[${i}] ${spec.label} → 目標 ${spec.file}:${target.reason}`);
       return;
     }
     const applied = applyMutation(target.original.toString("utf8"), spec);

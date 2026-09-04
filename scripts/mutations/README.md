@@ -71,7 +71,7 @@ npx tsx scripts/mutate.ts --file src/example.ts \
   與 `check-hooks.sh` 對第三個 SSOT 的要求
   **spec 的 `find` 是原始碼逐字樣本**——改到那些行就要同步改 spec,否則 mutate 會以
   「樣本沒對上」exit 2(fail-closed,不會靜默通過)。
-- `mutation-spec-drift.json` — 7 條探針,守 `check-mutation-specs.ts`(spec 檔與目標檔的可信邊界、DRIFT 判定、exit 0/1/2 契約、formatReport 空 results defense-in-depth 第二道,P2#3 defer ⑩ M7)
+- `mutation-spec-drift.json` — 8 條探針,守 `check-mutation-specs.ts`(spec 檔與目標檔的可信邊界、DRIFT 判定、exit 0/1/2 契約、formatReport 空 results defense-in-depth 第二道,P2#3 defer ⑩ M7;純讀 caller 走 readCheckedTarget、跳 nlink=1 拒判,P2#3 defer ⑥ MSD-M8 攻誤換回 checkTarget)
 - `mutation-spec-discovery.json` — 8 條探針(P2#3 defer ⑤),守 `check-mutation-specs.ts` 的 discovery 契約。**mutant ID → 契約 D-ID mapping**(mutant 命名為歷史 label,與契約 D-ID 有錯位;讀「MSD-Dn 存活」時對應此表找契約條款):
   - MSD-D1 → 契約 D1(遞迴子目錄)
   - MSD-D2 → 契約 D2(case-insensitive,real-file 分支)
@@ -81,7 +81,7 @@ npx tsx scripts/mutate.ts --file src/example.ts \
   - MSD-D4b → 契約 D4(collision basename 誤判 false-positive)
   - MSD-D5 → 契約 D4(排序 posix 完整路徑子條款)
   - MSD-D6 → 契約 D5(遞迴後 0-spec fail-closed)
-  - 契約 D6(checkTarget 禁區)/ 契約 D7(discoverSpecFiles 命名)= 政策/命名條款、**無 mutant**
+  - 契約 D6(checkTarget / readCheckedTarget 呼叫端邊界)/ 契約 D7(discoverSpecFiles 命名)= 政策/命名條款、**無 mutant**
 - `delivery-refs.json` — 8 條探針,守 `lib/delivery-refs.ts` 共用契約(受驗 origin/HEAD 的正規 / 存在 / 宣告檢查、拒絕不靜默、無 fallback、**不讀 env**)與兩個 consumer 的 exit 2 接線
 - `invoked-as-main.json` — 8 條探針(全被抓),守 `lib/invoked-as-main.ts` 五態(discriminated outcome 三態、reporter 對 indeterminate 印診斷 / 對 import 靜默、sanitize 契約、argv1 undefined 走 indeterminate)+ 三支 owner-scoped consumer 的 caller-wiring exit(2) branch(mutate / check-control-catalog / check-mutation-specs)
 - `invoked-as-main-migration.json` — 8 條探針(全被抓),守 remaining 8 支 script 的 caller-wiring exit(2) branch(check-doc-size / check-bookkeeping-commit / check-no-source-terms / check-cso-trigger / check-adoption-readiness / check-doc-refs / check-baseline-governance / render-control-catalog)。每支對應 e2e case #4 精確斷言 label 必殺
@@ -93,10 +93,10 @@ npx tsx scripts/mutate.ts --file src/example.ts \
 
 - **D1 遞迴子目錄**:收(子目錄 spec 不會靜默漏)
 - **D2 副檔名大小寫**:大小寫無關 — `.json` / `.JSON` / `.Json` 都收
-- **D3 walker 邊界**:頂層 + 遞迴途中任一 symlink dir → **fail-closed exit 2**;walker 每層 `lstat` / `readdir` / `stat` I/O 失敗或型別無法判定 → **fail-closed**(檔案級 tracked / non-symlink / nlink=1 仍交給 `mutate.ts` 的 `checkTarget` 讀前防線)
+- **D3 walker 邊界**:頂層 + 遞迴途中任一 symlink dir → **fail-closed exit 2**;walker 每層 `lstat` / `readdir` / `stat` I/O 失敗或型別無法判定 → **fail-closed**(檔案級 tracked / non-symlink 仍交給 `mutate.ts` 的純函式讀前防線:純讀 caller 走 `readCheckedTarget`、放寬 nlink=1,P2#3 defer ⑥;破壞性 mutate 走 `checkTarget` 保留 nlink=1 第一道 + `writeCheckedSync` 內的 nlink !== 1 拒判為第二道防線)
 - **D4 同名衝突**:collision key = **lowercased 完整 POSIX repo-relative path**(不是 basename)。`sprint-a/guard.json` 與 `sprint-b/guard.json` 是**合法不同 spec**、不算衝突;`sub/foo.json` 與 `sub/Foo.JSON` 才算。命中 → **fail-closed exit 2**。排序 = posix 完整路徑排序
 - **D5 遞迴後 0-spec**:總數 0 → **fail-closed exit 2**(0 spec = 這道閘門形同虛設)
-- **D6 checkTarget 呼叫端邊界**:本檔對 `checkTarget` 的**呼叫**可配合 discovery 調整;`mutate.ts` 的 `checkTarget` **定義**為禁區、不動(sprint 3-5 拍板)
+- **D6 checkTarget / readCheckedTarget 呼叫端邊界**:本檔的**呼叫端**可配合 discovery 調整;`mutate.ts` 的 `checkTarget` **公開 signature 與 nlink=1 observable behavior 不動**(sprint 3-5 拍板 + P2#3 defer ⑥ supervisor 再拍板;內部允許 helper/refactor 抽出);本檔純讀走 `readCheckedTarget`(放寬 nlink=1、hardlink alias 對純讀無風險),破壞性 mutate main CLI 迴圈的第一次 `checkTarget` 呼叫仍走此路徑 + `writeCheckedSync` 內的 `nlink !== 1` 拒判為第二道防線
 - **D7 discovery 函式命名**:`discoverSpecFiles`(舊名 `listSpecFiles` 已改)
 
 檔內含子目錄 spec(如 `sprint-N/foo.json`)是合法用法。**不要**把 spec 檔存成大寫副檔名之外的其他形式（如 `.jsonc` / `.yaml` — 這些不受 gate 守門）。
@@ -107,7 +107,10 @@ CI step「Mutation Spec Drift Check」對本目錄每個 spec 檔的每條探針
 (存在、恰一處或已標 `all`、replace 有差)。它**不跑 mutation**,只是 `mutate.ts` 閘② 的前置版:
 對得上不代表探針仍會 kill(那要 Step 4.5 人工跑 mutate 綁 HEAD),對不上則 mutate 必然拒跑。
 - exit **1** = 漂移(內容層):改了那幾行就同步改 spec 的 `find`;JSON / 欄位壞也算這類
-- exit **2** = 無法判定:`scripts/mutations` 不是真目錄、0 個 spec 檔、spec 檔本身是 symlink / 未追蹤 / 非一般檔 / hardlink / 非 UTF-8
-  (spec 檔與目標檔都先經 `mutate.ts` 的 `checkTarget` 取 bytes,再解析——PR 把 tracked spec 換成指向 repo 外的
-  symlink 時,外部檔不會成為 CI 輸入)
+- exit **2** = 無法判定:`scripts/mutations` 不是真目錄、0 個 spec 檔、spec 檔本身是 symlink / 未追蹤 / 非一般檔 / 非 UTF-8
+  (spec 檔與目標檔先經 `mutate.ts` 的 `readCheckedTarget` 取 bytes——P2#3 defer ⑥:
+  純讀 caller 專用、**放寬 `nlink=1`**、hardlink spec / target 對本 CI 不拒判;
+  破壞性 mutate main CLI 仍走 `checkTarget`(含 nlink=1 第一道)+ `writeCheckedSync`
+  內的 `nlink !== 1` 拒判為第二道防線。PR 把 tracked spec 換成指向 repo 外的 symlink 時,
+  外部檔不會成為 CI 輸入)
 兩者在 CI 都是紅;分開只為診斷語意。

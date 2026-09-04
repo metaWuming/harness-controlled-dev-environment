@@ -1,8 +1,8 @@
 [
   {
     "file": "scripts/check-mutation-specs.ts",
-    "find": "  if (!self.ok || !self.original) {\n    return { rel, status: \"untrusted\", probes: 0, problems: [`spec 檔 ${rel}:${self.reason}`] };\n  }",
-    "replace": "  if (!self.ok || !self.original) {\n    return { rel, status: \"ok\", probes: 0, problems: [] };\n  }",
+    "find": "  if (!self.ok) {\n    return { rel, status: \"untrusted\", probes: 0, problems: [`spec 檔 ${rel}:${self.reason}`] };\n  }",
+    "replace": "  if (!self.ok) {\n    return { rel, status: \"ok\", probes: 0, problems: [] };\n  }",
     "label": "MSD-M1 spec 檔自身 checkTarget 失敗改判 ok(fail-open、繞開 JSON.parse)→ e2e ⑤/⑦ + unit「spec 檔未追蹤 → untrusted」轉紅、走真實 return 分支非 catch fallback"
   },
   {
@@ -31,8 +31,8 @@
   },
   {
     "file": "scripts/check-mutation-specs.ts",
-    "find": "    if (!target.ok || !target.original) {\n      problems.push(`${rel}[${i}] ${spec.label} → 目標 ${spec.file}:${target.reason ?? \"讀不到內容\"}`);\n      return;\n    }",
-    "replace": "    if (!target.ok || !target.original) {\n      return;\n    }",
+    "find": "    if (!target.ok) {\n      problems.push(`${rel}[${i}] ${spec.label} → 目標 ${spec.file}:${target.reason}`);\n      return;\n    }",
+    "replace": "    if (!target.ok) {\n      return;\n    }",
     "label": "MSD-M5 目標檔 checkTarget 失敗改為 silently skip(fail-open、不 push、不 applyMutation)→ target 失敗但 problems 空 → status ok(而非 drift)→ unit「目標缺 / untracked / symlink」轉紅、走真實 forEach continuation 非 TypeError 傳播"
   },
   {
@@ -40,5 +40,11 @@
     "find": "return { rel, status: \"drift\", probes: 0, problems: [`spec 檔 ${rel} 解析失敗:${(e as Error).message}`] };",
     "replace": "return { rel, status: \"untrusted\", probes: 0, problems: [`spec 檔 ${rel} 解析失敗:${(e as Error).message}`] };",
     "label": "MSD-M6 JSON / schema 壞誤判為 untrusted(exit 2)→ e2e ③ 與單測轉紅"
+  },
+  {
+    "file": "scripts/check-mutation-specs.ts",
+    "find": "import { applyMutation, parseSpecs, readCheckedTarget } from \"./mutate\";",
+    "replace": "import { applyMutation, checkTarget as readCheckedTarget, parseSpecs } from \"./mutate\";",
+    "label": "MSD-M8 readCheckedTarget 誤換回 checkTarget(import alias)→ hardlink 恢復 nlink=1 拒判 → e2e ⑰(hardlink spec + target)轉紅(P2#3 defer ⑥ 純讀分流 killer;純讀 caller 若回退用破壞性 checkTarget、hardlink 場景又會 fail-closed exit 2)"
   }
 ]

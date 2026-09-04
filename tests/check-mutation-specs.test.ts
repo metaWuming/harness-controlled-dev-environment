@@ -428,6 +428,27 @@ describe('CLI e2e(真子程序、真 git fixture)', () => {
     expect(r.out).toContain(`${SPEC_DIR}/a/b/c/x.json`);
   });
 
+  it('⑰ hardlink spec + target(nlink=2 tracked)→ exit 0(P2#3 defer ⑥、純讀 caller 走 readCheckedTarget、跳過 nlink=1 拒判)', () => {
+    // fixture:兩份 spec 檔互為 hardlink(同 inode、nlink=2、同 tracked);
+    // target src/guard.ts 也建 hardlink alias src/guard-alias.ts。
+    // 舊行為(checkTarget nlink=1 拒)= exit 2;新行為(readCheckedTarget 純讀不擋)= exit 0。
+    const dir = makeRepo({ specs: { 'guard.json': JSON.stringify(GOOD_SPEC) } });
+    // spec 檔本身建 hardlink alias(同目錄、tracked)
+    execFileSync('ln', [path.join(dir, `${SPEC_DIR}/guard.json`), path.join(dir, `${SPEC_DIR}/guard-alias.json`)]);
+    execFileSync('git', ['-C', dir, 'add', `${SPEC_DIR}/guard-alias.json`], { stdio: 'ignore' });
+    // target 也建 hardlink alias
+    execFileSync('ln', [path.join(dir, 'src/guard.ts'), path.join(dir, 'src/guard-alias.ts')]);
+    execFileSync('git', ['-C', dir, 'add', 'src/guard-alias.ts'], { stdio: 'ignore' });
+    execFileSync('git', ['-C', dir, 'commit', '-q', '-m', 'add hardlink aliases'], { stdio: 'ignore' });
+    const r = run([`--root=${dir}`]);
+    expect(r.code).toBe(0);
+    // 兩份 spec 都被檢查、樣本對得上
+    expect(r.out).toContain('guard.json — 1 條探針樣本都對得上');
+    expect(r.out).toContain('guard-alias.json — 1 條探針樣本都對得上');
+    // 不應出現 nlink 拒判訊息(hardlink 不會拒)
+    expect(r.err).not.toContain('hardlink');
+  });
+
   it.skipIf(!caseSensitive)('⑯ collision 在 case-sensitive FS(sub/foo.json + sub/FOO.json)→ exit 2 帶「同名衝突」', () => {
     // Vitest 註冊期條件(supervisor P2-2 明列:不在 test body 內臨時 skip)。
     // 這條**不是** collision 唯一證據;deterministic pure findCaseCollisions unit 才是必要覆蓋。

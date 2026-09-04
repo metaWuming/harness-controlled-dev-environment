@@ -29,6 +29,7 @@ import { join, dirname } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   applyMutation,
+  checkTarget,
   classify,
   classifyRun,
   formatSummary,
@@ -46,9 +47,12 @@ import {
   parseArgs,
   parseSpecs,
   parseTreeState,
+  readCheckedTarget,
   type MutationResult,
   type MutationSpec,
+  type ReadTargetCheck,
 } from "../scripts/mutate";
+import { realpathSync } from "node:fs";
 
 const REPO_ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf-8" }).trim();
 const SCRIPT = join(REPO_ROOT, "scripts/mutate.ts");
@@ -1129,4 +1133,112 @@ describe("mutate — 端到端:安全契約在非快樂路徑上也要成立", (
     },
     60_000,
   );
+});
+
+describe("readCheckedTarget — 純讀變體(P2#3 defer ⑥)", () => {
+  it("🔴 hardlink(nlink=2)tracked file → ok=true(純讀不受 nlink guard 影響)", () => {
+    const dir = makeRepo({ "src/a.txt": "GUARD_ON\n" }, (d) => {
+      // 同 repo 內建 hardlink alias:nlink=2、兩份都 tracked、無 repo 外 alias
+      execFileSync("ln", [join(d, "src/a.txt"), join(d, "src/a-alias.txt")]);
+    });
+    const r = readCheckedTarget(realpathSync(dir), "src/a.txt");
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.original.toString("utf-8")).toBe("GUARD_ON\n");
+    }
+    // reason 不應存在(union 於 ok=true 分支沒 reason);間接驗:失敗訊息「hardlink」不會出現
+    expect(JSON.stringify(r)).not.toContain("hardlink");
+    // 確認 fixture 真的建了 hardlink(否則本 test 沒實質驗到 nlink 放行)
+    expect(statSync(join(dir, "src/a.txt")).nlink).toBe(2);
+  });
+
+  it("🔴 對照 checkTarget:同 hardlink target → ok=false + nlink 拒判(既有 observable behavior 不變)", () => {
+    const dir = makeRepo({ "src/a.txt": "GUARD_ON\n" }, (d) => {
+      execFileSync("ln", [join(d, "src/a.txt"), join(d, "src/a-alias.txt")]);
+    });
+    const { code, out } = runScript(dir, [
+      ...BASE, "--file", "src/a.txt", "--cmd", "true",
+    ]);
+    expect(code).toBe(2);
+    expect(out).toContain("個 hardlink——原地覆寫");
+  });
+
+  it("🔴 P2-1 regression:hardlink + 非 UTF-8 → checkTarget 仍回 hardlink 拒(diagnostic precedence 不變)", () => {
+    // Codex Step 4 P2-1:若 helper 順序把 read+UTF-8 放在 nlink 之前,
+    // 則此 case 會回「非 UTF-8」而非「hardlink」——precedence 破壞。
+    // 修法:gateAfterFstat(nlink)在 fstat 後、read 前執行、優先返回。
+    const bin = Buffer.from([0x00, 0x01, 0x02, 0xff]);
+    const dir = makeRepo({ "src/bin.dat": bin }, (d) => {
+      execFileSync("ln", [join(d, "src/bin.dat"), join(d, "src/bin-alias.dat")]);
+    });
+    // 直接呼叫 checkTarget lib(避免 mutate CLI 閘① 乾淨工作樹檢查干擾)
+    const r = checkTarget(realpathSync(dir), "src/bin.dat");
+    expect(r.ok).toBe(false);
+    // 診斷順序:hardlink 拒判必須先出現、不能回「UTF-8」
+    expect(r.reason).toContain("hardlink");
+    expect(r.reason).not.toContain("UTF-8");
+  });
+
+  it("🔴 未追蹤 → 拒(共用 helper 六道邊界之一)", () => {
+    const dir = makeRepo({ "src/a.txt": "keep\n" });
+    // 在 makeRepo 完成 commit 之後才寫,避免被 add -A 追蹤
+    writeFileSync(join(dir, "src/untracked.txt"), "hello\n");
+    const r = readCheckedTarget(realpathSync(dir), "src/untracked.txt");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toContain("沒有被 git 追蹤");
+  });
+
+  it("🔴 symlink → 拒(不能跟到 repo 外)", () => {
+    const dir = makeRepo({ "src/a.txt": "keep\n" }, (d) => {
+      writeFileSync(join(d, "..", "outside.txt"), "outside\n");
+      symlinkSync(join(d, "..", "outside.txt"), join(d, "src/link.txt"));
+      execFileSync("git", ["add", "src/link.txt"], { cwd: d, stdio: "ignore" });
+    });
+    const r = readCheckedTarget(realpathSync(dir), "src/link.txt");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toContain("symlink");
+  });
+
+  it("🔴 repo 外(絕對路徑)→ 拒", () => {
+    const dir = makeRepo();
+    const r = readCheckedTarget(realpathSync(dir), "/etc/hostname");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toContain("要用 repo 相對路徑");
+  });
+
+  it("🔴 .git 內部 → 拒", () => {
+    const dir = makeRepo();
+    const r = readCheckedTarget(realpathSync(dir), ".git/HEAD");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toContain(".git/");
+  });
+
+  it("🔴 非 UTF-8 → 拒(共用 helper 判 isUtf8Text)", () => {
+    const bin = Buffer.from([0x00, 0x01, 0x02, 0xff]);
+    const dir = makeRepo({ "src/bin.dat": bin });
+    const r = readCheckedTarget(realpathSync(dir), "src/bin.dat");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toContain("UTF-8");
+  });
+});
+
+describe("readCheckedTarget — TS 型別負對照(P2#3 defer ⑥ D6)", () => {
+  it("編譯期契約:ReadTargetCheck 缺 dev/ino/mode,不能傳給 writeCheckedSync", () => {
+    // 正對照:union 於 result.ok 分支保證有 original(非 optional undefined)
+    function _typeNarrowingProof(r: ReadTargetCheck): Buffer | null {
+      return r.ok ? r.original : null;
+    }
+    void _typeNarrowingProof; // 只為觸發 TS 檢查、runtime 不用
+
+    // 負對照:ReadTargetCheck ok=true 分支缺 dev/ino/mode,不能作 writeCheckedSync 第 3 參
+    const _readTargetOkForm = { ok: true as const, original: Buffer.from("") };
+    // @ts-expect-error — P2#3 defer ⑥:ReadTargetCheck 刻意不含 dev/ino/mode,型別編譯期擋寫回誤用
+    const _typeGuardCompileTest: Parameters<typeof writeCheckedSync>[2] = _readTargetOkForm;
+    void _typeGuardCompileTest;
+
+    // runtime 只驗這個 test 沒 throw;真正的證據在 typecheck gate(tsc --noEmit)
+    // gate 綠 = @ts-expect-error 有觸發、契約成立;若日後有人擴 ReadTargetCheck 加
+    // dev/ino/mode,@ts-expect-error 反而 fail、typecheck 轉紅、觸發 review
+    expect(true).toBe(true);
+  });
 });
