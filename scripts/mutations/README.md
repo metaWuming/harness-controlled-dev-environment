@@ -50,7 +50,7 @@ npx tsx scripts/mutate.ts --file src/example.ts \
 
 - `0` 全部 mutant 被抓到
 - `1` 有 mutant 存活(覆蓋缺口)
-- `2` 無法判定(拒跑／樣本沒對上／對照紅／turbo 快取／基礎設施錯誤／還原失敗)
+- `2` 無法判定(拒跑／樣本沒對上／對照紅／turbo 快取／基礎設施錯誤／還原失敗／root 解析失敗／argv 錯／未預期例外)
 
 ## 範例
 
@@ -108,7 +108,7 @@ CI step「Mutation Spec Drift Check」對本目錄每個 spec 檔的每條探針
 (存在、恰一處或已標 `all`、replace 有差)。它**不跑 mutation**,只是 `mutate.ts` 閘② 的前置版:
 對得上不代表探針仍會 kill(那要 Step 4.5 人工跑 mutate 綁 HEAD),對不上則 mutate 必然拒跑。
 - exit **1** = 漂移(內容層):改了那幾行就同步改 spec 的 `find`;JSON / 欄位壞也算這類
-- exit **2** = 無法判定:`scripts/mutations` 不是真目錄、0 個 spec 檔、spec 檔本身是 symlink / 未追蹤 / 非一般檔 / 非 UTF-8
+- exit **2** = 無法判定:`scripts/mutations` 不是真目錄、0 個 spec 檔、spec 檔本身是 symlink / 未追蹤 / 非一般檔 / 非 UTF-8 / root 解析失敗(fs.realpathSync throw)/ argv 錯(parseRootArg fail-closed)/ 未預期例外(main try/catch 兜底,print message 保 code=2)
   (spec 檔與目標檔先經 `mutate.ts` 的 `readCheckedTarget` 取 bytes——P2#3 defer ⑥:
   純讀 caller 專用、**放寬 `nlink=1`**、hardlink spec / target 對本 CI 不拒判;
   破壞性 mutate main CLI 仍走 `checkTarget`(含 nlink=1 第一道)+ `writeCheckedSync`
