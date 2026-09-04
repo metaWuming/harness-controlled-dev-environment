@@ -346,18 +346,27 @@ describe('CLI e2e(真子程序、真 git fixture)', () => {
     expect(r.err).toContain('沒有任何 spec 檔');
   });
   it('⑤ tracked spec 換成指向 repo 外的 symlink → exit 2、特定診斷、外部檔內容未成為輸入', () => {
+    // P2#3 defer ⑫:斷言穩定化 — unique marker + 必然 drift
+    // evil.json 為 JSON/shape 合法但必然 drift(EVIL_SENTINEL 對 src/guard.ts 內不存在);
+    // 若防線回歸(外部檔被讀入),acceptance 路徑必走:
+    //   checkSpecFile → applyMutation 找不到 EVIL_SENTINEL → problems.push(含 EVIL_LABEL)
+    //   → formatReport 回 code=1 → CLI main 走 console.error(report.text) → EVIL_LABEL 在 stderr。
+    // 主要斷言 r.err.not.toContain(EVIL_LABEL);r.out.not.toContain(EVIL_LABEL) 為 defensive no-leak check(雙通道防衛)。
+    const EVIL_LABEL = 'DEFER12_EVIL_EXTERNAL_MARKER_MUST_NOT_APPEAR';
+    const EVIL_SENTINEL = 'DEFER12_EVIL_FIND_SENTINEL_NEVER_IN_SRC';
+    const EVIL_SPEC = [{ file: 'src/guard.ts', find: EVIL_SENTINEL, replace: 'PLACEHOLDER', label: EVIL_LABEL }];
     const dir = makeRepo();
     const outside = realpathSync(mkdtempSync(path.join(tmpdir(), 'msd-outside-')));
     made.push(outside);
-    // 外部檔是「合法且對得上」的 spec:若它被讀進來,結果會是 exit 0
-    writeFileSync(path.join(outside, 'evil.json'), JSON.stringify(GOOD_SPEC));
+    writeFileSync(path.join(outside, 'evil.json'), JSON.stringify(EVIL_SPEC));
     const specPath = path.join(dir, SPEC_DIR, 'guard.json');
     rmSync(specPath);
     symlinkSync(path.join(outside, 'evil.json'), specPath);
     const r = run([`--root=${dir}`]);
     expect(r.code).toBe(2);
     expect(r.err).toContain(`spec 檔 ${SPEC_DIR}/guard.json:目標是 symlink`);
-    expect(r.err).not.toContain('對得上');
+    expect(r.err).not.toContain(EVIL_LABEL);
+    expect(r.out).not.toContain(EVIL_LABEL);
   });
   it('⑥ scripts/mutations 目錄換成 symlink → exit 2', () => {
     const dir = makeRepo();
