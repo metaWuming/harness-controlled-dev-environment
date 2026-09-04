@@ -69,7 +69,7 @@ function makeRepo(opts: RepoOpts = {}): string {
   git('config', 'user.email', 'e2e@example.test');
   git('config', 'user.name', 'e2e');
   for (const rel of Object.keys(files)) if (!(opts.skipTrack ?? []).includes(rel)) git('add', rel);
-  git('commit', '-q', '-m', 'fixture', '--allow-empty');
+  git('commit', '-q', '-m', 'fixture');
   return dir;
 }
 
