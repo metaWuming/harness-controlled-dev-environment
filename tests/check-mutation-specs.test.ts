@@ -272,6 +272,14 @@ describe('checkSpecFile(單檔判定)', () => {
       expect(r.problems[0]).toContain('解析失敗');
     }
   });
+  // P2#3 defer ⑭:BOM spec 走既有 drift 類別、problem hint 明列 UTF-8 BOM root cause
+  it('P2#3 defer ⑭:BOM spec → drift + problems 含 UTF-8 BOM root-cause hint', () => {
+    const bomSpec = '﻿' + JSON.stringify(GOOD_SPEC);
+    const r = checkSpecFile(makeRepo({ specs: { 'g.json': bomSpec } }), `${SPEC_DIR}/g.json`);
+    expect(r.status).toBe('drift');
+    expect(r.problems[0]).toContain('UTF-8 BOM');
+    expect(r.problems[0]).toContain('EF BB BF');
+  });
   it('目標檔不存在 / 未追蹤 / 是 symlink → drift', () => {
     const missing = JSON.stringify([{ ...GOOD_SPEC[0], file: 'src/nope.ts' }]);
     expect(checkSpecFile(makeRepo({ specs: { 'g.json': missing } }), `${SPEC_DIR}/g.json`).status).toBe('drift');
@@ -339,6 +347,13 @@ describe('CLI e2e(真子程序、真 git fixture)', () => {
     const r = run([`--root=${makeRepo({ specs: { 'g.json': '{oops' } })}`]);
     expect(r.code).toBe(1);
     expect(r.err).toContain('解析失敗');
+  });
+  // P2#3 defer ⑭:BOM spec CLI e2e、走既有 drift 類別、stderr 明列 UTF-8 BOM root cause
+  it('③.5 P2#3 defer ⑭:BOM spec → exit 1 + stderr 含 UTF-8 BOM root-cause hint', () => {
+    const bomSpec = '﻿' + JSON.stringify(GOOD_SPEC);
+    const r = run([`--root=${makeRepo({ specs: { 'g.json': bomSpec } })}`]);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain('UTF-8 BOM');
   });
   it('④ 0 個 spec 檔 → exit 2', () => {
     const r = run([`--root=${makeRepo({ noDir: true })}`]);
