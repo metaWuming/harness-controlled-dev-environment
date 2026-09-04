@@ -405,7 +405,7 @@
         "scripts/mutations/mutation-spec-discovery.json"
       ],
       "bypass": "admin override",
-      "notes": "只驗「樣本對得上」,不證明探針仍會 kill;完整 mutation 仍由 Step 4.5 人工跑並綁 HEAD。是 mutate.ts 閘② 的 CI 前置版。discovery 契約 D1-D7 見 check-mutation-specs.ts 檔頭 docstring(P2#3 defer ⑤ 拍板 + defer ⑥ 補述;D6 呼叫端邊界含 checkTarget / readCheckedTarget,checkTarget 公開 signature 與 nlink=1 observable behavior 不動、內部允許 helper/refactor 抽出)。P2#3 defer ⑥:純讀 caller 分流出 readCheckedTarget、放寬 nlink=1;mutate main CLI 迴圈的第一次 checkTarget 呼叫仍走此路徑;writeCheckedSync 內的 nlink !== 1 拒判為第二道防線不動;ReadTargetCheck 為 discriminated union、刻意不含 dev/ino/mode/abs,由 TS 型別編譯期擋純讀 API 誤接破壞性寫回(mutation-spec-drift.json MSD-M8 直接 killer + tests/mutate.test.ts @ts-expect-error 編譯期證據)"
+      "notes": "只驗「樣本對得上」,不證明探針仍會 kill;完整 mutation 仍由 Step 4.5 人工跑並綁 HEAD。是 mutate.ts 閘② 的 CI 前置版。discovery 契約 D1-D7 見 check-mutation-specs.ts 檔頭 docstring(P2#3 defer ⑤ 拍板 + defer ⑥ 補述;D6 呼叫端邊界含 checkTarget / readCheckedTarget,checkTarget 公開 signature 與 nlink=1 observable behavior 不動、內部允許 helper/refactor 抽出)。P2#3 defer ⑥:純讀 caller 分流出 readCheckedTarget、放寬 nlink=1;mutate main CLI 迴圈的第一次 checkTarget 呼叫仍走此路徑;writeCheckedSync 內的 nlink !== 1 拒判為第二道防線不動;ReadTargetCheck 為 discriminated union、刻意不含 dev/ino/mode/abs,由 TS 型別編譯期擋純讀 API 誤接破壞性寫回(mutation-spec-drift.json MSD-M8 直接 killer + tests/mutate.test.ts @ts-expect-error 編譯期證據)。P2#3 defer ⑪:--root 假設 real git worktree top-level;nested outer-tracked 子目錄不支援(信任邊界依賴外層 repo git index、非 --root 認可 boundary);詳見 check-mutation-specs.ts 檔頭 docstring + scripts/mutations/README.md「discovery 契約」+「CI 守樣本漂移」段"
     },
     {
       "id": "CTRL-HOOK-001",

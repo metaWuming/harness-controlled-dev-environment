@@ -98,6 +98,7 @@ npx tsx scripts/mutate.ts --file src/example.ts \
 - **D5 遞迴後 0-spec**:總數 0 → **fail-closed exit 2**(0 spec = 這道閘門形同虛設)
 - **D6 checkTarget / readCheckedTarget 呼叫端邊界**:本檔的**呼叫端**可配合 discovery 調整;`mutate.ts` 的 `checkTarget` **公開 signature 與 nlink=1 observable behavior 不動**(sprint 3-5 拍板 + P2#3 defer ⑥ supervisor 再拍板;內部允許 helper/refactor 抽出);本檔純讀走 `readCheckedTarget`(放寬 nlink=1、hardlink alias 對純讀無風險),破壞性 mutate main CLI 迴圈的第一次 `checkTarget` 呼叫仍走此路徑 + `writeCheckedSync` 內的 `nlink !== 1` 拒判為第二道防線
 - **D7 discovery 函式命名**:`discoverSpecFiles`(舊名 `listSpecFiles` 已改)
+- **--root 契約**(P2#3 defer ⑪):`--root=<dir>` 必須是 **real git worktree top-level**;若指向外層 git repo 的子目錄且該子目錄被外層 tracked → tracked 判定會用外層 repo git index(信任邊界依賴外層 repo、非 --root 認可的 boundary),**不支援、屬使用者責任**;真獨立 nested repo(有自己 `.git`)邊界對得上。SSOT 在 `check-mutation-specs.ts` 檔頭 docstring
 
 檔內含子目錄 spec(如 `sprint-N/foo.json`)是合法用法。**不要**把 spec 檔存成大寫副檔名之外的其他形式（如 `.jsonc` / `.yaml` — 這些不受 gate 守門）。
 
@@ -113,4 +114,6 @@ CI step「Mutation Spec Drift Check」對本目錄每個 spec 檔的每條探針
   破壞性 mutate main CLI 仍走 `checkTarget`(含 nlink=1 第一道)+ `writeCheckedSync`
   內的 `nlink !== 1` 拒判為第二道防線。PR 把 tracked spec 換成指向 repo 外的 symlink 時,
   外部檔不會成為 CI 輸入)
+- **--root 契約**(P2#3 defer ⑪):`--root=<dir>` 假設 real git worktree top-level;
+  nested outer-tracked 子目錄不支援(SSOT 詳見 `check-mutation-specs.ts` 檔頭 + CTRL-CI-013 notes)
 兩者在 CI 都是紅;分開只為診斷語意。

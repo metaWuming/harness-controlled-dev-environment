@@ -48,6 +48,14 @@
  *
  * Usage:  npm run check:mutation-specs
  *         npx tsx scripts/check-mutation-specs.ts --root=<dir>   # e2e fixture
+ *
+ * --root 契約(P2#3 defer ⑪):`<dir>` 必須是 **real git worktree top-level**。
+ *   若指向外層 git repo 的子目錄且該子目錄被外層 tracked → tracked 判定會用外層 repo
+ *   git index(信任邊界依賴外層 repo、非 --root 認可的 boundary),**不支援、屬使用者
+ *   責任**;若 --root 是有自己 `.git` 的真獨立 repo,則邊界對得上(git ls-files 對
+ *   自己 .git 判定)。boundary-escape target(spec 指 `../../outside`)由 isInsideRepo
+ *   於 checkTarget/readCheckedTarget 內擋。契約 SSOT 見本檔頭 + control-catalog.json
+ *   CTRL-CI-013 notes + scripts/mutations/README.md「discovery 契約」+「CI 守樣本漂移」段。
  * Exit:   0 = 所有探針樣本都對得上
  *         1 = DRIFT(內容層:JSON / schema 壞、目標檔對不上、樣本消失或多處或無變化)——改 spec 或改碼
  *         2 = 無法判定(目錄邊界失敗、0 個 spec 檔、spec 檔本身不可信、argv 錯、未預期例外、
