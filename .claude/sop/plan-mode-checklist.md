@@ -421,6 +421,7 @@ exit 0(被抓)——才進 Step 5。
       placeholder**(不是整檔 grep)——
       ```bash
       git diff origin/<主線>...HEAD -- \
+        TODOS.md \
         .claude/memory/TODOS.md .claude/memory/TODOS-done.md .claude/memory/BACKLOG.md \
         | grep -E '^\+.*PR #___'
       ```
