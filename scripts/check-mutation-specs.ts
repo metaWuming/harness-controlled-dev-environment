@@ -244,7 +244,13 @@ export function checkSpecFile(repoRootReal: string, rel: string): SpecFileResult
   try {
     specs = parseSpecs(JSON.parse(self.original.toString("utf8")));
   } catch (e) {
-    return { rel, status: "drift", probes: 0, problems: [`spec 檔 ${rel} 解析失敗:${(e as Error).message}`] };
+    // P2#3 defer ⑭:BOM root-cause diagnostic(drift 分類本身正確、只補 problem hint 指出檔首 BOM)
+    const hasBom = self.original.length >= 3
+      && self.original[0] === 0xef && self.original[1] === 0xbb && self.original[2] === 0xbf;
+    const hint = hasBom
+      ? `JSON 不允許 UTF-8 BOM(檔首 3 bytes 為 EF BB BF)——請用無 BOM UTF-8 存檔`
+      : `解析失敗:${(e as Error).message}`;
+    return { rel, status: "drift", probes: 0, problems: [`spec 檔 ${rel} ${hint}`] };
   }
   const problems: string[] = [];
   specs.forEach((spec, i) => {
