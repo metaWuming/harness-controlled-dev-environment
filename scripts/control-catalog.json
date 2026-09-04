@@ -393,7 +393,7 @@
       "owner": "github",
       "failureBehavior": "block",
       "evidence": "CI check 狀態;本機 npm run check:mutation-specs 印每個 spec 檔的探針數,exit 1 = DRIFT(內容層、改 spec 或碼)/ exit 2 = 無法判定(spec 目錄或檔案不可信、0 個 spec 檔、walker I/O 失敗、collision 命中、或 formatReport 結果集為空 defense-in-depth 第二道);hardlink spec / target 對本 CI(純讀 caller)= 放行,exit 依樣本判定(P2#3 defer ⑥);對破壞性 mutate CLI(Step 4.5 人工跑)= exit 2(nlink=1 拒)",
-      "degradation": "spec 目錄非真目錄 / 0 個 spec 檔 / spec 檔本身 symlink、未追蹤、非一般檔、非 UTF-8 / walker 遇 symlink 子目錄 / walker lstat / readdir / stat I/O 失敗或型別無法判定 / 同名衝突(大小寫差異) / formatReport 結果集為空(defense-in-depth 第二道,P2#3 defer ⑩) / root 解析失敗(fs.realpathSync throw)/ argv 錯(parseRootArg fail-closed)/ 未預期例外(main try/catch 兜底) → exit 2(無法判定,不放行);hardlink 對純讀 CI(readCheckedTarget)= 不拒判、樣本仍要對得上;對破壞性 mutate CLI(checkTarget + writeCheckedSync 內的 nlink !== 1 拒判為雙層 nlink guard 第二道)= exit 2 拒判(避免改到 repo 外 alias)",
+      "degradation": "spec 目錄非真目錄 / 0 個 spec 檔 / spec 檔本身 symlink、未追蹤、非一般檔、非 UTF-8 / walker 遇 symlink 子目錄 / walker lstat / readdir / stat I/O 失敗或型別無法判定 / 同名衝突(大小寫差異) / formatReport 結果集為空(defense-in-depth 第二道,P2#3 defer ⑩) / root 解析失敗(fs.realpathSync throw)/ argv 錯(parseRootArg fail-closed) → exit 2(無法判定,不放行);未預期例外:main try/catch 印訊息但不重設 exit code(保留當前 code:runCheck 前拋 = initial 2、runCheck 已回報後拋 = 該次 report code 0/1);hardlink 對純讀 CI(readCheckedTarget)= 不拒判、樣本仍要對得上;對破壞性 mutate CLI(checkTarget + writeCheckedSync 內的 nlink !== 1 拒判為雙層 nlink guard 第二道)= exit 2 拒判(避免改到 repo 外 alias)",
       "tested": [
         "unit",
         "e2e",
