@@ -50,7 +50,7 @@ npx tsx scripts/mutate.ts --file src/example.ts \
 
 - `0` 全部 mutant 被抓到
 - `1` 有 mutant 存活(覆蓋缺口)
-- `2` 無法判定(拒跑／樣本沒對上／對照紅／turbo 快取／基礎設施錯誤／還原失敗／root 解析失敗／argv 錯／未預期例外)
+- `2` 無法判定(拒跑／樣本沒對上／對照紅／turbo 快取／基礎設施錯誤／還原失敗)
 
 ## 範例
 
