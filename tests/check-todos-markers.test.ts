@@ -476,7 +476,7 @@ describe('check-todos-markers — 端到端(CLI 接線)', () => {
     }
   });
 
-  it('🔴 P2#2 base.undeclared:origin/HEAD 指向正規、可解、未宣告分支 → exit 2、不放行', () => {
+  it('🔴 P2#2 base.undeclared:origin/HEAD 指向可解、未宣告分支 → exit 2、不放行', () => {
     const dir = makeRepo({
       todosContent: '# TODOS\n\n## P3\n\n### ✅ some completion (#42)\n- done\n',
       extraCommits: [{ message: 'feat: x (#42)' }],

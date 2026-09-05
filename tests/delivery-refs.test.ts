@@ -69,7 +69,7 @@ describe('權威 base(origin/HEAD)受驗', () => {
     expect(r.refs).toEqual([]);
     expect(r.rejections.map((x) => x.code)).toEqual(['base.unresolvable']);
   });
-  it('base.undeclared:origin/HEAD 指向正規、可解、但未宣告的分支 → 拒、refs 空', () => {
+  it('base.undeclared:origin/HEAD 指向可解、但未宣告的分支 → 拒、refs 空', () => {
     const git = fakeGit({ head: 'refs/remotes/origin/trunk', commits: ['refs/remotes/origin/trunk'] });
     const r = resolveDeliveryRefs(git, ['main']);
     expect(r.ok).toBe(false);
