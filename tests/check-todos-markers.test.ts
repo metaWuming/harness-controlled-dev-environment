@@ -452,6 +452,7 @@ describe('check-todos-markers — 端到端(CLI 接線)', () => {
     execFileSync('git', ['tag', 'origin/main'], { cwd: dir, stdio: 'ignore' });
     const { code, out } = runChecker(dir);
     expect(code).toBe(0);
+    expect(out).toContain('✅ 0 個失效完成宣稱');
     expect(out).not.toContain('[base.');
   });
 
