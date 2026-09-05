@@ -25,7 +25,7 @@ type: guide
 
 1. **前置決策**:確認新交付分支是 default branch;若不是,明列新的 default branch 是什麼、目前 `protectedBranches` 清單。
 2. **修 `scripts/harness.config.json`**:`deliveryBranches` 加入 / 改成新 branch name(若舊 `develop` 不作交付線就移除);`protectedBranches` 需含所有 delivery branches(否則 A5 集合不等);保留 `mergeStrategy` / `mode` / 其他欄位。
-3. **修 `.github/workflows/ci.yml`**:三處 `if:` 行(Fetch delivery refs / TODOS Markers Check / Source-term scan)必須逐字等於由新 `deliveryBranches` 導出的 `expectedCiIfLine`(見 `scripts/check-adoption-readiness.ts:502`);若 push event 上要交付線 CI 跑,`push.branches` 集合亦需相應更新(A5.ci.push 驗)。
+3. **修 `.github/workflows/ci.yml`**:三處 `if:` 行(Fetch delivery refs / TODOS Markers Check / Source-term scan)必須逐字等於由新 `deliveryBranches` 導出的 `expectedCiIfLine`(見 `expectedCiIfLine`,實作位置與 range citation 在 `scripts/check-adoption-readiness.ts` L499-524);若 push event 上要交付線 CI 跑,`push.branches` 集合亦需含新分支——**注意** `push.branches` 由 `A5.ci.push` 對 `protectedBranches` 驗集合(非 `deliveryBranches`),所以新交付分支必須依步驟 2 同步納入 `protectedBranches` 才會 A5 綠。
 4. **修 pre-commit / pre-push hooks**(若新交付分支不在既有 `protectedBranches`)。
 5. **驗證 gates**(每步 acceptance evidence):
    - `npm run check:adoption`(A5 集合精確等 / A5.ci.if 三處逐字等)
@@ -65,7 +65,7 @@ type: guide
 
 - 三處 delivery-branch 的 `if:` 行(Fetch delivery refs / TODOS Markers / Source-term)在 adopted mode 會被 A5.ci.if 驗:
   必須逐字等於 `if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)`
-  再對 `deliveryBranches` 每個 b 接 ` || github.ref == 'refs/heads/<b>'`。**`deliveryBranches` 是允許的 `origin/HEAD` 目標白名單**(delivery evidence 語意、見 `scripts/lib/delivery-refs.ts`);多列或少列都會改 A5.ci.if 期望。出廠 ci.yml 三處 `if:` 行預期 `deliveryBranches` = `[main, develop]`;**若你的專案不需要 `develop` 作交付線**,從 `deliveryBranches` 移除 `develop` 並同時從三處 `if:` 行拿掉 `|| github.ref == 'refs/heads/develop'`(完整步驟見 [`[Unreleased]` 附錄 A.1](#a1-附錄換交付線-runbookminimum-viable非推薦操作))。
+  再對 `deliveryBranches` 每個 b 接 ` || github.ref == 'refs/heads/<b>'`。**`deliveryBranches` 是允許的 `origin/HEAD` 目標白名單**(delivery evidence 語意、見 `scripts/lib/delivery-refs.ts`);多列或少列都會改 A5.ci.if 期望。出廠 ci.yml 三處 `if:` 行預期 `deliveryBranches` = `[main, develop]`;**若你的專案不需要 `develop` 作交付線**,從 `deliveryBranches` 移除 `develop` 並同時從三處 `if:` 行拿掉 `|| github.ref == 'refs/heads/develop'`(完整步驟見本檔 `[Unreleased]` 段附錄 A.1「換交付線 runbook」)。
 
 ### 4. `scripts/control-catalog.json`:登錄你的 CI step
 
