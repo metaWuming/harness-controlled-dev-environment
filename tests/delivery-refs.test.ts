@@ -63,7 +63,7 @@ describe('權威 base(origin/HEAD)受驗', () => {
     expect(r.rejections.map((x) => x.code)).toEqual(['base.shape']);
     expect(r.refs).toEqual([]);
   });
-  it('base.unresolvable:形狀正規、名稱已宣告、但解不出 commit → 拒、refs 空', () => {
+  it('base.unresolvable:形狀合法、名稱已宣告、但解不出 commit → 拒、refs 空', () => {
     const r = resolveDeliveryRefs(fakeGit({ head: MAIN, commits: [] }), ['main']);
     expect(r.ok).toBe(false);
     expect(r.refs).toEqual([]);
