@@ -441,6 +441,20 @@ describe('check-todos-markers — 端到端(CLI 接線)', () => {
     expect(runChecker(dir).code).toBe(0);
   });
 
+  it('🟢 P2#2 defer ⑤:本地 tag `origin/main` 存在時 checker 仍通過(名字空間 collision regression)', () => {
+    // 舊契約(canonicality check via short-name lookup):本地 tag origin/main 讓短名 lookup
+    // ambiguous、canon !== fullRef → base.noncanonical → 兩 gate 對所有 PR fail-closed exit 2。
+    // 新契約:canonicality check 已移除、完整 ref existence check 已足;tag 不影響 checker 結果。
+    const dir = makeRepo({
+      todosContent: '# TODOS\n\n## P3\n\n### ✅ some completion (#42)\n- done\n',
+      extraCommits: [{ message: 'feat: x (#42)' }],
+    });
+    execFileSync('git', ['tag', 'origin/main'], { cwd: dir, stdio: 'ignore' });
+    const { code, out } = runChecker(dir);
+    expect(code).toBe(0);
+    expect(out).not.toContain('[base.');
+  });
+
   it('🔴 env 已移除:DELIVERY_REFS 指向含未合併 (#42) 的 origin 分支 / 垃圾值 → 輸出與 exit 與不設 env 逐位元相同(#42 仍無證據、exit 1)', () => {
     const dir = makeRepo({
       todosContent: '# TODOS\n\n## P3\n\n### ✅ some completion (#42)\n- done\n',

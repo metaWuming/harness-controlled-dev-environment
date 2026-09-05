@@ -1,8 +1,9 @@
 // tests/delivery-refs.test.ts — 交付 ref 共用契約(純函式,fake git runner + 一條真 git fixture)
 //
-// 每個原因碼各一條獨立 it:base.missing / base.shape / base.unresolvable / base.noncanonical /
+// 每個原因碼各一條獨立 it:base.missing / base.shape / base.unresolvable /
 // base.undeclared / config.invalid;正對照;以及「不讀 env」等價測試(單參數入口對 process.env.DELIVERY_REFS
 // save / set / restore,兩次結果逐位元相同)。行為級的 env 忽略證明另由兩個 consumer 的 CLI e2e 承擔。
+// 另加一條真 Git shared-resolver regression:tag `origin/main` 存在時仍通過(P2#2 defer ⑤)。
 
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -22,22 +23,17 @@ import {
 const MAIN = 'refs/remotes/origin/main';
 
 /**
- * fake git:描述 repo 狀態,回答 lib 會問的三種問題。
+ * fake git:描述 repo 狀態,回答 lib 會問的兩種問題。
  * - head:origin/HEAD 目標(null = 未設)
  * - commits:哪些完整 ref 解得出 commit
- * - canon:`origin/<name>` 的正規解析結果(預設 = refs/remotes/origin/<name>;可覆寫成本地遮蔽)
  */
-function fakeGit(state: { head: string | null; commits: string[]; canon?: Record<string, string> }): GitRunner {
+function fakeGit(state: { head: string | null; commits: string[] }): GitRunner {
   return (args) => {
     const [cmd] = args;
     if (cmd === 'symbolic-ref') return state.head;
     if (cmd === 'rev-parse' && args[1] === '--verify') {
       const ref = args[3]!.replace(/\^\{commit\}$/, '');
       return state.commits.includes(ref) ? 'deadbeef' : null;
-    }
-    if (cmd === 'rev-parse' && args[1] === '--symbolic-full-name') {
-      const short = args[2]!;
-      return state.canon?.[short] ?? `refs/remotes/origin/${short.slice('origin/'.length)}`;
     }
     throw new Error(`fake git 不認得(本契約不該問這個):${args.join(' ')}`);
   };
@@ -72,15 +68,6 @@ describe('權威 base(origin/HEAD)受驗', () => {
     expect(r.ok).toBe(false);
     expect(r.refs).toEqual([]);
     expect(r.rejections.map((x) => x.code)).toEqual(['base.unresolvable']);
-  });
-  it('base.noncanonical:origin/main 正規解析到別的 ref(本地遮蔽)→ 拒;空字串也算', () => {
-    const git = fakeGit({ head: MAIN, commits: [MAIN], canon: { 'origin/main': 'refs/heads/origin/main' } });
-    const r = resolveDeliveryRefs(git, ['main']);
-    expect(r.rejections.map((x) => x.code)).toEqual(['base.noncanonical']);
-    expect(r.refs).toEqual([]);
-    const amb = resolveDeliveryRefs(fakeGit({ head: MAIN, commits: [MAIN], canon: { 'origin/main': '' } }), ['main']);
-    expect(amb.rejections[0]!.code).toBe('base.noncanonical');
-    expect(amb.rejections[0]!.detail).toContain('(無 / 歧義)');
   });
   it('base.undeclared:origin/HEAD 指向正規、可解、但未宣告的分支 → 拒、refs 空', () => {
     const git = fakeGit({ head: 'refs/remotes/origin/trunk', commits: ['refs/remotes/origin/trunk'] });
@@ -180,5 +167,32 @@ describe('config / formatRejections / 不讀 env', () => {
     }
     expect(withEnv).toBe(without);
     expect(JSON.parse(without)).toEqual({ ok: true, refs: [MAIN], rejections: [] });
+  });
+
+  it('🟢 P2#2 defer ⑤:本地 tag `origin/main` 存在時 shared resolver 仍通過(名字空間 collision regression)', () => {
+    // 舊契約(canonicality check via short-name lookup):本地 tag origin/main 讓 `git rev-parse
+    // --symbolic-full-name origin/main` 觸發 ambiguous error 或返回 refs/tags/origin/main;
+    // canon !== fullRef → base.noncanonical → 對所有 PR fail-closed exit 2。
+    // 新契約:canonicality check 已移除、完整 ref existence check 已足;tag 不影響 resolver 結果。
+    const wrap = tmp();
+    const dir = path.join(wrap, 'repo');
+    mkdirSync(path.join(dir, 'scripts'), { recursive: true });
+    writeFileSync(path.join(dir, 'scripts/harness.config.json'), CONFIG + '\n');
+    const git = (...a: string[]) => execFileSync('git', a, { cwd: dir, stdio: 'ignore' });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 't');
+    git('add', '-A');
+    git('commit', '-qm', 'init');
+    const origin = path.join(wrap, 'origin.git');
+    execFileSync('git', ['init', '--bare', '-q', origin], { stdio: 'ignore' });
+    git('remote', 'add', 'origin', origin);
+    git('push', '-q', 'origin', 'main:refs/heads/main');
+    git('fetch', '-q', 'origin');
+    git('remote', 'set-head', 'origin', 'main');
+    // 建同名 tag origin/main → refs/tags/origin/main 存在、短名 lookup 有歧義
+    git('tag', 'origin/main');
+    const r = resolveDeliveryRefsFromRepo(dir);
+    expect(r).toEqual({ ok: true, refs: [MAIN], rejections: [] });
   });
 });
