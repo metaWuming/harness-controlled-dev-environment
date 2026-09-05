@@ -349,6 +349,41 @@ describe("parseGrepZLine — 解 git grep -z NUL 分隔輸出(round 6 P2-3;R1 �
     expect(hitContent(raw, "grep-z")).toBe(`${PREF_PR}40 ref`);
   });
 
+  it("D-①:line field 空字串、column-like field 是數字 → 保守走 2-NUL 解析", () => {
+    // 對稱 coverage:D1 要求 line + column 皆為 **非空** 純數字。
+    // 空 line 這一半條件鎖住 /^\d+$/(非 /^\d*$/)。
+    const raw =
+      "docs/note.md" + NUL1 + "" + NUL1 + "17" + NUL1 + "tail";
+    expect(parseGrepZLine(raw)).toEqual({
+      path: "docs/note.md",
+      line: "",
+      content: "17" + NUL1 + "tail",
+    });
+  });
+
+  it("D-①:line field 是數字、column field 空字串 → 保守走 2-NUL 解析", () => {
+    // 空 column 這一半條件鎖住 /^\d+$/(非 /^\d*$/)。
+    const raw =
+      "docs/note.md" + NUL1 + "5" + NUL1 + "" + NUL1 + "tail";
+    expect(parseGrepZLine(raw)).toEqual({
+      path: "docs/note.md",
+      line: "5",
+      content: "" + NUL1 + "tail",
+    });
+  });
+
+  it("D-①:history scan 3-NUL(rev:path\\0line\\0column\\0content)→ 剝除 column、path 保 rev:path 前綴", () => {
+    // 對稱既有 history scan 2-NUL case(rev:path\0line\0content),
+    // 鎖住 3-NUL 對 history-scan shape 亦正確。
+    const raw =
+      "abc1234:docs/note.md" + NUL1 + "5" + NUL1 + "17" + NUL1 + "see " + PREF_PR + "7";
+    expect(parseGrepZLine(raw)).toEqual({
+      path: "abc1234:docs/note.md",
+      line: "5",
+      content: "see " + PREF_PR + "7",
+    });
+  });
+
   it("D-①:line field 非數字、即使下一 field 是數字 → 保守走 2-NUL 解析", () => {
     // 對稱 coverage:D1 保守辨識契約要求 line + column **兩** field 皆為
     // 非空純數字才視為 3-NUL。此 case 鎖住 line 非數字這一半條件、
