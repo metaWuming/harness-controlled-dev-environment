@@ -307,7 +307,7 @@ export function checkTodosMarkers(
 }
 
 /** 交付分支來源:見 scripts/lib/delivery-refs.ts(共用契約)。
- *   唯一來源 = 受驗的 `origin/HEAD` 權威 base(目標須為 refs/remotes/origin/<已宣告交付分支>、正規、可解)。
+ *   唯一來源 = 受驗的 `origin/HEAD` 權威 base(目標須為 refs/remotes/origin/<已宣告交付分支>、可解)。
  *   沒有 fallback(origin/develop、本地 main / develop 都不再猜)、**不讀任何 env**(DELIVERY_REFS 已移除)。
  *   任何拒絕 → 印原因碼、exit 2。 */
 

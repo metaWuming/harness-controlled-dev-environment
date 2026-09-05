@@ -80,7 +80,7 @@ describe('權威 base(origin/HEAD)受驗', () => {
     const r = resolveDeliveryRefs(fakeGit({ head: MAIN, commits: [MAIN] }), ['main']);
     expect(r).toEqual({ ok: true, refs: [MAIN], rejections: [] });
   });
-  it('validateRef 順序:形狀 → 存在 → 正規 → 宣告(第一個失敗即回)', () => {
+  it('validateRef 順序:形狀 → 存在 → 宣告(第一個失敗即回)', () => {
     const git = fakeGit({ head: MAIN, commits: [] });
     expect(validateRef(git, 'refs/heads/x', ['main'])?.code).toBe('base.shape');
     expect(validateRef(git, MAIN, ['main'])?.code).toBe('base.unresolvable');
@@ -192,6 +192,31 @@ describe('config / formatRejections / 不讀 env', () => {
     git('remote', 'set-head', 'origin', 'main');
     // 建同名 tag origin/main → refs/tags/origin/main 存在、短名 lookup 有歧義
     git('tag', 'origin/main');
+    const r = resolveDeliveryRefsFromRepo(dir);
+    expect(r).toEqual({ ok: true, refs: [MAIN], rejections: [] });
+  });
+
+  it('🟢 P2#2 defer ⑤:本地 branch `origin/main` 存在時 shared resolver 仍通過(名字空間 collision regression、branch 分支)', () => {
+    // sibling of tag case:refs/heads/origin/main 存在時、短名 lookup 也會 canon!=fullRef;
+    // 新契約 canonicality 已移除 → branch 遮蔽同樣不影響 resolver 結果。
+    const wrap = tmp();
+    const dir = path.join(wrap, 'repo');
+    mkdirSync(path.join(dir, 'scripts'), { recursive: true });
+    writeFileSync(path.join(dir, 'scripts/harness.config.json'), CONFIG + '\n');
+    const git = (...a: string[]) => execFileSync('git', a, { cwd: dir, stdio: 'ignore' });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 't');
+    git('add', '-A');
+    git('commit', '-qm', 'init');
+    const origin = path.join(wrap, 'origin.git');
+    execFileSync('git', ['init', '--bare', '-q', origin], { stdio: 'ignore' });
+    git('remote', 'add', 'origin', origin);
+    git('push', '-q', 'origin', 'main:refs/heads/main');
+    git('fetch', '-q', 'origin');
+    git('remote', 'set-head', 'origin', 'main');
+    // 建同名 local branch origin/main → refs/heads/origin/main 存在、短名 lookup 有 shadow
+    git('branch', 'origin/main');
     const r = resolveDeliveryRefsFromRepo(dir);
     expect(r).toEqual({ ok: true, refs: [MAIN], rejections: [] });
   });
