@@ -48,7 +48,7 @@ permissions:
 
 # 交付證據(哪些 merged commit 的 `(#N)` 可算「本 repo 已 merge」)**唯一來源是受驗的 origin/HEAD**
 # (scripts/lib/delivery-refs.ts:目標須為 refs/remotes/origin/<harness.config deliveryBranches 內的分支>、
-# 正規、可解;否則兩個 gate exit 2)。過去的 workflow-level `DELIVERY_REFS` env 已移除:在祖先契約下它
+# 可解;否則兩個 gate exit 2)。過去的 workflow-level `DELIVERY_REFS` env 已移除:在祖先契約下它
 # 加不進任何 PR 號、只擴大輸入面(見 CHANGELOG Unreleased / docs/MIGRATION.md)。腳本不讀該 env,設了也被忽略。
 env:
   # 🔴 批 10 Step 5 F1(conf 7):MARKER_SELF_PR 也提到 workflow-level(同 SSOT 論證延伸)。
@@ -162,7 +162,7 @@ jobs:
         # 🔴 Codex batch 6 round 6 P2 + Step 5 #6/#8:改用 default_branch 動態抓 +
         # `git remote set-head` 讓 origin/HEAD 指向 default,check-todos-markers 走
         # origin/HEAD 唯一權威來源、不再無條件 resolve master/trunk 造成 legacy branch
-        # 假通過。origin/HEAD 目標本身須正規、可解、且宣告在 harness.config deliveryBranches;任何拒絕 → 印原因碼、
+        # 假通過。origin/HEAD 目標本身須可解、且宣告在 harness.config deliveryBranches;任何拒絕 → 印原因碼、
         # exit 2;無 fallback、不讀任何 env(見 scripts/lib/delivery-refs.ts)。
         # env 傳 default_branch(不用 shell string interpolation),避免罕見的
         # branch 名含 shell metacharacter 情境。⚠️ set-head 失敗 = 沒有權威 base → 兩個 gate exit 2(沒有任何救援通道)。

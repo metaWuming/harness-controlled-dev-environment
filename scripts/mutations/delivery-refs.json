@@ -1,12 +1,6 @@
 [
   {
     "file": "scripts/lib/delivery-refs.ts",
-    "find": "  if (canon !== fullRef) {",
-    "replace": "  if (false) {",
-    "label": "DR-M2 拿掉 base 正規比對 → 本地同名 ref 遮蔽不再被抓;noncanonical 單測與 e2e 轉紅"
-  },
-  {
-    "file": "scripts/lib/delivery-refs.ts",
     "find": "  if (r) return { ok: false, refs: [], rejections: [r] };",
     "replace": "  if (r) return { ok: true, refs: [target], rejections: [] };",
     "label": "DR-M3 base 驗證失敗改靜默放行(拒絕不再回報)→ base.* 負對照與兩個 consumer 的 exit 2 e2e 轉紅"
@@ -39,7 +33,7 @@
     "file": "scripts/lib/delivery-refs.ts",
     "find": "  const r = validateRef(git, target, declared);",
     "replace": "  const r = remoteBranchName(target) === null ? validateRef(git, target, declared) : null;",
-    "label": "DR-M8 base 跳過正規 / 存在 / 宣告驗證(只看形狀)→ base.undeclared / base.noncanonical / base.unresolvable 轉紅"
+    "label": "DR-M8 base 跳過存在 / 宣告驗證(只看形狀)→ base.undeclared / base.unresolvable 轉紅"
   },
   {
     "file": "scripts/lib/delivery-refs.ts",

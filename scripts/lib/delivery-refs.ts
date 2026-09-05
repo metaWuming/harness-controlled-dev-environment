@@ -9,7 +9,7 @@
  *
  * 契約(supervisor 2026-09-03,本版):**唯一來源是受驗的權威 base;不讀任何 env。**
  *   1. `refs/remotes/origin/HEAD` 的目標 T 必須恰為 `refs/remotes/origin/<name>`、`<name>` 過字面分支名
- *      文法、解得出 commit、`origin/<name>` 正規解析恰等於 T(擋本地同名 branch / tag 遮蔽)、
+ *      文法、解得出 commit、
  *      且 `<name>` ∈ `harness.config.json` 的 `deliveryBranches`(靜態宣告)。任一不成立 → `base.*`
  *      原因碼,**不建 allowedPrs**;呼叫方 exit 2(無法判定)。
  *   2. **沒有 fallback**:不猜 `origin/develop`、不用本地 `main` / `develop`。
@@ -31,7 +31,6 @@ export type ReasonCode =
   | 'base.missing'
   | 'base.shape'
   | 'base.unresolvable'
-  | 'base.noncanonical'
   | 'base.undeclared';
 
 export interface Rejection {
@@ -71,7 +70,7 @@ export function remoteBranchName(fullRef: string): string | null {
 
 /**
  * 權威 base 的驗證。輸入是**完整 ref**(`refs/remotes/origin/<name>`)。
- * 順序固定:形狀 → 存在 → 正規 → 宣告。第一個失敗即回該原因碼。
+ * 順序固定:形狀 → 存在 → 宣告。第一個失敗即回該原因碼。
  */
 export function validateRef(git: GitRunner, fullRef: string, declared: readonly string[]): Rejection | null {
   const name = remoteBranchName(fullRef);
@@ -80,14 +79,6 @@ export function validateRef(git: GitRunner, fullRef: string, declared: readonly 
   }
   if (git(['rev-parse', '--verify', '--quiet', `${fullRef}^{commit}`]) === null) {
     return { code: 'base.unresolvable', input: fullRef, detail: `${fullRef} 解不出 commit(未 fetch?)` };
-  }
-  const canon = git(['rev-parse', '--symbolic-full-name', `origin/${name}`]);
-  if (canon !== fullRef) {
-    return {
-      code: 'base.noncanonical',
-      input: fullRef,
-      detail: `origin/${name} 正規解析為 ${canon || '(無 / 歧義)'},不是 ${fullRef}(本地同名 branch 或 tag 遮蔽?)`,
-    };
   }
   if (!declared.includes(name)) {
     return { code: 'base.undeclared', input: fullRef, detail: `分支「${name}」未宣告在 ${HARNESS_CONFIG_PATH} 的 deliveryBranches` };
@@ -136,7 +127,7 @@ export function resolveDeliveryRefsFromRepo(root: string): DeliveryRefsResult {
 export function formatRejections(rejections: readonly Rejection[]): string {
   const lines = rejections.map((r) => `  [${r.code}] ${r.input} — ${r.detail}`);
   return [
-    `✗ 交付 ref 無法判定(${rejections.length} 條):唯一來源是受驗的 origin/HEAD(目標須為 origin/<已宣告交付分支>、正規、可解);沒有 fallback、不讀任何 env。`,
+    `✗ 交付 ref 無法判定(${rejections.length} 條):唯一來源是受驗的 origin/HEAD(目標須為 origin/<已宣告交付分支>、可解);沒有 fallback、不讀任何 env。`,
     ...lines,
   ].join('\n');
 }

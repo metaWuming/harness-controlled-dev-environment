@@ -10,7 +10,7 @@ type: guide
 
 ## [Unreleased] — 移除 `DELIVERY_REFS` env 通道(breaking)
 
-- **變了什麼**:`check:todos` 與 `check:no-source-terms` 的交付證據**唯一來源是受驗的 `origin/HEAD`**(目標須為 `refs/remotes/origin/<name>`、正規、可解、且 `<name>` 宣告在 `scripts/harness.config.json` 的 `deliveryBranches`;實作與原因碼見 `scripts/lib/delivery-refs.ts`)。env `DELIVERY_REFS` 已移除、不再被讀;workflow-level `DELIVERY_REFS` 已從 `ci.yml` 刪除。`MARKER_SELF_PR` 通道未變。
+- **變了什麼**:`check:todos` 與 `check:no-source-terms` 的交付證據**唯一來源是受驗的 `origin/HEAD`**(目標須為 `refs/remotes/origin/<name>`、可解、且 `<name>` 宣告在 `scripts/harness.config.json` 的 `deliveryBranches`;實作與原因碼見 `scripts/lib/delivery-refs.ts`)。env `DELIVERY_REFS` 已移除、不再被讀;workflow-level `DELIVERY_REFS` 已從 `ci.yml` 刪除。`MARKER_SELF_PR` 通道未變。
 - **為什麼**:祖先契約(上一版)下,任何通過驗證的 env 候選都是 origin/HEAD 的祖先,`git log` 集合不變、加不進任何 PR 號;通道只剩「驗證會不會拒絕」與可被 tag / 遮蔽觸發的 fail-closed DoS 面。
 - **導入者要做什麼**:若你的 workflow 自訂了 `DELIVERY_REFS`,刪掉即可(留著也會被靜默忽略)。**換交付線**(把 delivery 從 default branch 擴到其他 branch、或把出廠 `develop` 拿掉)不是單一改動、涉及 `deliveryBranches`、`ci.yml` 的 `on:` / 三處 `if:` / Fetch step、`push` event 下無 `MARKER_SELF_PR` 豁免、Source-term scan `allowedPrs` 字面判定等邊角;本版**提供 minimum viable runbook**(見附錄 A.1)、但不推薦此操作—— default branch 作唯一交付線最穩,有強烈需求再走 runbook + 個案審。
 - **回滾**:`git revert` 本 PR 的 squash commit,env 通道與其測試 / 探針整組還原;無 config schema 變更。
@@ -19,7 +19,7 @@ type: guide
 
 > **設計立場**:本 runbook 是 P3 delivery-refs 移除集合 defer ① 的 minimum viable 交付。**不宣稱覆蓋所有邊角情境、不 permanent、不 automation**;每步的 acceptance 由既有 gate 提供 machine-verifiable evidence。如你不確定是否需要換交付線 = **不要換**(default branch 作唯一交付線是最穩配置)。
 >
-> **前置**:read `scripts/lib/delivery-refs.ts` 契約(origin/HEAD 目標須正規、可解、宣告在 `deliveryBranches`)、`scripts/check-adoption-readiness.ts` L499-524 A5.ci.if 契約(三處 delivery-branch `if:` 行必須逐字等於 `expectedCiIfLine(deliveryBranches)`)。**注意**:`push` event 下無 `MARKER_SELF_PR` 豁免(check-todos-markers / check-no-source-terms 若 base 分支 push 時進 CI,可能無 pre-merge citation);Source-term scan 只對 `PR #N` / `pull/N` **字面**判 `allowedPrs`(見 `scripts/check-no-source-terms.ts`)—— 這些邊角換交付線時可能撞到、runbook 不保證 zero-touch。
+> **前置**:read `scripts/lib/delivery-refs.ts` 契約(origin/HEAD 目標須可解、且宣告在 `deliveryBranches`)、`scripts/check-adoption-readiness.ts` L499-524 A5.ci.if 契約(三處 delivery-branch `if:` 行必須逐字等於 `expectedCiIfLine(deliveryBranches)`)。**注意**:`push` event 下無 `MARKER_SELF_PR` 豁免(check-todos-markers / check-no-source-terms 若 base 分支 push 時進 CI,可能無 pre-merge citation);Source-term scan 只對 `PR #N` / `pull/N` **字面**判 `allowedPrs`(見 `scripts/check-no-source-terms.ts`)—— 這些邊角換交付線時可能撞到、runbook 不保證 zero-touch。
 
 **步驟(每步附 acceptance evidence source)**:
 
