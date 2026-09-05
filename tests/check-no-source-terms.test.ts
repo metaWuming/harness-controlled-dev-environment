@@ -323,6 +323,143 @@ describe("parseGrepZLine — 解 git grep -z NUL 分隔輸出(round 6 P2-3;R1 �
   it("displayGrepHit:格式異常 → 回原文", () => {
     expect(displayGrepHit("no null here")).toBe("no null here");
   });
+
+  // D-①(Sprint 5):`grep.column=true` 下 git grep -z -n 輸出 3-NUL 格式
+  //   `path\0line\0column\0content`。parseGrepZLine 偵測 line + column 皆為
+  //   非空純數字時剝除 column、對外仍回 `{path, line, content}`。
+  it("D-①:3-NUL 格式(grep.column=true)→ 剝除 column、回 2-NUL 等價結構", () => {
+    const raw =
+      "docs/note.md" + NUL1 + "5" + NUL1 + "17" + NUL1 + "see " + PREF_PR + "7";
+    expect(parseGrepZLine(raw)).toEqual({
+      path: "docs/note.md",
+      line: "5",
+      content: "see " + PREF_PR + "7",
+    });
+  });
+
+  it("D-①:3-NUL 格式 displayGrepHit → path:line:content(不含 column)", () => {
+    const raw =
+      "docs/note.md" + NUL1 + "5" + NUL1 + "17" + NUL1 + "see " + PREF_PR + "7";
+    expect(displayGrepHit(raw)).toBe("docs/note.md:5:see " + PREF_PR + "7");
+  });
+
+  it("D-①:3-NUL 格式 hitContent(grep-z framing)→ 抽出 content 供 downstream 判定", () => {
+    const raw =
+      "docs/note.md" + NUL1 + "5" + NUL1 + "3" + NUL1 + PREF_PR + "40 ref";
+    expect(hitContent(raw, "grep-z")).toBe(`${PREF_PR}40 ref`);
+  });
+
+  it("D-①:line field 空字串、column-like field 是數字 → 保守走 2-NUL 解析", () => {
+    // 對稱 coverage:D1 要求 line + column 皆為 **非空** 純數字。
+    // 空 line 這一半條件鎖住 /^\d+$/(非 /^\d*$/)。
+    const raw =
+      "docs/note.md" + NUL1 + "" + NUL1 + "17" + NUL1 + "tail";
+    expect(parseGrepZLine(raw)).toEqual({
+      path: "docs/note.md",
+      line: "",
+      content: "17" + NUL1 + "tail",
+    });
+  });
+
+  it("D-①:line field 是數字、column field 空字串 → 保守走 2-NUL 解析", () => {
+    // 空 column 這一半條件鎖住 /^\d+$/(非 /^\d*$/)。
+    const raw =
+      "docs/note.md" + NUL1 + "5" + NUL1 + "" + NUL1 + "tail";
+    expect(parseGrepZLine(raw)).toEqual({
+      path: "docs/note.md",
+      line: "5",
+      content: "" + NUL1 + "tail",
+    });
+  });
+
+  it("D-①:history scan 3-NUL(rev:path\\0line\\0column\\0content)→ 剝除 column、path 保 rev:path 前綴", () => {
+    // 對稱既有 history scan 2-NUL case(rev:path\0line\0content),
+    // 鎖住 3-NUL 對 history-scan shape 亦正確。
+    const raw =
+      "abc1234:docs/note.md" + NUL1 + "5" + NUL1 + "17" + NUL1 + "see " + PREF_PR + "7";
+    expect(parseGrepZLine(raw)).toEqual({
+      path: "abc1234:docs/note.md",
+      line: "5",
+      content: "see " + PREF_PR + "7",
+    });
+  });
+
+  it("D-①:line field 非數字、即使下一 field 是數字 → 保守走 2-NUL 解析", () => {
+    // 對稱 coverage:D1 保守辨識契約要求 line + column **兩** field 皆為
+    // 非空純數字才視為 3-NUL。此 case 鎖住 line 非數字這一半條件、
+    // 避免未來誤刪 /^\d+$/.test(line) guard 而 test 仍全綠。
+    const raw =
+      "docs/note.md" + NUL1 + "not_line" + NUL1 + "17" + NUL1 + "tail";
+    expect(parseGrepZLine(raw)).toEqual({
+      path: "docs/note.md",
+      line: "not_line",
+      content: "17" + NUL1 + "tail",
+    });
+  });
+
+  it("D-①:第 3 個 field 非數字(可能是 content)→ 保守走 2-NUL 解析", () => {
+    // column-like 位置的 field 若不是純數字(例:content 恰好以 NUL 起頭這種罕見狀況),
+    // 不視為 column、保 2-NUL 語意(content 內含 NUL 由 grep -I 排除 binary 已擋、
+    // 此為理論健全性:pattern-match 條件不滿足即 fallback)。
+    const raw =
+      "docs/note.md" + NUL1 + "5" + NUL1 + "not_digits" + NUL1 + "tail";
+    expect(parseGrepZLine(raw)).toEqual({
+      path: "docs/note.md",
+      line: "5",
+      content: "not_digits" + NUL1 + "tail",
+    });
+  });
+
+  // D-①(Sprint 5):真 Git fixture regression。用與 production 等價 argv
+  //   `git grep --color=never -z -nIiE <pattern>` 分別在 repo-local
+  //   `grep.column=false` 與 `grep.column=true` 下跑,實測 raw NUL 數,
+  //   確保 parseGrepZLine 對兩種格式皆正確拆解。**顯式** set false 建 2-NUL
+  //   基線(避 user global config grep.column=true 污染);不動 global config。
+  it("D-①:真 Git fixture — repo-local grep.column false → 2-NUL / true → 3-NUL、parseGrepZLine 兩況正確", () => {
+    const dir = mkdtempSync(join(tmpdir(), "grepcol-"));
+    try {
+      execFileSync("git", ["init", "-b", "main", dir], { stdio: "pipe" });
+      execFileSync("git", ["-C", dir, "config", "user.email", "t@t"], { stdio: "pipe" });
+      execFileSync("git", ["-C", dir, "config", "user.name", "T"], { stdio: "pipe" });
+      writeFileSync(join(dir, "note.md"), "prefix " + PREF_PR + "7 suffix\n");
+      execFileSync("git", ["-C", dir, "add", "note.md"], { stdio: "pipe" });
+      execFileSync("git", ["-C", dir, "commit", "-m", "seed"], { stdio: "pipe" });
+
+      // 基線:顯式 set grep.column=false(避 user global 污染)
+      execFileSync("git", ["-C", dir, "config", "--local", "grep.column", "false"], { stdio: "pipe" });
+      const out2 = execFileSync(
+        "git",
+        ["-C", dir, "grep", "--color=never", "-z", "-nIiE", "prefix"],
+        { stdio: ["pipe", "pipe", "pipe"] }
+      );
+      const line2 = out2.toString("binary").replace(/\n$/, "");
+      const nulCount2 = (line2.match(/\0/g) ?? []).length;
+      expect(nulCount2, "grep.column=false 應為 2-NUL").toBe(2);
+      const parsed2 = parseGrepZLine(line2);
+      expect(parsed2).not.toBeNull();
+      expect(parsed2!.path).toBe("note.md");
+      expect(parsed2!.line).toBe("1");
+      expect(parsed2!.content).toBe("prefix " + PREF_PR + "7 suffix");
+
+      // 開啟 grep.column=true 驗 3-NUL
+      execFileSync("git", ["-C", dir, "config", "--local", "grep.column", "true"], { stdio: "pipe" });
+      const out3 = execFileSync(
+        "git",
+        ["-C", dir, "grep", "--color=never", "-z", "-nIiE", "prefix"],
+        { stdio: ["pipe", "pipe", "pipe"] }
+      );
+      const line3 = out3.toString("binary").replace(/\n$/, "");
+      const nulCount3 = (line3.match(/\0/g) ?? []).length;
+      expect(nulCount3, "grep.column=true 應為 3-NUL").toBe(3);
+      const parsed3 = parseGrepZLine(line3);
+      expect(parsed3).not.toBeNull();
+      expect(parsed3!.path).toBe("note.md");
+      expect(parsed3!.line).toBe("1");
+      expect(parsed3!.content).toBe("prefix " + PREF_PR + "7 suffix");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("findDriftedCaPatterns — CA 常數 vs denylist 漂移守門(Step 5 F1)", () => {

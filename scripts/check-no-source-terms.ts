@@ -282,10 +282,33 @@ export function parseGrepZLine(
   const rest = raw.slice(nul + 1);
   const nul2 = rest.indexOf("\0");
   if (nul2 !== -1) {
+    const line = rest.slice(0, nul2);
+    const afterLine = rest.slice(nul2 + 1);
+    // D-①:偵測 `grep.column=true` 下的三-NUL 格式 `path\0line\0column\0content`。
+    // 條件(NUL field boundary + numeric line/column、不猜內容):
+    //   (a) line field 非空純數字、
+    //   (b) afterLine 內有第 3 個 NUL、
+    //   (c) 第 3 個 NUL 前的 column field 非空純數字。
+    // 三條全滿足才剝除 column;否則走 2-NUL 保守解析。
+    // production `git grep -z -nI` 用 `-I` 排除 binary、正常 grep content 不含 raw NUL,
+    // 3-NUL 辨識靠 field boundary 而非 content-shape 推論(避 R1 P1 教訓)。
+    if (/^\d+$/.test(line)) {
+      const nul3 = afterLine.indexOf("\0");
+      if (nul3 !== -1) {
+        const column = afterLine.slice(0, nul3);
+        if (/^\d+$/.test(column)) {
+          return {
+            path,
+            line,
+            content: afterLine.slice(nul3 + 1),
+          };
+        }
+      }
+    }
     return {
       path,
-      line: rest.slice(0, nul2),
-      content: rest.slice(nul2 + 1),
+      line,
+      content: afterLine,
     };
   }
   // 沒有第二個 NUL(格式與預期不符)→ **保守保留整段**當內容,不猜行號邊界。
@@ -318,9 +341,14 @@ export function displayGrepHit(raw: string): string {
  */
 export type HitFraming =
   /**
-   * `git grep -z -n` 產出:`path\0line\0content` —— **兩個 NUL**(git 2.50.1 實測)。
+   * `git grep -z -n` 產出兩種格式(依 caller 的 git config `grep.column`):
+   *   - `grep.column` 關閉/未設(git 2.50.1 預設):`path\0line\0content` —— **兩個 NUL**
+   *   - `grep.column=true`:`path\0line\0column\0content` —— **三個 NUL**
    * history tree 掃描時第一段是 `rev:path`,NUL 框架不變。
-   * 缺第二個 NUL 時 `parseGrepZLine` 保守把剩餘整段當內容(不用冒號猜行號邊界)。
+   * `parseGrepZLine` 偵測 3-NUL 形狀(line + column 皆非空純數字)自動剝除 column、
+   * 對外仍回 `{path, line, content}`;兩種格式 downstream 語意相同。
+   * 缺第二個 NUL 時保守把剩餘整段當內容(不用冒號猜行號邊界)。
+   * **不擴 union、兩種格式都屬 grep-z**。
    */
   | "grep-z"
   /** aggregate diff 掃描產出:`<rev8> [+diff] <content>`;content 可含任意位元組(含 NUL)。 */
