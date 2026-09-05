@@ -12,8 +12,32 @@ type: guide
 
 - **變了什麼**:`check:todos` 與 `check:no-source-terms` 的交付證據**唯一來源是受驗的 `origin/HEAD`**(目標須為 `refs/remotes/origin/<name>`、正規、可解、且 `<name>` 宣告在 `scripts/harness.config.json` 的 `deliveryBranches`;實作與原因碼見 `scripts/lib/delivery-refs.ts`)。env `DELIVERY_REFS` 已移除、不再被讀;workflow-level `DELIVERY_REFS` 已從 `ci.yml` 刪除。`MARKER_SELF_PR` 通道未變。
 - **為什麼**:祖先契約(上一版)下,任何通過驗證的 env 候選都是 origin/HEAD 的祖先,`git log` 集合不變、加不進任何 PR 號;通道只剩「驗證會不會拒絕」與可被 tag / 遮蔽觸發的 fail-closed DoS 面。
-- **導入者要做什麼**:若你的 workflow 自訂了 `DELIVERY_REFS`,刪掉即可(留著也會被靜默忽略)。本版**不提供**把交付線換到 default branch 以外分支的指引;有此需求請先開 issue 討論(涉及 `deliveryBranches`、`ci.yml` 的 `on:` / `if:` / Fetch step 與 `check:adoption` 多條規則,不是單一改動)。
+- **導入者要做什麼**:若你的 workflow 自訂了 `DELIVERY_REFS`,刪掉即可(留著也會被靜默忽略)。**換交付線**(把 delivery 從 default branch 擴到其他 branch、或把出廠 `develop` 拿掉)不是單一改動、涉及 `deliveryBranches`、`ci.yml` 的 `on:` / 三處 `if:` / Fetch step、`push` event 下無 `MARKER_SELF_PR` 豁免、Source-term scan `allowedPrs` 字面判定等邊角;本版**提供 minimum viable runbook**(見附錄 A.1)、但不推薦此操作—— default branch 作唯一交付線最穩,有強烈需求再走 runbook + 個案審。
 - **回滾**:`git revert` 本 PR 的 squash commit,env 通道與其測試 / 探針整組還原;無 config schema 變更。
+
+### A.1 附錄:換交付線 runbook(minimum viable、非推薦操作)
+
+> **設計立場**:本 runbook 是 P3 delivery-refs 移除集合 defer ① 的 minimum viable 交付。**不宣稱覆蓋所有邊角情境、不 permanent、不 automation**;每步的 acceptance 由既有 gate 提供 machine-verifiable evidence。如你不確定是否需要換交付線 = **不要換**(default branch 作唯一交付線是最穩配置)。
+>
+> **前置**:read `scripts/lib/delivery-refs.ts` 契約(origin/HEAD 目標須正規、可解、宣告在 `deliveryBranches`)、`scripts/check-adoption-readiness.ts` L499-524 A5.ci.if 契約(三處 delivery-branch `if:` 行必須逐字等於 `expectedCiIfLine(deliveryBranches)`)。**注意**:`push` event 下無 `MARKER_SELF_PR` 豁免(check-todos-markers / check-no-source-terms 若 base 分支 push 時進 CI,可能無 pre-merge citation);Source-term scan 只對 `PR #N` / `pull/N` **字面**判 `allowedPrs`(見 `scripts/check-no-source-terms.ts`)—— 這些邊角換交付線時可能撞到、runbook 不保證 zero-touch。
+
+**步驟(每步附 acceptance evidence source)**:
+
+1. **前置決策**:確認新交付分支是 default branch;若不是,明列新的 default branch 是什麼、目前 `protectedBranches` 清單。
+2. **修 `scripts/harness.config.json`**:`deliveryBranches` 加入 / 改成新 branch name(若舊 `develop` 不作交付線就移除);`protectedBranches` 需含所有 delivery branches(否則 A5 集合不等);保留 `mergeStrategy` / `mode` / 其他欄位。
+3. **修 `.github/workflows/ci.yml`**:三處 `if:` 行(Fetch delivery refs / TODOS Markers Check / Source-term scan)必須逐字等於由新 `deliveryBranches` 導出的 `expectedCiIfLine`(見 `scripts/check-adoption-readiness.ts:502`);若 push event 上要交付線 CI 跑,`push.branches` 集合亦需相應更新(A5.ci.push 驗)。
+4. **修 pre-commit / pre-push hooks**(若新交付分支不在既有 `protectedBranches`)。
+5. **驗證 gates**(每步 acceptance evidence):
+   - `npm run check:adoption`(A5 集合精確等 / A5.ci.if 三處逐字等)
+   - `npm run check:baseline-governance`(promotion PR 對應 protectedBranches)
+   - `npm run check:catalog`(CI step 對應 catalog)
+   - `npm run check:no-source-terms`(Source-term scan 對新交付 branch 的 `allowedPrs` 邊界)
+   - `npm run check:doc-refs`(檔案引用未斷)
+   - `npm test` 全 suite:`tests/check-adoption-readiness.e2e.test.ts` 的 `CI_ADOPTED` fixture pattern + 本 sprint 加的 `tests/p3-runbook-fixture.e2e.test.ts`(defer ① evidence)覆蓋 minimum acceptance
+6. **runtime evidence**(post-merge、非本 PR 內驗):squash merge 到 default branch 後、`push` event on 新交付 branch 是否觸發應有 workflow。**注意**:`push` event 下無 `MARKER_SELF_PR` 豁免,若新交付 branch 的 push CI 卡在 TODOS Markers Check / Source-term scan,需另加 PR-controlled marker 或 pause 交付、依個案決。
+7. **導入完成後**:更新 `docs/CONTROL-CATALOG.md`(若 catalog 涉及)、`README.md`(若寫死 branch);Owner 稽核 branch protection / ruleset(GOV-005)確保新交付分支必經 PR。
+
+**如何撤回**:`git revert` 本 runbook PR 的 squash commit,回到 default-branch-only 交付線;跑步驟 5 所有 gate 綠 = 撤回完成。
 
 ## 0.1 → 0.2(Milestone A)
 
@@ -41,8 +65,7 @@ type: guide
 
 - 三處 delivery-branch 的 `if:` 行(Fetch delivery refs / TODOS Markers / Source-term)在 adopted mode 會被 A5.ci.if 驗:
   必須逐字等於 `if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)`
-  再對 `deliveryBranches` 每個 b 接 ` || github.ref == 'refs/heads/<b>'`。出廠 ci.yml 含 `develop`——要嘛把 `develop` 列進
-  `deliveryBranches`,要嘛從三行拿掉。
+  再對 `deliveryBranches` 每個 b 接 ` || github.ref == 'refs/heads/<b>'`。**`deliveryBranches` 是允許的 `origin/HEAD` 目標白名單**(delivery evidence 語意、見 `scripts/lib/delivery-refs.ts`);多列或少列都會改 A5.ci.if 期望。出廠 ci.yml 三處 `if:` 行預期 `deliveryBranches` = `[main, develop]`;**若你的專案不需要 `develop` 作交付線**,從 `deliveryBranches` 移除 `develop` 並同時從三處 `if:` 行拿掉 `|| github.ref == 'refs/heads/develop'`(完整步驟見 [`[Unreleased]` 附錄 A.1](#a1-附錄換交付線-runbookminimum-viable非推薦操作))。
 
 ### 4. `scripts/control-catalog.json`:登錄你的 CI step
 
