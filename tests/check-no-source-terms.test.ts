@@ -349,6 +349,19 @@ describe("parseGrepZLine — 解 git grep -z NUL 分隔輸出(round 6 P2-3;R1 �
     expect(hitContent(raw, "grep-z")).toBe(`${PREF_PR}40 ref`);
   });
 
+  it("D-①:line field 非數字、即使下一 field 是數字 → 保守走 2-NUL 解析", () => {
+    // 對稱 coverage:D1 保守辨識契約要求 line + column **兩** field 皆為
+    // 非空純數字才視為 3-NUL。此 case 鎖住 line 非數字這一半條件、
+    // 避免未來誤刪 /^\d+$/.test(line) guard 而 test 仍全綠。
+    const raw =
+      "docs/note.md" + NUL1 + "not_line" + NUL1 + "17" + NUL1 + "tail";
+    expect(parseGrepZLine(raw)).toEqual({
+      path: "docs/note.md",
+      line: "not_line",
+      content: "17" + NUL1 + "tail",
+    });
+  });
+
   it("D-①:第 3 個 field 非數字(可能是 content)→ 保守走 2-NUL 解析", () => {
     // column-like 位置的 field 若不是純數字(例:content 恰好以 NUL 起頭這種罕見狀況),
     // 不視為 column、保 2-NUL 語意(content 內含 NUL 由 grep -I 排除 binary 已擋、
