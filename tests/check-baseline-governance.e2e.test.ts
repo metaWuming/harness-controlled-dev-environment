@@ -341,4 +341,114 @@ describe('check:baseline-governance e2e(16 條)', () => {
     expect(r.code, ok(r)).toBe(0);
     expect(r.out).toMatch(/^BASELINE_UNCHANGED/);
   });
+
+  // ---------- A3 defer ⑬⑭⑮ diagnostic 資訊完整性 6 項獨立契約 ----------
+  //
+  // ⑬:oldVal === null 首次設定 baseline 時,OK renderer 產出「(方向檢查略過,見 info)」,
+  //     必須有對應的「首次設定」info line。
+  // ⑭:config.head.invalid / config.base.invalid 兩個 UNDETERMINED 早退,不得丟掉
+  //     上游已寫入的 infoLines(如「merge-base 沒有 harness.config.json、不套用 promotion 豁免」)。
+  //     兩 case 共用前置流程:令 merge-base 的 scripts/harness.config.json 缺失、
+  //     使 protectedBranches promotion 檢查寫入「不套用 promotion 豁免」info line;
+  //     再分別讓 HEAD / merge-base 的 baseline config 解析失敗(invalid JSON)。
+  // ⑮:UNCHANGED + info 與 OK 分支 directionChecked=true/false 的顯示契約。
+
+  it('(23) A3 ⑬:oldVal===null 首次設定 baseline → OK 訊息「方向檢查略過,見 info」必有對應首次設定 info', () => {
+    // fixture:A(baseline="")→ B(baseline=A)。改成 fresh fixture: A 只寫 config baseline=""、
+    //   B 一步就把 baseline 設成 40-hex 合法值(A);merge-base 那側的 baseline 是 ""(null-like)
+    //   —— 不對,這個 fixture baseline="" 會被 parseBaselineConfig 解成 null。用它當前置。
+    //   在 feature 分支上把 baseline 從 null 推進到有效值,測 "首次設定"。
+    const f = fixture();
+    // 重建 fixture 前置:讓 merge-base 那側的 baseline 為 null(用 "")
+    f.git('checkout', '-q', 'main');
+    f.write(CONFIG, cfg('')); // 把 main 的 baseline 改回 ""(null)
+    f.commit('reset baseline to null on main');
+    f.git('checkout', '-q', 'feature');
+    f.git('merge', '-q', '--no-ff', 'main', '-m', 'sync main');
+    // 現在 merge-base(main, feature)的 baseline 是 null。feature 推進到 A(合法 40-hex、
+    // 是 merge-base 祖先)。
+    f.write(CONFIG, cfg(f.A));
+    f.commit('first-time set baseline = A');
+    const r = run([`--root=${f.dir}`, '--base=main']);
+    expect(r.code, ok(r)).toBe(0);
+    expect(r.out).toMatch(/^BASELINE_GOVERNANCE_OK/);
+    expect(r.out).toContain('方向檢查略過');
+    expect(r.out, '首次設定必須有對應 info line、不能 dangling 見 info').toContain('首次設定 baseline');
+  });
+
+  it('(24) A3 ⑭a:config.head.invalid + 前置 promotion info → UNDETERMINED 保留 promotion info', () => {
+    // 前置:令 merge-base 的 scripts/harness.config.json 缺失,傳入 --head 觸發
+    //   protectedBranches promotion 檢查、寫入「不套用 promotion 豁免」info line。
+    //   再讓 HEAD 的 baseline config invalid(壞掉的 JSON)。
+    const f = fixture();
+    // merge-base 沒有 scripts/harness.config.json(fixture 預設不寫)→ promotion info 會寫
+    f.write(CONFIG, '{ not: valid JSON }'); // HEAD 的 baseline config invalid
+    f.commit('C: head-invalid');
+    const r = run([`--root=${f.dir}`, '--base=main', '--head=develop']);
+    expect(r.code, ok(r)).toBe(2);
+    expect(r.out).toContain('BASELINE_GOVERNANCE_UNDETERMINED');
+    expect(r.out).toContain('[config.head.invalid]');
+    expect(r.out, 'UNDETERMINED 早退不得丟 promotion info').toContain('不套用 promotion 豁免');
+  });
+
+  it('(25) A3 ⑭b:config.base.invalid + 前置 promotion info → UNDETERMINED 保留 promotion info', () => {
+    // 前置:merge-base 沒有 harness.config.json、觸發 promotion info。
+    //   再讓 merge-base 的 baseline config invalid(在 main 上寫壞掉的 JSON、feature 保 valid)。
+    const f = fixture();
+    f.git('checkout', '-q', 'main');
+    f.write(CONFIG, '{ broken json }'); // merge-base(main)那側的 baseline config invalid
+    f.commit('break baseline config on main');
+    f.git('checkout', '-q', 'feature');
+    f.git('merge', '-q', '--no-ff', 'main', '-m', 'sync broken main');
+    // feature 覆蓋回一個 valid JSON,確保 head 不 invalid
+    f.write(CONFIG, cfg(f.A));
+    f.commit('C: head valid but base still broken via merge-base');
+    // 因為 feature merge 掉 main 後 merge-base(main, feature)= main tip = 壞掉的
+    // 那個 commit,讀取該 rev 的 CONFIG 會拿到壞 JSON → oldCfg = { error } → config.base.invalid。
+    const r = run([`--root=${f.dir}`, '--base=main', '--head=develop']);
+    expect(r.code, ok(r)).toBe(2);
+    expect(r.out).toContain('BASELINE_GOVERNANCE_UNDETERMINED');
+    expect(r.out).toContain('[config.base.invalid]');
+    expect(r.out, 'UNDETERMINED 早退不得丟 promotion info').toContain('不套用 promotion 豁免');
+  });
+
+  it('(26) A3 ⑮a:UNCHANGED + promotion info → status UNCHANGED + 主訊息 + info 保留', () => {
+    // fixture 預設兩端 baseline 相同(A);merge-base 無 harness.config.json → promotion info 寫入。
+    const f = fixture();
+    f.write('README.md', 'change\n');
+    f.commit('touch readme');
+    const r = run([`--root=${f.dir}`, '--base=main', '--head=develop']);
+    expect(r.code, ok(r)).toBe(0);
+    expect(r.out).toMatch(/^BASELINE_UNCHANGED/);
+    expect(r.out, 'UNCHANGED 分支必須保留 promotion info').toContain('不套用 promotion 豁免');
+  });
+
+  it('(27) A3 ⑮b:方向確實檢查(directionChecked=true)→ 訊息含「且為舊值後裔」且不含「方向檢查略過」', () => {
+    // 舊值 A、新值 B(A 的真後裔、= merge-base)→ 方向檢查通過。
+    const f = fixture();
+    f.write(CONFIG, cfg(f.B));
+    f.commit('advance baseline A → B');
+    const r = run([`--root=${f.dir}`, '--base=main']);
+    expect(r.code, ok(r)).toBe(0);
+    expect(r.out).toMatch(/^BASELINE_GOVERNANCE_OK/);
+    expect(r.out).toContain('且為舊值後裔');
+    expect(r.out, '方向確實檢查時不得再說「方向檢查略過」').not.toContain('方向檢查略過');
+  });
+
+  it('(28) A3 ⑮c:方向略過(oldVal===null 首次設定)→ 訊息含「方向檢查略過」且必有對應 info', () => {
+    // 對稱 (23):同樣觸發首次設定,但明列「方向略過必有對應 info」的顯示契約
+    // (避免 (23) 之外的分支 regression 出現新的 dangling「見 info」)。
+    const f = fixture();
+    f.git('checkout', '-q', 'main');
+    f.write(CONFIG, cfg(''));
+    f.commit('reset to null on main');
+    f.git('checkout', '-q', 'feature');
+    f.git('merge', '-q', '--no-ff', 'main', '-m', 'sync main');
+    f.write(CONFIG, cfg(f.A));
+    f.commit('first-time set baseline');
+    const r = run([`--root=${f.dir}`, '--base=main']);
+    expect(r.code, ok(r)).toBe(0);
+    expect(r.out).toContain('方向檢查略過');
+    expect(r.out, '方向略過必有對應 info line、不 dangling').toMatch(/\[info\][^\n]*首次設定/);
+  });
 });

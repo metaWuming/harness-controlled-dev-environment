@@ -128,8 +128,20 @@ export function evaluateBaselineGovernance(baseRef: string, io: GitIo, opts: Gov
   };
   const oldCfg = readCfg(mb);
   const newCfg = readCfg(head);
-  if (typeof newCfg === 'object' && 'error' in newCfg) return und('config.head.invalid', newCfg.error);
-  if (typeof oldCfg === 'object' && 'error' in oldCfg) return und('config.base.invalid', oldCfg.error);
+  // A3 defer ⑭:config.*.invalid 的 UNDETERMINED 早退不得丟掉 infoLines
+  //   (對照 diff.unavailable 分支的 push-then-return pattern)。
+  //   否則上游已寫入的 promotion 相關 info(如「merge-base 沒有 harness.config.json、
+  //   不套用 promotion 豁免」)會在讀者眼前消失、影響診斷判讀。
+  if (typeof newCfg === 'object' && 'error' in newCfg) {
+    const u = und('config.head.invalid', newCfg.error);
+    u.lines.push(...infoLines);
+    return u;
+  }
+  if (typeof oldCfg === 'object' && 'error' in oldCfg) {
+    const u = und('config.base.invalid', oldCfg.error);
+    u.lines.push(...infoLines);
+    return u;
+  }
   const oldVal = oldCfg === 'absent' ? null : (oldCfg as { baseline: string | null }).baseline;
   const newVal = newCfg === 'absent' ? null : (newCfg as { baseline: string | null }).baseline;
 
@@ -176,6 +188,13 @@ export function evaluateBaselineGovernance(baseRef: string, io: GitIo, opts: Gov
             const forward = io.git(['merge-base', '--is-ancestor', ovSha, nvSha]);
             if (forward === null || ovSha === nvSha) f.push({ code: 'value.not-forward', msg: `新 baseline ${nv.slice(0, 12)} 不是舊值 ${ov.slice(0, 12)} 的真後裔(只准往前推)` });
           }
+        } else {
+          // A3 defer ⑬:oldVal === null 首次設定 baseline。此分支不觸發 template
+          //   check 也不觸發方向檢查,`directionChecked` 保 false;OK renderer 產出
+          //   「(方向檢查略過,見 info)」時需有對應 info line,否則讀者找不到理由。
+          //   限定在新值 40-hex 且可解析(nvSha 存在)之後 push,避免 invalid / unresolvable
+          //   新值上宣稱「首次設定」成功語意。
+          infoLines.push(`  [info] 首次設定 baseline(舊值為 null / 缺),無舊值可對照、略過方向檢查`);
         }
       }
     }
