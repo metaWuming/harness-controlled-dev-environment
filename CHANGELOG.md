@@ -40,7 +40,7 @@
 ### Breaking / 導入者要做的事
 - **`harness.config.json` schemaVersion 1 一律拒收**(缺檔或 v1 → `check:adoption` exit 2);升級加 `mergeStrategy`、改 `schemaVersion: 2`。
 - **CI 新增三個 step**(Adoption Readiness / Control Catalog / Baseline Governance);自訂 ci.yml 者要補上,且每個非 setup step 都要登錄在 `scripts/control-catalog.json`(否則 `check:catalog` 紅)。
-- adopted mode 下三處 delivery-branch `if:` 行必須等於由 `deliveryBranches` 導出的期望行(出廠 ci.yml 含 `develop`,要嘛列進 `deliveryBranches`、要嘛拿掉)。
+- adopted mode 下三處 delivery-branch `if:` 行必須等於由 `deliveryBranches` 導出的期望行;**`deliveryBranches` 是允許的 `origin/HEAD` 目標白名單**、多列或少列都會改 A5.ci.if 期望;出廠 ci.yml 三處 `if:` 行預期 `deliveryBranches` = `[main, develop]`,若專案不需要 `develop` 交付線,從 `deliveryBranches` 移除並同時從三處 `if:` 行拿掉(完整步驟見 [`docs/MIGRATION.md`](docs/MIGRATION.md) `[Unreleased]` 附錄 A.1)。
 - 完整步驟見 [`docs/MIGRATION.md`](docs/MIGRATION.md)。
 
 ## [0.1.0] — 2026-08

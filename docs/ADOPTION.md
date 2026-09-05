@@ -122,8 +122,7 @@ type: guide
 - [ ] 同一 workflow 的 `Adoption Readiness Check` step(`npm run check:adoption`)要保留,恰 1 行
 - [ ] 三處 delivery-branch 的 `if:` 行(Fetch delivery refs / TODOS Markers / Source-term)在 adopted mode 會被 A5.ci.if 驗:
       必須逐字等於 `if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)`
-      再對 `deliveryBranches` 每個 b 接 ` || github.ref == 'refs/heads/<b>'`。出廠 ci.yml 含 `develop`——要嘛把 `develop` 列進
-      `deliveryBranches`,要嘛從三行拿掉
+      再對 `deliveryBranches` 每個 b 接 ` || github.ref == 'refs/heads/<b>'`。**`deliveryBranches` 是允許的 `origin/HEAD` 目標白名單**(delivery evidence 語意);出廠 ci.yml 三處 `if:` 行預期 `deliveryBranches` = `[main, develop]`;**若你的專案不需要 `develop` 作交付線**,從 `deliveryBranches` 移除 `develop` 並同時從三處 `if:` 行拿掉 `|| github.ref == 'refs/heads/develop'`(完整步驟見 [`docs/MIGRATION.md`](MIGRATION.md) `[Unreleased]` 附錄 A.1)
 - [ ] `Baseline Governance Check` step(pull_request only)要保留:同 repo PR 會帶 `--head`,保護分支之間的 promotion PR
       (例 develop → main)依你宣告的 `protectedBranches` 明文跳過;fork PR 不帶 `--head`。⚠️ 這個豁免只在所有
       `protectedBranches` 都真的開了 branch protection / ruleset(必須經 PR、不得直接 push)時成立
