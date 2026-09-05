@@ -27,6 +27,7 @@ import {
   mkdtempSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -897,6 +898,31 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     expect(code).toBe(2);
     expect(out).toContain("[base.missing]");
     expect(out).not.toContain("self-PR 引用放行");
+  });
+
+  it("🟢 P2#2 defer ③:loadAllowedPrs exit(2) 前不建 cnst-* pattern 目錄(fixture tmpdir 集合守恆)", () => {
+    // 修法:main() 內 loadAllowedPrs 呼叫必須在 writePatternFile(建 cnst-* 目錄)之前;
+    // 若 loadAllowedPrs 因 base 判定失敗 exit(2)、此時尚未建任何 cnst-* 目錄、無 leftover。
+    // 用 TMPDIR env override 把 SUT 的 os.tmpdir() 導向 fixture-scoped dir,
+    // 跑完對比排序後集合是否守恆(before === after)。
+    // Negative control:把 loadAllowedPrs 呼叫移回 writePatternFile 之後、after 集合會多出
+    // 若干個 cnst-* 目錄(數量隨 deny partition 而定、不鎖死);判準是 after !== before。
+    const fixtureTmp = mkdtempSync(join(tmpdir(), "cnst-defer3-tmproot-"));
+    created.push(fixtureTmp);
+    const before = readdirSync(fixtureTmp).filter((f) => f.startsWith("cnst-")).sort();
+
+    const dir = makeRepo({
+      deny: [PREF_PR + "[0-9]", PREF_PULL + "[0-9]"],
+      commits: [{ message: "feat (#8)", files: { "src/foo.md": "hello\n" } }],
+      workingTree: { "docs/note.md": "see " + PREF_PR + "8\n" },
+      noOrigin: true,
+    });
+    const { code, out } = runChecker(dir, { TMPDIR: fixtureTmp });
+    expect(code).toBe(2);
+    expect(out).toContain("[base.missing]");
+
+    const after = readdirSync(fixtureTmp).filter((f) => f.startsWith("cnst-")).sort();
+    expect(after).toEqual(before);
   });
 
   it("🔴 批 8 Phase A A-e3(P2#2 改寫):origin/develop 不再是 fallback——該分支的 PR # 不進 allowedPrs → exit 1", () => {

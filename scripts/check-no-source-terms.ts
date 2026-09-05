@@ -1777,6 +1777,13 @@ function main(): number {
     return 1;
   }
 
+  // loadAllowedPrs may exit(2); resolve it before creating temporary pattern files.
+  const { prs: allowedPrs, mergedCount, selfPrCount } = loadAllowedPrs(root);
+  // 批 9 F2:size ≤ mergedCount + selfPrCount(collision 時 <);印 `size` + 兩來源計數
+  console.log(
+    `── allowedPrs: ${allowedPrs.size} 個 PR 號被納入放行清單(delivery 已 merge ${mergedCount} + self-PR ${selfPrCount};collision 時 self ∈ delivery)──`
+  );
+
   const { nonCa, ca } = partitionPatterns(allPatterns);
   const cleanups: Array<() => void> = [];
   const allFile = writePatternFile(allPatterns);
@@ -1787,12 +1794,6 @@ function main(): number {
   if (caFile) cleanups.push(caFile.cleanup);
   // SYNTAX 例外檔只掃 non-CA(等同舊「縮減 pattern 集」)
   const syntaxNonCaFile = nonCaFile;
-
-  const { prs: allowedPrs, mergedCount, selfPrCount } = loadAllowedPrs(root);
-  // 批 9 F2:size ≤ mergedCount + selfPrCount(collision 時 <);印 `size` + 兩來源計數
-  console.log(
-    `── allowedPrs: ${allowedPrs.size} 個 PR 號被納入放行清單(delivery 已 merge ${mergedCount} + self-PR ${selfPrCount};collision 時 self ∈ delivery)──`
-  );
 
   // PR A1:載入 baseline config、決定 history scan 範圍(fail-closed on error)
   // Round 1 P1 + Round 2 P1a:baseline 決策三態(ok / template-fallback / fail)
