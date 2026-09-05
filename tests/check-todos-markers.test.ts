@@ -10,6 +10,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { harnessConfigJson } from "./fixtures/harness-config-fixture";
 import {
   extractPrCitations,
   parseTodosMarkers,
@@ -380,22 +381,6 @@ function makeRepo(opts: {
     git('remote', 'set-head', 'origin', 'main');
   }
   return dir;
-}
-
-function harnessConfigJson(deliveryBranches: readonly string[]): string {
-  // P2#2:交付 ref 契約讀 harness.config.json 的 deliveryBranches(靜態宣告);fixture 預設只宣告 main
-  return JSON.stringify({
-    schemaVersion: 2,
-    mode: 'template',
-    projectId: '__TEMPLATE__',
-    templatePackageName: 'harness-controlled-dev-environment',
-    // loader 要求 deliveryBranches ⊆ protectedBranches
-    protectedBranches: [...deliveryBranches],
-    deliveryBranches: [...deliveryBranches],
-    requiredAgentAdapters: ['claude'],
-    githubGovernanceRequired: false,
-    mergeStrategy: 'squash',
-  });
 }
 
 function runChecker(cwd: string, envOverride?: Record<string, string>): { code: number; out: string } {
