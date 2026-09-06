@@ -10,6 +10,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { loadHarnessConfig } from "../scripts/lib/harness-config";
+import { CI_IF_EXPECTED_COUNT, expectedCiIfLine, extractCiIfLines } from "../scripts/check-adoption-readiness";
 
 const REPO = path.resolve(__dirname, "..");
 const CI_YML = path.join(REPO, ".github/workflows/ci.yml");
@@ -170,5 +172,30 @@ describe("CI step 條件 structural lock(A3 defer ⑩ CTRL-CI-014 P1-B)", () => 
     expect(runRaw).not.toBeNull();
     // 允許 --base=${{ ... base.sha }} 但不允許 --base=origin/... 或 --base=$BASE_REF 這類可移動 ref
     expect(runRaw).not.toMatch(/--base=(origin\/|\$BASE_REF|\$\{BASE_REF\}|\$\{\{ github\.base_ref \}\})/);
+  });
+});
+
+// A3 defer ①(template-self structural conformance)——由 production config loader
+//   讀本 repo 現行 `harness.config.json` 的 `deliveryBranches`,對照 `.github/workflows/
+//   ci.yml` 三處 governance gate 的 `if:` 行(由 `extractCiIfLines(yml)` 抽出),
+//   assert 每行逐字等於 `expectedCiIfLine(cfg.deliveryBranches)`。
+//
+// A5.ci.if 只在 adopted mode 執行(對本 template repo 不 fire),此測試補 template
+// 自身漂移的 structural lock:若未來修改 `deliveryBranches` 而漏改 CI(或反之),
+// 此測試轉紅、擋合併。
+describe("A3 defer ①:CI if 條件對齊 template config `deliveryBranches`(template-self structural regression)", () => {
+  const cfg = loadHarnessConfig(REPO);
+  const yml = readFileSync(CI_YML, "utf-8");
+  const ifLines = extractCiIfLines(yml);
+
+  it("`extractCiIfLines(ci.yml)` 找到恰 `CI_IF_EXPECTED_COUNT` 行(擋空陣列 / 少行的 vacuous pass)", () => {
+    expect(ifLines.length).toBe(CI_IF_EXPECTED_COUNT);
+  });
+
+  it("三處 `if:` 各逐字等於 `expectedCiIfLine(cfg.deliveryBranches)`(config-derived、不寫死分支名)", () => {
+    const expected = expectedCiIfLine(cfg.deliveryBranches);
+    ifLines.forEach((line, i) => {
+      expect(line, `CI if 行 #${i + 1} 與 harness.config.json deliveryBranches (${JSON.stringify(cfg.deliveryBranches)}) 導出的期望行不符`).toBe(expected);
+    });
   });
 });

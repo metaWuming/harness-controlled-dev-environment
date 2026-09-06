@@ -153,12 +153,14 @@ jobs:
         # 之後**跑(此時 PR 已 squash merge、self-PR 引用找得到 merge 證據、不會踩死鎖)。
         # 非 delivery branch 的 push(feature/* fix/* chore/* release/* …)一律 skip——
         # 那時 PR 通常還沒 merge、self-PR 引用會找不到證據。
-        # `default_branch` 動態抓,自動涵蓋 main / master / trunk 等 repo 主線命名;
-        # 對 GitFlow 專案的 `develop` 明列補齊。
-        # 🔴 導入者注意:若你的 delivery branch 不是 default_branch 或 develop(例:
-        # `release/**`),同步把它加進下面的條件,否則 mainline push 的 marker 治理
-        # 會被靜默跳過(Codex batch 6 round 3 P2)。
-        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/develop'
+        # 此條件同時保留 repository 的 dynamic default branch,並逐一列出
+        # `harness.config.json` 的 `deliveryBranches`(對齊 A5.ci.if 由
+        # `expectedCiIfLine(cfg.deliveryBranches)` 導出的期望行、
+        # 見 `scripts/check-adoption-readiness.ts`)。
+        # 🔴 導入者注意:修改 `harness.config.json` 的 `deliveryBranches` 時
+        # 須同步更新三處(Fetch delivery refs / TODOS Markers Check / Source-term scan)
+        # 的此條件,否則 mainline push 的 marker 治理會被靜默跳過。
+        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main'
         # 🔴 Codex batch 6 round 6 P2 + Step 5 #6/#8:改用 default_branch 動態抓 +
         # `git remote set-head` 讓 origin/HEAD 指向 default,check-todos-markers 走
         # origin/HEAD 唯一權威來源、不再無條件 resolve master/trunk 造成 legacy branch
@@ -214,12 +216,14 @@ jobs:
         # 之後**跑(此時 PR 已 squash merge、self-PR 引用找得到 merge 證據、不會踩死鎖)。
         # 非 delivery branch 的 push(feature/* fix/* chore/* release/* …)一律 skip——
         # 那時 PR 通常還沒 merge、self-PR 引用會找不到證據。
-        # `default_branch` 動態抓,自動涵蓋 main / master / trunk 等 repo 主線命名;
-        # 對 GitFlow 專案的 `develop` 明列補齊。
-        # 🔴 導入者注意:若你的 delivery branch 不是 default_branch 或 develop(例:
-        # `release/**`),同步把它加進下面的條件,否則 mainline push 的 marker 治理
-        # 會被靜默跳過(Codex batch 6 round 3 P2)。
-        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/develop'
+        # 此條件同時保留 repository 的 dynamic default branch,並逐一列出
+        # `harness.config.json` 的 `deliveryBranches`(對齊 A5.ci.if 由
+        # `expectedCiIfLine(cfg.deliveryBranches)` 導出的期望行、
+        # 見 `scripts/check-adoption-readiness.ts`)。
+        # 🔴 導入者注意:修改 `harness.config.json` 的 `deliveryBranches` 時
+        # 須同步更新三處(Fetch delivery refs / TODOS Markers Check / Source-term scan)
+        # 的此條件,否則 mainline push 的 marker 治理會被靜默跳過。
+        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main'
         # MARKER_SELF_PR 繼承 workflow-level env(見檔頭 `env:` 區塊)、無需 step-level 覆蓋。
         # 交付證據只來自受驗 origin/HEAD(policy A「只 default_branch」的自然延伸;DELIVERY_REFS env 已移除)。
         run: npx tsx scripts/check-todos-markers.ts
@@ -266,11 +270,14 @@ jobs:
         # `github.event.pull_request.number` 為 null(env 空字串)、MARKER_SELF_PR
         # 通道失效 → self-PR 引用找不到證據被誤擋。gate pattern 對齊上方 TODOS
         # Markers Check step 既有寫法(批 6 加的)、涵蓋 main/master/trunk 等 repo
-        # 主線命名 + GitFlow 的 develop。
-        # 🔴 導入者注意:若你的 delivery branch 不是 default_branch 或 develop
-        # (例:release/**),同步把它加進下面的條件——與 TODOS Markers Check 三處
-        # 同步紀律(批 6 LESSONS L89)。
-        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/develop'
+        # 主線命名。此條件同時保留 repository 的 dynamic default branch,並逐一列出
+        # `harness.config.json` 的 `deliveryBranches`(對齊 A5.ci.if 由
+        # `expectedCiIfLine(cfg.deliveryBranches)` 導出的期望行、
+        # 見 `scripts/check-adoption-readiness.ts`)。
+        # 🔴 導入者注意:修改 `harness.config.json` 的 `deliveryBranches` 時
+        # 須同步更新三處(Fetch delivery refs / TODOS Markers Check / Source-term scan)
+        # 的此條件,否則 mainline push 的 marker 治理會被靜默跳過。
+        if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main'
         # MARKER_SELF_PR 繼承 workflow-level env(見檔頭 `env:` 區塊)、無需 step-level 覆蓋(F1 修法);
         # DELIVERY_REFS env 已移除。
         run: npm run check:no-source-terms
