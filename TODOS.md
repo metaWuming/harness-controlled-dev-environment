@@ -144,6 +144,7 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 - **內容**:外層 timeout 或 CI 取消時,mutate 已改壞的原始碼不會還原。README 對 spec 的 fail-closed 講得清楚,但沒提這個。
 - **可能方向**:signal handler 還原 + README 補一句。
 - **工時**:1h
+- **Phase 0 evidence audit(2026-09-06 Sprint 8、pull request 編號 ___)**:CodeGraph 已確認現行 `scripts/mutate.ts` 有 `beginShutdown` → `killActiveChild` → `restoreAll` → `process.exit(2)` 路徑、SIGINT/SIGTERM handler 皆註冊;PR #73 CI 首次觀察到 1 次 `tests/mutate.test.ts:1130`「外部送 SIGTERM 給 runner」case failure(expected `GUARD_ON` 拿到 `GUARD_OFF`)。Phase 0 蒐證(scratchpad-only、無 commit):macOS 本機 20 iterations 全通過(0% 觀察到 failure)、每次 `child.kill("SIGTERM")` 回傳 true、close code=2、stderr 含「收到 SIGTERM」handler marker、close 後立即讀已恢復、短暫延後仍恢復、無 lingering descendant/writer。**目前只能說「單次 CI-observed failure、本機未重現」**——不宣稱 production restore 正常(只能說 20 次本機觀測均成功)、不宣稱 CI-only flaky、不推論 platform-specific / observation race / actual production bug。**STOP-AND-REPORT #1 / #7 觸發**:無 deterministic failing regression / 可控 test-side seam,依 plan D1 明列「不採概率型 mitigation」(不 sleep / retry / 弱化 assertion / mark flaky)。**條目保持 pending、不 strikethrough、不宣稱修復**;後續 Linux CI evidence 累積(如再觀察到 failure、能捕捉更多訊號)後重新拍板 Phase 1。標準車道人工 CSO_NOT_REQUIRED(bookkeeping / decision record)。
 
 ### 🟢 doc governance 測試的其餘缺口(A1.1 defer 集合)
 - **來源**:2026-09-01 PR A1.1 Step 5 r1-r3 的 INFORMATIONAL(confidence ≤7,逐條見各輪 review;A1.1 共 defer 23 條)
