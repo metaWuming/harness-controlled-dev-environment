@@ -270,12 +270,13 @@ jobs:
         # `github.event.pull_request.number` 為 null(env 空字串)、MARKER_SELF_PR
         # 通道失效 → self-PR 引用找不到證據被誤擋。gate pattern 對齊上方 TODOS
         # Markers Check step 既有寫法(批 6 加的)、涵蓋 main/master/trunk 等 repo
-        # 主線命名。此條件同時保留 repository 的 dynamic default branch,
-        # 並逐一列出 `harness.config.json` 的 `deliveryBranches`(對齊 A5.ci.if
-        # 由 `expectedCiIfLine(cfg.deliveryBranches)` 導出的期望行)。
+        # 主線命名。此條件同時保留 repository 的 dynamic default branch,並逐一列出
+        # `harness.config.json` 的 `deliveryBranches`(對齊 A5.ci.if 由
+        # `expectedCiIfLine(cfg.deliveryBranches)` 導出的期望行、
+        # 見 `scripts/check-adoption-readiness.ts`)。
         # 🔴 導入者注意:修改 `harness.config.json` 的 `deliveryBranches` 時
         # 須同步更新三處(TODOS Markers Check / check-todos-markers / Source-term scan)
-        # 的此條件——與 TODOS Markers Check 三處同步紀律(批 6 LESSONS L89)。
+        # 的此條件,否則 mainline push 的 marker 治理會被靜默跳過。
         if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main'
         # MARKER_SELF_PR 繼承 workflow-level env(見檔頭 `env:` 區塊)、無需 step-level 覆蓋(F1 修法);
         # DELIVERY_REFS env 已移除。
