@@ -158,7 +158,7 @@ jobs:
         # `expectedCiIfLine(cfg.deliveryBranches)` 導出的期望行、
         # 見 `scripts/check-adoption-readiness.ts`)。
         # 🔴 導入者注意:修改 `harness.config.json` 的 `deliveryBranches` 時
-        # 須同步更新三處(TODOS Markers Check / check-todos-markers / Source-term scan)
+        # 須同步更新三處(Fetch delivery refs / TODOS Markers Check / Source-term scan)
         # 的此條件,否則 mainline push 的 marker 治理會被靜默跳過。
         if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main'
         # 🔴 Codex batch 6 round 6 P2 + Step 5 #6/#8:改用 default_branch 動態抓 +
@@ -221,7 +221,7 @@ jobs:
         # `expectedCiIfLine(cfg.deliveryBranches)` 導出的期望行、
         # 見 `scripts/check-adoption-readiness.ts`)。
         # 🔴 導入者注意:修改 `harness.config.json` 的 `deliveryBranches` 時
-        # 須同步更新三處(TODOS Markers Check / check-todos-markers / Source-term scan)
+        # 須同步更新三處(Fetch delivery refs / TODOS Markers Check / Source-term scan)
         # 的此條件,否則 mainline push 的 marker 治理會被靜默跳過。
         if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main'
         # MARKER_SELF_PR 繼承 workflow-level env(見檔頭 `env:` 區塊)、無需 step-level 覆蓋。
@@ -275,7 +275,7 @@ jobs:
         # `expectedCiIfLine(cfg.deliveryBranches)` 導出的期望行、
         # 見 `scripts/check-adoption-readiness.ts`)。
         # 🔴 導入者注意:修改 `harness.config.json` 的 `deliveryBranches` 時
-        # 須同步更新三處(TODOS Markers Check / check-todos-markers / Source-term scan)
+        # 須同步更新三處(Fetch delivery refs / TODOS Markers Check / Source-term scan)
         # 的此條件,否則 mainline push 的 marker 治理會被靜默跳過。
         if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == 'refs/heads/main'
         # MARKER_SELF_PR 繼承 workflow-level env(見檔頭 `env:` 區塊)、無需 step-level 覆蓋(F1 修法);
