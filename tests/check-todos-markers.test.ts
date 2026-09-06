@@ -500,3 +500,243 @@ describe('check-todos-markers — 端到端(CLI 接線)', () => {
     expect(code).toBe(1);
   });
 });
+
+// A3 defer ②:PR-number placeholder token detection(phase-aware、delivery-tip-relative)
+//
+// 契約(見 scripts/check-todos-markers.ts docstring):
+//   - canonical literal `PR #___`(不擴 TBD / 問號)
+//   - 啟用條件:`acknowledgeSelfPr(MARKER_SELF_PR) !== null` 才啟用
+//   - Delta:base/current blob line-level added-occurrence multiset comparison
+//   - Multiset semantics:同一 placeholder 行在 base 1 次、HEAD 2 次 → 新增第 2 次必抓
+//   - Blob 讀取邊界:base 不存在 = 空 / current 不存在 = 零 / I/O 失敗 = 明確診斷 exit 2
+//
+// 4 態 + invalid env case + multiset case,反向探針另外註記
+describe('A3 defer ②:PR-number placeholder token detection(phase-aware)', () => {
+  // (1) PR phase、base 已有 placeholder、HEAD 未新增 → pass
+  it('(1) PR phase + base 已有 placeholder、HEAD 未新增 → gate 不擋(exit 0)', () => {
+    // base(main 上的 TODOS)已含 placeholder + 一個真 PR 引用(delivery 有 #42)。
+    // feature 分支不改 TODOS。self-PR 100 傳入啟用 gate。
+    const todos = '# TODOS\n\n## Sprint\n\n### ✅ 完工 (#42)\n- **交付(A,PR #___)**:legacy pending record\n';
+    const dir = makeRepo({
+      todosContent: todos,
+      extraCommits: [{ message: 'feat: x (#42)' }],
+    });
+    // 建 feature 分支、動一個無關檔(避免 diff 為空);TODOS 不動
+    execFileSync('git', ['checkout', '-q', '-b', 'feature'], { cwd: dir, stdio: 'ignore' });
+    writeFileSync(join(dir, 'other.txt'), 'x', 'utf-8');
+    execFileSync('git', ['add', 'other.txt'], { cwd: dir, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-qm', 'noop'], { cwd: dir, stdio: 'ignore' });
+    const { code, out } = runChecker(dir, { MARKER_SELF_PR: '100' });
+    expect(code, out).toBe(0);
+    expect(out).not.toContain('placeholder token 未補號');
+  });
+
+  // (2) PR phase、HEAD 新增 placeholder → fail
+  it('(2) PR phase + HEAD 新增 placeholder → gate 擋(exit 1、明列新增 occurrence)', () => {
+    // base 無 placeholder;feature 分支新增一行 PR #___(+ 一個真 PR 引用 #42)
+    const dir = makeRepo({
+      todosContent: '# TODOS\n\n## Sprint\n\n### ✅ 完工 (#42)\n- done\n',
+      extraCommits: [{ message: 'feat: x (#42)' }],
+    });
+    execFileSync('git', ['checkout', '-q', '-b', 'feature'], { cwd: dir, stdio: 'ignore' });
+    writeFileSync(
+      join(dir, 'TODOS.md'),
+      '# TODOS\n\n## Sprint\n\n### ✅ 完工 (#42)\n- done\n- **交付(B,PR #___)**:new entry\n',
+      'utf-8',
+    );
+    execFileSync('git', ['add', 'TODOS.md'], { cwd: dir, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-qm', 'add placeholder'], { cwd: dir, stdio: 'ignore' });
+    const { code, out } = runChecker(dir, { MARKER_SELF_PR: '100' });
+    expect(code, out).toBe(1);
+    expect(out).toContain('placeholder token 未補號');
+    expect(out).toContain('TODOS.md');
+    expect(out).toContain('+1');
+  });
+
+  // (3) PR phase、新增行已補真 PR number → pass
+  it('(3) PR phase + 新增行已補真 PR number → gate 不擋(exit 0)', () => {
+    const dir = makeRepo({
+      todosContent: '# TODOS\n\n## Sprint\n\n### ✅ 完工 (#42)\n- done\n',
+      extraCommits: [{ message: 'feat: x (#42)' }, { message: 'feat: y (#77)' }],
+    });
+    execFileSync('git', ['checkout', '-q', '-b', 'feature'], { cwd: dir, stdio: 'ignore' });
+    // 新增行、但用真 PR 號 (#77)、非 placeholder
+    writeFileSync(
+      join(dir, 'TODOS.md'),
+      '# TODOS\n\n## Sprint\n\n### ✅ 完工 (#42)\n- done\n- **交付(B,PR #77)**:real PR number\n',
+      'utf-8',
+    );
+    execFileSync('git', ['add', 'TODOS.md'], { cwd: dir, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-qm', 'real pr'], { cwd: dir, stdio: 'ignore' });
+    const { code, out } = runChecker(dir, { MARKER_SELF_PR: '100' });
+    expect(code, out).toBe(0);
+    expect(out).not.toContain('placeholder token 未補號');
+  });
+
+  // (4) local / non-PR phase、HEAD 新增 placeholder、無 MARKER_SELF_PR → 不由新增 gate 阻擋
+  it('(4) local / non-PR phase + HEAD 新增 placeholder、無 MARKER_SELF_PR → placeholder gate 未啟用', () => {
+    const dir = makeRepo({
+      todosContent: '# TODOS\n\n## Sprint\n\n### ✅ 完工 (#42)\n- done\n- **交付(B,PR #___)**:new pending\n',
+      extraCommits: [{ message: 'feat: x (#42)' }],
+    });
+    const { code, out } = runChecker(dir); // 無 MARKER_SELF_PR
+    // 既有 completion-claim 驗證行為不變:#42 有 merge 證據、無 violations、通過
+    expect(code, out).toBe(0);
+    // 明確斷言:placeholder 未被此 gate 抓
+    expect(out).not.toContain('placeholder token 未補號');
+  });
+
+  // (5) invalid MARKER_SELF_PR → 經 validator 回 null、與未設 env 同類、不啟用
+  it('(5) invalid MARKER_SELF_PR(非數字)→ validator 回 null、placeholder gate 未啟用', () => {
+    // 同 (4) 的 fixture、但傳 invalid env
+    const dir = makeRepo({
+      todosContent: '# TODOS\n\n## Sprint\n\n### ✅ 完工 (#42)\n- done\n- **交付(B,PR #___)**:new pending\n',
+      extraCommits: [{ message: 'feat: x (#42)' }],
+    });
+    const { code, out } = runChecker(dir, { MARKER_SELF_PR: 'not_a_number' });
+    expect(code, out).toBe(0);
+    expect(out).not.toContain('placeholder token 未補號');
+  });
+
+  // (6a) blob 邊界 unit:base 中 doc 路徑不存在 → 視為空、HEAD 新增 placeholder 被抓
+  it('(6a) blob 邊界 unit:base 中 doc 路徑不存在(視為空)+ HEAD 新增 placeholder → 抓到', async () => {
+    // 直接 unit-test detectAddedPlaceholders(繞開 CLI、注入 base reader)
+    const { detectAddedPlaceholders } = await import('../scripts/check-todos-markers');
+    const res = detectAddedPlaceholders({
+      repoRoot: '/tmp/noexist',
+      deliveryRef: 'refs/remotes/origin/main',
+      docs: [{ doc: 'TODOS.md', currentContent: '- new PR #___\n' }],
+      readBase: () => '', // base 路徑不存在 → 空內容
+    });
+    expect(res.ok).toBe(true);
+    expect(res.ok && res.violations.length).toBe(1);
+    expect(res.ok && res.violations[0]!.addedCount).toBe(1);
+  });
+
+  // (6b) blob 邊界 unit:current 路徑不存在(currentContent = null)→ 零 occurrence、不誤報
+  it('(6b) blob 邊界 unit:current 路徑不存在(null)+ base 有 placeholder → 零 occurrence、不誤報', async () => {
+    const { detectAddedPlaceholders } = await import('../scripts/check-todos-markers');
+    const res = detectAddedPlaceholders({
+      repoRoot: '/tmp/noexist',
+      deliveryRef: 'refs/remotes/origin/main',
+      docs: [{ doc: 'TODOS.md', currentContent: null }],
+      readBase: () => '- old PR #___\n',
+    });
+    expect(res.ok).toBe(true);
+    expect(res.ok && res.violations.length).toBe(0);
+  });
+
+  // (6c) blob 邊界 unit:base I/O 失敗 → { ok: false, error: ... }、呼叫端可 exit 2 明確診斷
+  it('(6c) blob 邊界 unit:base I/O 失敗 → ok=false + error 明確診斷(呼叫端 exit 2)', async () => {
+    const { detectAddedPlaceholders } = await import('../scripts/check-todos-markers');
+    const res = detectAddedPlaceholders({
+      repoRoot: '/tmp/noexist',
+      deliveryRef: 'refs/remotes/origin/main',
+      docs: [{ doc: 'TODOS.md', currentContent: '- foo\n' }],
+      readBase: () => ({ error: 'git show simulated failure: object missing' }),
+    });
+    expect(res.ok).toBe(false);
+    expect(!res.ok && res.error).toContain('simulated failure');
+  });
+
+  // (6d) orchestration seam:HEAD 新增 placeholder(pre-loaded currentContent)→ exit 1 + violation
+  //   涵蓋 production 實際 combined path:main() 讀 current 後 pre-load 給 orchestratePlaceholderGate,
+  //   後者委派 detectAddedPlaceholders 做 multiset compare、轉譯為 exit code。
+  it('(6d) orchestration:pre-loaded currentContent 有新增 placeholder → exitCode=1 + violation', async () => {
+    const { orchestratePlaceholderGate } = await import('../scripts/check-todos-markers');
+    const gate = orchestratePlaceholderGate({
+      repoRoot: '/tmp/noexist',
+      deliveryRef: 'refs/remotes/origin/main',
+      docs: [{ doc: 'TODOS.md', currentContent: '- new PR #___\n' }],
+      readBase: () => '', // base 空
+    });
+    expect(gate.exitCode).toBe(1);
+    expect(gate.violations.length).toBe(1);
+    expect(gate.violations[0]!.addedCount).toBe(1);
+  });
+
+  // (6e) orchestration seam:base-I/O failure → exit 2 + 明確診斷含 base 標記
+  it('(6e) orchestration:base-I/O failure → exitCode=2 + diagnostic 含 base 標記', async () => {
+    const { orchestratePlaceholderGate } = await import('../scripts/check-todos-markers');
+    const gate = orchestratePlaceholderGate({
+      repoRoot: '/tmp/noexist',
+      deliveryRef: 'refs/remotes/origin/main',
+      docs: [{ doc: 'TODOS.md', currentContent: '- foo\n' }],
+      readBase: () => ({ error: 'git show: object corrupt' }),
+    });
+    expect(gate.exitCode).toBe(2);
+    expect(gate.diagnostic).toContain('base');
+    expect(gate.diagnostic).toContain('corrupt');
+    expect(gate.violations).toEqual([]);
+  });
+
+  // (6f) orchestration seam:current 路徑不存在(currentContent = null)→ 零 occurrence、exitCode=0
+  it('(6f) orchestration:pre-loaded currentContent = null → exitCode=0、不誤報', async () => {
+    const { orchestratePlaceholderGate } = await import('../scripts/check-todos-markers');
+    const gate = orchestratePlaceholderGate({
+      repoRoot: '/tmp/noexist',
+      deliveryRef: 'refs/remotes/origin/main',
+      docs: [{ doc: 'TODOS.md', currentContent: null }],
+      readBase: () => '- old PR #___\n',
+    });
+    expect(gate.exitCode).toBe(0);
+    expect(gate.violations).toEqual([]);
+  });
+
+  // (6g) loadCurrentDocs seam(production-used):注入 readCurrent 回 {error} →
+  //   結構化 { ok:false, exitCode:2, diagnostic 含 current + doc + 原 error };
+  //   main() 呼叫此 seam,故此 case 鎖住 production current-read failure 的 fail-closed 路徑
+  it('(6g) loadCurrentDocs:current-read failure(注入 error)→ ok=false + exitCode=2 + diagnostic 含 current/doc/EACCES', async () => {
+    const { loadCurrentDocs } = await import('../scripts/check-todos-markers');
+    const res = loadCurrentDocs({
+      repoRoot: '/tmp/noexist',
+      docs: ['TODOS.md'],
+      readCurrent: () => ({ error: 'EACCES: permission denied' }),
+    });
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.exitCode).toBe(2);
+      expect(res.diagnostic).toContain('current');
+      expect(res.diagnostic).toContain('TODOS.md');
+      expect(res.diagnostic).toContain('EACCES');
+    }
+  });
+
+  // (6h) loadCurrentDocs seam:current 檔不存在(readCurrent 回 null)→ 保留 null 供 gate 判定、不當 error
+  it('(6h) loadCurrentDocs:current 檔不存在(null)→ ok=true + loadedDocs 含 { currentContent: null }', async () => {
+    const { loadCurrentDocs } = await import('../scripts/check-todos-markers');
+    const res = loadCurrentDocs({
+      repoRoot: '/tmp/noexist',
+      docs: ['TODOS.md'],
+      readCurrent: () => null,
+    });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.loadedDocs).toEqual([{ doc: 'TODOS.md', currentContent: null }]);
+    }
+  });
+
+  // (6) Multiset semantics:同一 line 在 base 出現 1 次、HEAD 出現 2 次(整行重複) → 新增 1 次必抓
+  it('(6) Multiset:同一 placeholder line 在 base 1 次、HEAD 2 次(重複行)→ +1 被抓(非 Set 差集)', () => {
+    // base TODOS 有 1 行 "- entry PR #___"
+    const dir = makeRepo({
+      todosContent: '# TODOS\n\n## Sprint\n\n### ✅ 完工 (#42)\n- done\n- entry PR #___\n',
+      extraCommits: [{ message: 'feat: x (#42)' }],
+    });
+    execFileSync('git', ['checkout', '-q', '-b', 'feature'], { cwd: dir, stdio: 'ignore' });
+    // HEAD 同一 line 重複 2 次(逐字相同)
+    writeFileSync(
+      join(dir, 'TODOS.md'),
+      '# TODOS\n\n## Sprint\n\n### ✅ 完工 (#42)\n- done\n- entry PR #___\n- entry PR #___\n',
+      'utf-8',
+    );
+    execFileSync('git', ['add', 'TODOS.md'], { cwd: dir, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-qm', 'dup line'], { cwd: dir, stdio: 'ignore' });
+    const { code, out } = runChecker(dir, { MARKER_SELF_PR: '100' });
+    expect(code, out).toBe(1);
+    expect(out).toContain('placeholder token 未補號');
+    // Set 差集會漏抓(HEAD 有 "- entry PR #___"、base 也有 → Set 認為 0 new);
+    // multiset 抓到:current[line]=2、base[line]=1、added=1
+    expect(out).toContain('+1');
+  });
+});
