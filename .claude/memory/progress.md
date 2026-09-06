@@ -75,6 +75,32 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-09-06 ⑦ — **A3 defer ② PR-number placeholder token detection(phase-aware、delivery-tip-relative blob multiset)**
+
+> **緣起**:TODOS.md A3 Step 5 defer 集合 ②「canonical placeholder token 佔位 TODOS Markers Check 不抓,靠 Step 6 補」(conf 6);Codex Sprint 9 拍板單條 evidence-first sprint。CodeGraph 已核實現行 `extractPrCitations` regex `#(\d{2,5})\b` 完全不匹配該 placeholder(下劃線非 digit)、`parseTodosMarkers` 空 prs 條目根本不進 completionClaims、checker 對 placeholder 完全盲 → Step 6 若忘補號 CI 不擋、merge 後 orphaned placeholder。frozen full base `5e3348cee9daedd51100f88e9ab8d535ef25f497`;shared local main 233858f + CLAUDE.md M(全程 lock)、1 支 stash 保留、agent-* worktrees 保留、remote 0 動。plan review r1-r5(5 rounds、r5 APPROVE):4 態 fixture(base 已有 placeholder / HEAD 新增 / 新增行已補真 PR # / local 無 self-PR 不啟用)+ invalid MARKER_SELF_PR 經 validator 回 null 不啟用;delivery-tip-relative delta(base = `resolveDeliveryRefsFromRepo(REPO_ROOT).refs[0]`、非 immutable PR base SHA)+ multiset semantics(current[line] - base[line] > 0 為 violation、非 Set 差集)+ blob 邊界(base 中路徑不存在視為空、其他 I/O 失敗明確診斷 exit 2 不當空假綠)。
+>
+> **改動**:3 檔(worktree wt-a3-defer-2-placeholder-detection、code tip `0395df9e`、full-range +493/-17):`scripts/check-todos-markers.ts` +253/-17(canonical literal + multiset comparator + orchestration wrapper + loader seam + delivery ref 單次解析 + 啟用條件 `acknowledgeSelfPr` !== null);`tests/check-todos-markers.test.ts` +240/-0(14 case:CLI 6 + comparator 3 + wrapper 3 + loader seam 2 含 current-read failure 鎖 fail-closed);`TODOS.md` Phase 2(② strike + 交付段 + 描述行 canonical literal 改中文語義、F1 pre-emptive)。
+>
+> **審查**:Codex plan r1-r5 APPROVE;Step 4 chronology:187a753 initial review 3 findings(current I/O 契約 + blob 邊界 unit + docstring)→ afec661 rereview 中 F1 stale-revert 為 codex 自撤 false positive、另 stat 校正 + 2 actionable gaps → c29e852 rereview 抓 comparator duplication + 雙 current-read/TOCTOU → d85461e rereview 抓 production-used current-read failure seam / 註解契約 vs 實作 → 5eb4f28 APPROVE。Step 4.5 機器判 CSO_REQUIRED(路徑表空 fail-closed)、人工 CSO_NOT_REQUIRED(governance/test infra);Step 4.6 無 UI 檔跳過;Step 5 adversarial round 1 → 9 INFO / 0 CRIT(F1 conf 8 line-keyed FP TODOS 描述行 / F2 conf 6 delivery ref 雙解析 / F3-F9 conf ≤6)→ supervisor 分類 F1 Phase 2 FIX / F2+F8 Phase 1 FIX / F3-F7+F9 KEEP;Phase 1 fix commit 0395df9 → Step 4 rereview APPROVE;adversarial round 2 → 0 findings。
+>
+> **驗證**:typecheck / lint 全綠 / vitest tests/check-todos-markers.test.ts 59/59 pass / npm test 全 suite 31 files 1058 passed + 3 skipped(base 1044 + A3-② 14 = 1058)/ check:mutation-specs 12 spec / check:catalog 32 controls / check:doc-refs 697 refs 0 失效 全綠。反向探針手動 evidence:base checker + new tests → 對 canonical placeholder 完全不擋、restore new checker → 全 pass、mutation-sensitive on 新行為。
+>
+> **⭐ 教訓**:①**line-keyed multiset 對 backtick-inline mention 天生噪聲**——契約「只鎖 canonical literal」技術上符合、但下 sprint 改該行任一字元就誤報;F1 pre-emptive 改描述是低成本必要;②**production-used seam 是「有測試」的實際路徑**——r3 抽 `loadCurrentDocs` 前 main inline readCurrentBlob + inline process.exit 無 seam、error 分支無 deterministic test;註解稱「可 inject」時實作必須存在 production caller、否則自然 dead-code;③**delivery ref 單次解析共用**——merge-evidence + placeholder base 必須看同一 snapshot,不然某窄視窗兩 consumer 看不同 ref;修法用 param 顯式傳遞、不新增 caching layer 或 module-level state;④**F1 pre-emptive fix vs defer 判準**:INFORMATIONAL 只在「有可觀察 delivery-time cost 且低成本」時 pre-empt(若後續修改該行且仍保留 canonical literal、line-keyed comparison 會把新字面視為新增 occurrence)、否則 KEEP;⑤**「evidence-first」sprint 節奏**——CodeGraph 起手核實現行行為缺口(regex 不匹配 → 空 prs → 條目不進 completionClaims)、不從 spec 想像 gap;比先寫測試再改 code 更節省 round;⑥**F2 vs F8 分類差異——輕微冗餘 vs 慣例違反**:F2 delivery ref 雙解析是 correctness-margin(CI 場景視窗極窄、explicit design intent 仍值 FIX)、F8 fixture git add . 是 style 慣例(CLAUDE.md 4.6 明文禁);兩者都值 FIX、但 supervisor 明確標「不動既有 makeRepo 歷史用法」控 scope。
+>
+> **⏭️ 下一棒候選**(hint 非 truth,起手 git 核實):
+>   - **A**:A3 defer 集合其他項(③–⑨、⑪、⑫、⑯–㉑ 逐條 0.5h、7-8 條可打包 mini-batch)
+>   - **B**:A2 defer 集合(check:adoption 邊角、17 條 conf ≤6、部分已在 A3 catalog 交付)
+>   - **C**:P2#3 defer ⑦⑧⑩ 未收條目(見前 sprint archive)
+>   - 卡外部:無;shared main 233858f + CLAUDE.md M(全程 lock)、1 支 stash 保留(此為現況上限)、無 remote 動作
+>
+> **check:claims 逐條處置**(base=5e3348c、實測 2 hits):TODOS ② 交付段 comparator 單一路徑契約 + runtime delivery-ref 單一來源契約皆可由本 range / code inventory 驗證,KEEP;教訓段原有兩處硬詞已改為條件式敘述;本 disposition 不再重現掃描字面。
+>
+> 📊 成本:CC ~4h(evidence audit + plan + Phase 1 + 4 rounds Step 4 rereview + Step 5 adversarial round 1/2 + Phase 2 bookkeeping)/ 跨模型 review 5 rounds(plan)+ 4 rounds(Step 4 rereview)+ 2 rounds(adversarial)/ P1 3 個(comparator 雙份、雙讀、current-read failure seam)/ P2 1 個(型別註解 vs 實作)/ Step 5 獨立發現 9 個(F1-F9、含 line-keyed false positive TODOS 描述行的具體 line evidence)。
+>
+> 📐 量測:主 session Opus 4.7 全程、Codex supervisor gpt-5.6-terra effort high(全程 plan / Step 4 / Step 5 / final full-range review);baseline SHA `5e3348cee9daedd51100f88e9ab8d535ef25f497`;來源分佈(既有缺陷 1・漏改 consumer 0・baseline 後引入 3 P1):既有缺陷 = extractPrCitations regex 對 canonical placeholder 完全不匹配的長期盲點;baseline 後 3 P1 = comparator 雙份(Round r2)、main 雙 current-read TOCTOU 假綠(Round r2)、抽 seam 後 current-read failure test regression(Round r3)。
+
+---
+
 📅 2026-09-06 ⑥ — **D-② mutate.ts SIGTERM race Phase 0 evidence audit(STOP-AND-REPORT #1/#7、decision record、無 code 交付)**
 
 > **緣起**:progress ⑤ ⏭️ 候選 D 單條「mutate.ts SIGTERM 不還原」。Codex Sprint 8 拍板 reframe 為 race evidence audit(非 stale「無 signal handler」;CodeGraph 已確認現行 `beginShutdown/killActiveChild/restoreAll` 路徑 + SIGINT/SIGTERM handler 皆註冊)。PR #73 CI 首次觀察到 1 次 `tests/mutate.test.ts` SIGTERM race case failure(expected GUARD_ON、拿到 GUARD_OFF)= 觸發本 sprint。frozen full base `1e873f2235124709453f2f72a2c225787cae1588`;shared local main 233858f + CLAUDE.md M(全程 lock);stash 1 支(Codex live inventory 校正)、agent-* worktrees 保留、remote 0 動。plan review r1-r5(5 rounds、4 rev、r5 APPROVE):r1-r4 逐輪校正 D3 seam(child.on close 已比 exit 晚、不改 exit;不加 mtime)、Phase 0 不設百分比門檻、Evidence matrix 6 訊號 + 4 判準、STOP 7 條、Phase 1 production 預設禁區(shutdown/signal precedence 修法 STOP-AND-REPORT)。

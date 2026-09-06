@@ -30,7 +30,9 @@
 // 設計界線:
 //   - 只驗 `TODOS.md`(marker 的 SSOT)。其他 narrative doc 易擴(改 MARKER_DOCS),
 //     但其完成 claim 多為歷史、雜訊高,預設不納。
-//   - 完成行「無引用任何 PR」→ 無法驗證 → 跳過(不強制「每個 ✅ 都要引 PR」,避免對既有散文大量假陽性)。
+//   - 一般無 PR 引用的完成行仍跳過(不強制「每個 ✅ 都要引 PR」、避免對既有散文大量假陽性);
+//     但 PR phase 相對 delivery tip 新增的 canonical `PR #___` 由 placeholder hard gate 獨立阻擋
+//     (見 A3 defer ② `detectAddedPlaceholders`、啟用條件:`acknowledgeSelfPr(MARKER_SELF_PR) !== null`)。
 //   - 跳過 fenced code block(``` / ~~~),避免範例 marker 誤判(對齊 check-doc-refs)。
 //   - repo 尚無任何完成宣稱時(模板初始狀態),即使 git 史抓不到任何 merged PR 也放行
 //     (無宣稱 = 無可驗證對象,不該擋 CI)。
@@ -50,7 +52,7 @@
 // Usage:  npx tsx scripts/check-todos-markers.ts
 // CI:     .github/workflows/ci.yml 加 step「TODOS Markers Check」
 
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync, execSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 // 批 10 P2-1:MARKER_SELF_PR 驗證抽到 shared lib、兩 script 共用單一入口(擋跨檔漂移)。
@@ -311,6 +313,199 @@ export function checkTodosMarkers(
  *   沒有 fallback(origin/develop、本地 main / develop 都不再猜)、**不讀任何 env**(DELIVERY_REFS 已移除)。
  *   任何拒絕 → 印原因碼、exit 2。 */
 
+// A3 defer ②:PR-number placeholder token 偵測。
+//
+// 契約:
+//   - **只鎖 canonical literal** `PR #___`(不擴 TBD / 問號等其他形狀)
+//   - **啟用條件**:main() 內僅在 `acknowledgeSelfPr(MARKER_SELF_PR) !== null` 時
+//     啟用(pull_request CI + 通過 self-PR validation)。local / push event 無合法
+//     MARKER_SELF_PR 不啟用(既有 completion-claim 驗證行為不變)。
+//     invalid MARKER_SELF_PR 經既有 validator 回 null、與未設 env 同類、不啟用。
+//   - **Delta 方法**:base/current blob line-level added-occurrence multiset
+//     comparison(非 Set 差集、非 raw patch);base = delivery ref。
+//   - **Multiset semantics**:同一 placeholder 行在 base 有 1 次、HEAD 有 2 次時,
+//     新增的第 2 次必須被抓;每 doc 獨立計算、不跨檔互相抵銷。
+//   - **Blob 讀取邊界**:base blob 存在 → 讀取並計數;base 中該路徑不存在 →
+//     視為空內容(base occurrence = 0);current 路徑不存在 → 視為零 occurrence;
+//     其他 git show / I/O 失敗**不得**當成空內容假綠、須輸出明確診斷並非零退出。
+export const PLACEHOLDER_TOKEN = 'PR #___';
+const PLACEHOLDER_RE = /PR #___/g;
+
+/**
+ * 掃 content、對「含 canonical placeholder token 的整行」做 multiset counting。
+ * key = 整行字面(含 leading whitespace)、value = 「含 token 的 occurrence 總數
+ * 出現在該 line 內容 × 該 line 內容重複出現次數」——實作上等價於「該 line 的
+ * 每次出現各貢獻 line 內 token count 個 occurrence」。
+ * 差集意義:current[line] - base[line] > 0 → 新增 occurrence 存在(不能只做 Set 差集)。
+ */
+export function collectPlaceholderMultiset(content: string): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const line of content.split('\n')) {
+    const matches = line.match(PLACEHOLDER_RE);
+    if (!matches || matches.length === 0) continue;
+    // 該行的每次出現各貢獻 matches.length 個 occurrence;累加(line 可重複出現)
+    map.set(line, (map.get(line) ?? 0) + matches.length);
+  }
+  return map;
+}
+
+/**
+ * 讀 base ref 的 doc 內容。
+ * 回傳:字串內容(存在)/ 空字串(base 中該路徑不存在、視為空內容)/ 物件 {error}(git I/O 失敗)。
+ * 語意校準參考 check-baseline-governance.ts 的 ls-tree + show pattern。
+ */
+function readBaseBlob(
+  repoRoot: string,
+  ref: string,
+  docPath: string
+): string | { error: string } {
+  const ls = spawnSync('git', ['-C', repoRoot, 'ls-tree', ref, '--', docPath], {
+    encoding: 'utf-8',
+  });
+  if (ls.status !== 0) {
+    return { error: `git ls-tree ${ref.slice(0, 12)} -- ${docPath} 失敗: ${(ls.stderr || '').trim().slice(0, 200)}` };
+  }
+  if (ls.stdout.trim() === '') return ''; // base 中該路徑不存在 → 視為空內容
+  const show = spawnSync('git', ['-C', repoRoot, 'show', `${ref}:${docPath}`], {
+    encoding: 'utf-8',
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (show.status !== 0) {
+    return { error: `git show ${ref.slice(0, 12)}:${docPath} 失敗: ${(show.stderr || '').trim().slice(0, 200)}` };
+  }
+  return show.stdout;
+}
+
+export interface PlaceholderViolation {
+  doc: string;
+  line: string;
+  addedCount: number; // HEAD occurrence - base occurrence(正整數才進 violation)
+}
+
+/** Base blob reader 型別:呼叫端可 inject 測試用 mock。 */
+export type BaseBlobReader = (
+  repoRoot: string,
+  ref: string,
+  docPath: string
+) => string | { error: string };
+
+/**
+ * Current blob reader 型別:呼叫端可 inject 測試用 mock。
+ *   - null:current 路徑不存在(視為零 occurrence)
+ *   - string:content(通常成功讀檔)
+ *   - { error }:current 檔存在但 read 失敗(明確診斷 exit 2、不當空內容假綠)
+ */
+export type CurrentBlobReader = (
+  repoRoot: string,
+  docPath: string
+) => string | null | { error: string };
+
+/** Placeholder gate orchestration 結果。呼叫端 main() 只負責 output + process.exit。 */
+export interface PlaceholderGateResult {
+  exitCode: 0 | 1 | 2;
+  diagnostic: string | null; // exitCode !== 0 時的明確診斷訊息
+  violations: PlaceholderViolation[];
+}
+
+/**
+ * A3 defer ② 完整 orchestration seam:接受**已 pre-loaded** current content
+ * (避免 double-read 造成 TOCTOU snapshot 不一致)、只做 base 讀取 + 呼叫共用
+ * comparator core `detectAddedPlaceholders`,返回 exit 決策。
+ * 呼叫端 main() 或 test 皆用此,不同處在 reader 是否為真實 fs/git 或 mock。
+ */
+export function orchestratePlaceholderGate(args: {
+  repoRoot: string;
+  deliveryRef: string;
+  docs: { doc: string; currentContent: string | null }[]; // pre-loaded current(null = 路徑不存在)
+  readBase: BaseBlobReader;
+}): PlaceholderGateResult {
+  // 委派給 pure multiset comparator core `detectAddedPlaceholders`(避免雙份 comparator)
+  const detection = detectAddedPlaceholders({
+    repoRoot: args.repoRoot,
+    deliveryRef: args.deliveryRef,
+    docs: args.docs,
+    readBase: args.readBase,
+  });
+  if (!detection.ok) {
+    return { exitCode: 2, diagnostic: `讀取 base 失敗:${detection.error}`, violations: [] };
+  }
+  return {
+    exitCode: detection.violations.length > 0 ? 1 : 0,
+    diagnostic: null,
+    violations: detection.violations,
+  };
+}
+
+/** production current blob reader:檔案不存在 → null;read 失敗 → {error}(不 throw)。 */
+export function readCurrentBlob(
+  repoRoot: string,
+  docPath: string
+): string | null | { error: string } {
+  const abs = path.join(repoRoot, docPath);
+  if (!fs.existsSync(abs)) return null;
+  try {
+    return fs.readFileSync(abs, 'utf-8');
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+}
+
+/** loadCurrentDocs 結果:成功回 snapshot、失敗回結構化 exitCode:2 + diagnostic(給 main() output)。 */
+export type LoadCurrentDocsResult =
+  | { ok: true; loadedDocs: { doc: string; currentContent: string | null }[] }
+  | { ok: false; exitCode: 2; diagnostic: string };
+
+/**
+ * A3 defer ② production-used loader seam:每個 doc 只讀一次 current content,
+ * 供 completion-claim parse 與 placeholder gate 共用(避免 TOCTOU 雙讀假綠)。
+ *   - readCurrent 可 inject 讓 test deterministic 覆蓋 read failure 路徑
+ *   - 任一 doc 讀取失敗 → { ok:false, exitCode:2, diagnostic }(不當 null 假綠)
+ *   - null 代表「路徑不存在」= 零 occurrence、允許保留在 loadedDocs 供 gate 判定
+ */
+export function loadCurrentDocs(args: {
+  repoRoot: string;
+  docs: string[];
+  readCurrent: CurrentBlobReader;
+}): LoadCurrentDocsResult {
+  const loadedDocs: { doc: string; currentContent: string | null }[] = [];
+  for (const doc of args.docs) {
+    const res = args.readCurrent(args.repoRoot, doc);
+    if (typeof res === 'object' && res !== null && 'error' in res) {
+      return { ok: false, exitCode: 2, diagnostic: `讀取 current ${doc} 失敗:${res.error}` };
+    }
+    loadedDocs.push({ doc, currentContent: res });
+  }
+  return { ok: true, loadedDocs };
+}
+
+/**
+ * 對每個 MARKER_DOCS 做 base/current blob multiset comparison,回傳所有新增 placeholder occurrence。
+ * 呼叫端負責:(a) 已通過 啟用條件 gate、(b) 已解析 delivery ref、(c) current content 已讀取(讀取失敗
+ * 應由呼叫端明確診斷、非傳 null 假綠;null 僅代表「路徑不存在」= 零 occurrence)。
+ */
+export function detectAddedPlaceholders(args: {
+  repoRoot: string;
+  deliveryRef: string;
+  docs: { doc: string; currentContent: string | null }[]; // null = current 路徑不存在(視為零 occurrence)
+  readBase?: BaseBlobReader; // 預設 readBaseBlob;測試可 inject 模擬 I/O 失敗
+}): { ok: true; violations: PlaceholderViolation[] } | { ok: false; error: string } {
+  const violations: PlaceholderViolation[] = [];
+  const readBase = args.readBase ?? readBaseBlob;
+  for (const { doc, currentContent } of args.docs) {
+    const baseRes = readBase(args.repoRoot, args.deliveryRef, doc);
+    if (typeof baseRes === 'object' && 'error' in baseRes) return { ok: false, error: baseRes.error };
+    const baseMap = collectPlaceholderMultiset(baseRes);
+    const currentMap = collectPlaceholderMultiset(currentContent ?? '');
+    // multiset added-occurrence:每個 line 的 (current - base) 若 > 0 即 violation
+    for (const [line, currentCount] of currentMap) {
+      const baseCount = baseMap.get(line) ?? 0;
+      const added = currentCount - baseCount;
+      if (added > 0) violations.push({ doc, line, addedCount: added });
+    }
+  }
+  return { ok: true, violations };
+}
+
 /**
  * git IO:從「交付分支」commit subject 建「有 merge 證據的 PR 號集合」。
  * 只認交付分支的 ancestry —— **不用 `git log --all`**(會掃未合併 feature 分支的 `(#N)`),
@@ -318,19 +513,12 @@ export function checkTodosMarkers(
  * Codex review:HEAD fallback 會讓未合併 commit 充當 merge 證據,gate 假綠)。
  * 候選來源與驗證見上面 docstring 與 scripts/lib/delivery-refs.ts;任何拒絕 → exit 2(不再回空集合)。
  */
-function buildMergedPrSet(): Set<number> {
+function buildMergedPrSet(deliveryRefs: string[]): Set<number> {
   const merged = new Set<number>();
-  // 交付 ref 的來源與驗證在 shared lib(scripts/lib/delivery-refs.ts),兩 script 共用單一契約:
-  // 唯一來源 = 受驗的 origin/HEAD 權威 base;不讀任何 env;沒有 fallback。任何拒絕都不靜默:印原因碼、exit 2。
-  const resolved = resolveDeliveryRefsFromRepo(REPO_ROOT);
-  if (!resolved.ok) {
-    console.error(formatRejections(resolved.rejections));
-    process.exit(2);
-  }
   let log = '';
   try {
     // execFileSync + arg array:refs 已是 lib 驗過的完整 ref 名(refs/remotes/origin/<name>)
-    log = execFileSync('git', ['log', ...resolved.refs, '--oneline', '--no-color'], {
+    log = execFileSync('git', ['log', ...deliveryRefs, '--oneline', '--no-color'], {
       cwd: REPO_ROOT,
       encoding: 'utf-8',
       maxBuffer: 64 * 1024 * 1024,
@@ -349,7 +537,17 @@ function buildMergedPrSet(): Set<number> {
 }
 
 function main() {
-  const merged = buildMergedPrSet();
+  // F2 修:delivery ref 解析單次、merge-evidence 與 placeholder gate 共用同一 snapshot,
+  // 避免兩次呼叫間 origin/HEAD 被外部程序改動造成 consumer 看到不同 ref。
+  // 交付 ref 的來源與驗證在 shared lib(scripts/lib/delivery-refs.ts):唯一來源 = 受驗的
+  // origin/HEAD 權威 base;不讀任何 env;沒有 fallback。任何拒絕都不靜默:印原因碼、exit 2。
+  const resolved = resolveDeliveryRefsFromRepo(REPO_ROOT);
+  if (!resolved.ok) {
+    console.error(formatRejections(resolved.rejections));
+    process.exit(2);
+  }
+  const deliveryRefs = resolved.refs;
+  const merged = buildMergedPrSet(deliveryRefs);
   // 解死鎖:SOP 鼓勵「同 PR 順手翻 marker 引用本 PR#」,但本 PR squash commit 在 merge 前不存在於
   // develop/main(且刻意排除 HEAD)→ 會擋下「產生證據的那次 merge」。CI 於 pull_request event 把
   // 當前 PR# 經 env `MARKER_SELF_PR` 傳入,視為合法 merge 證據(它正是即將 merge 出證據的 PR)。
@@ -361,11 +559,49 @@ function main() {
   // 先解析所有 doc,再決定 merged set 是否為硬性前提:
   // repo 完全沒有「引用 PR 的完成宣稱」時(模板初始狀態 / 全新導入),即使 git 史抓不到
   // 任何 merged PR 也放行 —— 無宣稱 = 無可驗證對象,不該擋 CI。
-  const parsedDocs: { doc: string; parsed: ParseResult }[] = [];
-  for (const doc of MARKER_DOCS) {
-    const abs = path.join(REPO_ROOT, doc);
-    if (!fs.existsSync(abs)) continue;
-    parsedDocs.push({ doc, parsed: parseTodosMarkers(fs.readFileSync(abs, 'utf-8')) });
+  //
+  // A3 defer ②:loadCurrentDocs seam 每個 doc 只讀一次 current content,供 completion-claim
+  // parse 與 placeholder gate 共用(避免 TOCTOU 兩次不同 snapshot 造成假綠)。讀取失敗 →
+  // 結構化 { exitCode:2, diagnostic }(main 只負責 output + process.exit;seam 本身可 inject
+  // readCurrent 讓 test deterministic 覆蓋 read failure 路徑)。null = 路徑不存在。
+  const loadRes = loadCurrentDocs({ repoRoot: REPO_ROOT, docs: MARKER_DOCS, readCurrent: readCurrentBlob });
+  if (!loadRes.ok) {
+    console.error(`❌ ${loadRes.diagnostic}`);
+    process.exit(loadRes.exitCode);
+  }
+  const loadedDocs = loadRes.loadedDocs;
+  const parsedDocs: { doc: string; parsed: ParseResult }[] = loadedDocs
+    .filter((d): d is { doc: string; currentContent: string } => d.currentContent !== null)
+    .map(({ doc, currentContent }) => ({ doc, parsed: parseTodosMarkers(currentContent) }));
+
+  // A3 defer ② placeholder detection:僅在 pull_request CI + self-PR 通過既有 validation 時啟用。
+  // invalid MARKER_SELF_PR 經 validator 回 null,與未設 env 同類,不啟用(既有 completion-claim
+  // 驗證行為不變)。base = delivery ref(delivery-tip-relative delta、非 immutable PR base SHA)。
+  // F2 修:reuse main-level resolved deliveryRefs、避免第二次解析看到不同 snapshot。
+  if (selfPr !== null) {
+    const deliveryRef = deliveryRefs[0]!;
+    const gate = orchestratePlaceholderGate({
+      repoRoot: REPO_ROOT,
+      deliveryRef,
+      docs: loadedDocs, // 共用單次 current-read snapshot
+      readBase: readBaseBlob,
+    });
+    if (gate.exitCode === 2) {
+      console.error(`❌ Placeholder detection I/O 失敗:${gate.diagnostic}`);
+      process.exit(2);
+    }
+    if (gate.exitCode === 1) {
+      console.error(
+        `\n❌ ${gate.violations.length} 處 PR-number placeholder token 未補號(相對 delivery ref ${deliveryRef.slice(0, 24)} 的新增 occurrence):`
+      );
+      for (const v of gate.violations) {
+        console.error(`  ${v.doc} (+${v.addedCount})  ${v.line.slice(0, 120)}`);
+      }
+      console.error(
+        `  💡 Step 6 開 PR 拿到號後,將 ${PLACEHOLDER_TOKEN} 替換為實際 pull request 編號。`
+      );
+      process.exit(1);
+    }
   }
   const totalClaims = parsedDocs.reduce((n, d) => n + d.parsed.completionClaims.length, 0);
   if (totalClaims > 0 && merged.size === 0) {
