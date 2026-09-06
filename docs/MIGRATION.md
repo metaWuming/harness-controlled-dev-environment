@@ -24,7 +24,7 @@ type: guide
 **步驟(每步附 acceptance evidence source)**:
 
 1. **前置決策**:確認新交付分支是 default branch;若不是,明列新的 default branch 是什麼、目前 `protectedBranches` 清單。
-2. **修 `scripts/harness.config.json`**:`deliveryBranches` 加入 / 改成新 branch name(若舊 `develop` 不作交付線就移除);`protectedBranches` 需含所有 delivery branches(否則 A5 集合不等);保留 `mergeStrategy` / `mode` / 其他欄位。
+2. **修 `scripts/harness.config.json`**:`deliveryBranches` 加入 / 改成新 branch name;`protectedBranches` 需含所有 delivery branches(否則 A5 集合不等);保留 `mergeStrategy` / `mode` / 其他欄位。
 3. **修 `.github/workflows/ci.yml`**:三處 `if:` 行(Fetch delivery refs / TODOS Markers Check / Source-term scan)必須逐字等於由新 `deliveryBranches` 導出的 `expectedCiIfLine`(見 `expectedCiIfLine`,實作位置與 range citation 在 `scripts/check-adoption-readiness.ts` L499-524);若 push event 上要交付線 CI 跑,`push.branches` 集合亦需含新分支——**注意** `push.branches` 由 `A5.ci.push` 對 `protectedBranches` 驗集合(非 `deliveryBranches`),所以新交付分支必須依步驟 2 同步納入 `protectedBranches` 才會 A5 綠。
 4. **修 pre-commit / pre-push hooks**(若新交付分支不在既有 `protectedBranches`)。
 5. **驗證 gates**(每步 acceptance evidence):
