@@ -55,8 +55,8 @@
   },
   {
     "file": "scripts/check-control-catalog.ts",
-    "find": "  for (const x of findings) console.log(`  [${x.code}] ${x.msg}`);\n  return 2;",
-    "replace": "  for (const x of findings) console.log(`  [${x.code}] ${x.msg}`);\n  return 0;",
+    "find": "    for (const x of findings) console.log(`  [${x.code}] ${x.msg}`);\n    return 2;",
+    "replace": "    for (const x of findings) console.log(`  [${x.code}] ${x.msg}`);\n    return 0;",
     "label": "M10 checker main:有 findings 仍 exit 0 → e2e 負對照(exit 2 斷言)轉紅"
   },
   {

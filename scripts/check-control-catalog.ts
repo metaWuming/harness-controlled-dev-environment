@@ -346,18 +346,25 @@ function main(): number {
     console.error('CATALOG_FAIL — 無法判定(exit 2)');
     return 2;
   }
-  // A3 defer ⑦/⑧/⑫ Sprint 10:extractCiStepNames 已改回 outcome;結構錯誤已在
-  // checkCatalogConformance 內 push 到 findings、此處只在 outcome.ok 時取 length;
-  // 若 outcome 為 error,以 -1 標記(僅供 CATALOG_OK 印訊息用、findings 已擋 exit 2)
-  const namesOutcome = extractCiStepNames(buildRealIo(root).readText(CI_YML) ?? '');
-  const stepCount = namesOutcome.ok ? namesOutcome.value.length : -1;
-  if (findings.length === 0) {
-    console.log(`CATALOG_OK — ${catalog.controls.length} controls;${CI_YML} ${stepCount} steps(setup ${catalog.ciSetupSteps.length})雙向對應;${CATALOG_DOC_PATH} 與 JSON 一致`);
-    return 0;
+  // A3 defer ⑦/⑧/⑫ Sprint 10:extractCiStepNames 已改回 outcome。
+  // 順序:先印 findings(第一次讀已 push 到 findings 的 ci.yaml.<problemKind>:<line>),
+  // 再處理 TOCTOU 保護(findings 空 + 第二次 extractCiStepNames error 時、fail-closed exit 2、
+  // 不靜默降為 sentinel 繼續走 CATALOG_OK exit 0)。
+  if (findings.length > 0) {
+    console.log(`CATALOG_FAIL (${findings.length}):`);
+    for (const x of findings) console.log(`  [${x.code}] ${x.msg}`);
+    return 2;
   }
-  console.log(`CATALOG_FAIL (${findings.length}):`);
-  for (const x of findings) console.log(`  [${x.code}] ${x.msg}`);
-  return 2;
+  const namesOutcome = extractCiStepNames(buildRealIo(root).readText(CI_YML) ?? '');
+  if (!namesOutcome.ok) {
+    // TOCTOU: findings 空但 stepCount 抽取失敗 → 只可能是第二次讀 ci.yml 拿到不同內容;fail-closed
+    console.error(`❌ ${namesOutcome.diagnostic}`);
+    console.error(`CATALOG_FAIL — ${CI_YML} step 抽取失敗(ci.yaml.${namesOutcome.problemKind}:${namesOutcome.line};第二次讀取捕捉、TOCTOU 保護、exit 2)`);
+    return 2;
+  }
+  const stepCount = namesOutcome.value.length;
+  console.log(`CATALOG_OK — ${catalog.controls.length} controls;${CI_YML} ${stepCount} steps(setup ${catalog.ciSetupSteps.length})雙向對應;${CATALOG_DOC_PATH} 與 JSON 一致`);
+  return 0;
 }
 
 const outcome = detectInvocation(import.meta.url, process.argv[1]);

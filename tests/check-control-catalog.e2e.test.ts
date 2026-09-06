@@ -342,6 +342,35 @@ describe('A3 defer ⑦/⑧/⑫ Sprint 10 — structured outcome for YAML parser 
     if (o.ok) expect(o.value[0]!.name).toBe('x');
   });
 
+  it('(T-namesOutcome-propagate) extractCiStepNames 對 error 原樣 propagate、不 map 為 [](wrapper 保 API 契約)', () => {
+    // 覆蓋 caller chain 的 wrapper 層:extractCiStepNames 若 mutation 為 `.flatMap` 靜默降為 []
+    // 這個 case 會轉紅;鎖住 main() 第二次讀取拿到 error 時、能得到結構化 outcome 而非 sentinel []
+    const yml = `jobs:\n  ci:\n    steps:\n      - name: First\n        name: Second\n        run: x\n`;
+    const o = extractCiStepNames(yml);
+    expect(o.ok).toBe(false);
+    if (!o.ok) {
+      expect(o.problemKind).toBe('duplicate-direct-name');
+      expect(o.line).toBe(5);
+      expect(o.diagnostic).toContain('duplicate');
+    }
+    // 對照:合法 YAML 走 ok:true 路徑、value 為 string[]
+    const ok = extractCiStepNames(`jobs:\n  ci:\n    steps:\n      - name: A\n      - name: B\n`);
+    expect(ok.ok).toBe(true);
+    if (ok.ok) expect(ok.value).toEqual(['A', 'B']);
+  });
+
+  it('(T-main-toctou-guard) main() 第二次讀取拿到 error → CLI exit 2 + 明確診斷、非「CATALOG_OK -1 steps」假綠', () => {
+    // 說明:此 test 用 first-read error 路徑觸發同一 guard(main 的 namesOutcome.ok=false 分支)
+    // 真實 TOCTOU(第一讀成功、第二讀失敗)需 filesystem race、非 deterministic;此 case 至少鎖住
+    // guard 結構存在——若把 main 的 `if (!namesOutcome.ok) return 2` 拿掉、error 就會漏成 CATALOG_OK
+    const yml = `jobs:\n  ci:\n    steps:\n      - name: A\n        name: B\n        run: x\n`;
+    const r = run([`--root=${makeRepo(baseDoc(), { ci: yml })}`]);
+    expect(r.code).toBe(2);
+    // Non-vacuous:不能是 CATALOG_OK ... -1 steps 這種靜默 sentinel 假綠
+    expect(r.out).not.toMatch(/CATALOG_OK.*-1 steps/);
+    expect(r.err + r.out).toContain('ci.yaml');
+  });
+
   it('(T-⑫d) "x" trailing → outcome.ok=false + quoted-scalar-malformed + line + CLI exit 2 + finding + 非假紅', () => {
     const yml = `jobs:\n  ci:\n    steps:\n      - name: "x" trailing\n        run: x\n`;
     const o = extractCiSteps(yml);
