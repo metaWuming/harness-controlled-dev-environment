@@ -46,39 +46,107 @@ export interface CiStepItem {
   /** item 自己的 key 欄位縮排(`- ` 後第一個字元的欄位);只有這一層的 `name:` 算 step 名(Step 5 r2 C-1)。 */
   keyIndent: number;
   name: string | null;
-  /** `name: |` / `name: >` / 空值 這類本 checker 不支援的形狀(fail-closed)。 */
+  /** `name: |` / `name: >` / 空值 這類本 checker 不支援的形狀(per-step、非結構錯誤)。 */
   unsupported: string | null;
 }
 
-/** 去引號、去尾端 `# 註解`(只對未加引號的值)。回 null = 不支援的形狀。 */
-function normalizeStepName(raw: string): { name: string | null; unsupported: string | null } {
+/**
+ * A3 defer ⑦/⑧/⑫ Sprint 10:結構化 outcome union、caller 全 propagate、無 exception 備案。
+ * 每種 problemKind 對應一種本 checker 拒絕的 YAML 形狀:
+ * - `duplicate-direct-name`:⑦ 同 item 兩個直屬 `name:`
+ * - `flow-style-unsupported`:⑧ 非空 flow-style `steps: [{...}]`(合法 YAML、本 checker 不支援)
+ * - `quoted-scalar-malformed`:⑫ quoted-scalar 尾部 garbage / 未支援 escape / unterminated
+ *
+ * ⑥ tab-indent 與 ⑪ mixed-indent 為 WONTFIX(hand-rolled parser 無法在不擴 YAML structure
+ * 解析下穩定辨識),現行 silent behavior 保留、明列為未機器化判定的已知邊界。
+ */
+export type ProblemKind = 'duplicate-direct-name' | 'flow-style-unsupported' | 'quoted-scalar-malformed';
+
+export type ExtractionOutcome<T> =
+  | { ok: true; value: T }
+  | { ok: false; problemKind: ProblemKind; line: number; diagnostic: string };
+
+/**
+ * 去引號、去尾端 `# 註解`(comment `#` 前需 whitespace)。回:
+ * - `{name}`:成功解析
+ * - `{unsupported}`:name 是 `|` / `>` / 空值(block scalar、per-step 非結構錯誤)
+ * - `{malformed}`:quoted-scalar unterminated / trailing garbage / 未支援 escape(結構化錯誤)
+ *
+ * Escape table(僅本 sprint 列出、不宣稱完整 YAML double-quoted escape repertoire):
+ *   `\\` → `\`、`\t` → TAB、`\n` → LF、`\r` → CR、`\"` → `"`。其餘 `\X` 視為 malformed。
+ */
+function normalizeStepName(raw: string): { name: string | null; unsupported: string | null; malformed: string | null } {
   const v = raw.trim();
-  if (v === '' || v === '|' || v === '>' || v.startsWith('|') || v.startsWith('>')) return { name: null, unsupported: raw };
-  const q = /^"(.*)"\s*(#.*)?$|^'(.*)'\s*(#.*)?$/.exec(v);
-  if (q) return { name: q[1] !== undefined ? q[1].replace(/\\"/g, '"') : q[3]!.replace(/''/g, "'"), unsupported: null };
-  return { name: v.replace(/\s+#.*$/, ''), unsupported: null };
+  if (v === '' || v === '|' || v === '>' || v.startsWith('|') || v.startsWith('>')) return { name: null, unsupported: raw, malformed: null };
+  if (v.startsWith('"')) {
+    // Double-quoted:逐字元走、追蹤 escape 與結尾
+    const escapeMap: Record<string, string> = { '\\': '\\', 't': '\t', 'n': '\n', 'r': '\r', '"': '"' };
+    let i = 1;
+    let inner = '';
+    while (i < v.length) {
+      const ch = v[i]!;
+      if (ch === '\\' && i + 1 < v.length) {
+        const next = v[i + 1]!;
+        if (next in escapeMap) {
+          inner += escapeMap[next];
+          i += 2;
+          continue;
+        }
+        return { name: null, unsupported: null, malformed: raw }; // 未支援 escape
+      }
+      if (ch === '"') {
+        // Closing quote — 檢查 trailing 是 whitespace-only 或 whitespace-then-comment
+        const trailing = v.slice(i + 1);
+        if (trailing === '' || /^\s+(#.*)?$/.test(trailing) || /^\s*$/.test(trailing)) {
+          return { name: inner, unsupported: null, malformed: null };
+        }
+        return { name: null, unsupported: null, malformed: raw }; // trailing garbage
+      }
+      inner += ch;
+      i++;
+    }
+    return { name: null, unsupported: null, malformed: raw }; // unterminated
+  }
+  if (v.startsWith("'")) {
+    // Single-quoted:延用既有 `''` escape;non-greedy 修法(以 `[^']|''` 允許 escape 才 close)
+    const q = /^'((?:[^']|'')*)'\s*(#.*)?$/.exec(v);
+    if (q) return { name: q[1]!.replace(/''/g, "'"), unsupported: null, malformed: null };
+    return { name: null, unsupported: null, malformed: raw };
+  }
+  return { name: v.replace(/\s+#.*$/, ''), unsupported: null, malformed: null };
 }
 
 /**
  * 只掃 `steps:` 區塊(縮排判定,不解析 YAML 結構):每個 list item 一條;有 `name:` 就抽名稱、
  * 沒有就登記為 unnamed(Step 5 r1 C4:無名 step 不能從反向鎖消失)。`strategy.matrix` 之類
  * 區塊外的 `- name:` 不算 step(I1)。註解行與空行略過。
+ *
+ * A3 defer ⑦/⑧/⑫ Sprint 10:結構化 outcome union、遇 duplicate-direct-name / flow-style /
+ * quoted-scalar-malformed 立即回 `ok:false + problemKind + line + diagnostic`,
+ * 不繼續解析、不降為靜默 misparse。
  */
-export function extractCiSteps(yml: string): CiStepItem[] {
+export function extractCiSteps(yml: string): ExtractionOutcome<CiStepItem[]> {
   const lines = yml.split('\n');
   const items: CiStepItem[] = [];
   let stepsIndent = -1;
   let itemIndent = -1;
   let cur: CiStepItem | null = null;
+  /** ⑦ 追蹤 cur.name 是否已由 direct `name:` 設定過(inline 或 keyIndent 行)。 */
+  let curNameSetDirectly = false;
   const flush = () => {
     if (cur) items.push(cur);
     cur = null;
+    curNameSetDirectly = false;
   };
-  const setName = (raw: string) => {
-    if (!cur) return;
+  /** setName 回 malformed 標記給呼叫端(⑫ propagate);duplicate-direct 由呼叫端在 setName 前檢查。 */
+  const setName = (raw: string): { malformed: string | null } => {
+    if (!cur) return { malformed: null };
     const n = normalizeStepName(raw);
+    if (n.malformed !== null) return { malformed: n.malformed };
     cur.name = n.name;
     cur.unsupported = n.unsupported;
+    curNameSetDirectly = true;
+    return { malformed: null };
   };
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i]!;
@@ -93,6 +161,16 @@ export function extractCiSteps(yml: string): CiStepItem[] {
       itemIndent = -1;
     }
     if (stepsIndent < 0) {
+      // ⑧ 非空 flow-style `steps: [{...}]`:合法 YAML、本 checker 不支援。
+      //   偵測「`steps:` 後接 `[` 但非緊接 `]` 或 `# cmt`」→ fail-closed。
+      if (/^steps:\s*\[/.test(t) && !/^steps:(\s*#.*|\s*\[\s*\])?$/.test(t)) {
+        return {
+          ok: false,
+          problemKind: 'flow-style-unsupported',
+          line: i + 1,
+          diagnostic: `${CI_YML}:${i + 1} 本 checker 不支援合法的 non-empty flow-style \`steps:\`;建議改 block-style(每個 step 用 \`- name:\` 一行起)`,
+        };
+      }
       // I-7:`steps:` 後可接註解;`steps: []`(空)也算區塊(0 個 step)
       if (/^steps:(\s*#.*|\s*\[\s*\])?$/.test(t)) stepsIndent = indent;
       continue;
@@ -105,23 +183,58 @@ export function extractCiSteps(yml: string): CiStepItem[] {
         // key 欄位 = `- ` 與其後空白之後的欄位;`-` 單獨一行時為下一行的縮排(交給後續行判定)
         const keyIndent = t === '-' ? -1 : indent + (t.length - rest.length);
         cur = { line: i + 1, keyIndent, name: null, unsupported: null };
-        if (/^name:/.test(rest)) setName(rest.slice('name:'.length));
+        curNameSetDirectly = false;
+        if (/^name:/.test(rest)) {
+          const r = setName(rest.slice('name:'.length));
+          if (r.malformed !== null) {
+            return {
+              ok: false,
+              problemKind: 'quoted-scalar-malformed',
+              line: i + 1,
+              diagnostic: `${CI_YML}:${i + 1} quoted-scalar malformed(${JSON.stringify(r.malformed.trim())});支援 shape:\`"..."\` (escape \`\\\\\` \`\\t\` \`\\n\` \`\\r\` \`\\"\`) / \`'...'\` (\`''\` escape) / 未加引號並選填尾註解`,
+            };
+          }
+        }
         continue;
       }
     }
     if (cur && indent > itemIndent) {
       if (cur.keyIndent < 0) cur.keyIndent = indent; // `-` 單獨一行:第一個子行決定 key 欄位
       // 🔴 C-1:只有 item 直屬那一層的 `name:` 才是 step 名;`env:` / `with:` / `run: |` 底下更深的 `name:` 一律不算
-      if (indent === cur.keyIndent && /^name:/.test(t)) setName(t.slice('name:'.length));
+      if (indent === cur.keyIndent && /^name:/.test(t)) {
+        // ⑦ 若 cur.name 已由 direct name: 設定過、第二次直屬 `name:` → duplicate
+        if (curNameSetDirectly) {
+          return {
+            ok: false,
+            problemKind: 'duplicate-direct-name',
+            line: i + 1,
+            diagnostic: `${CI_YML}:${i + 1} item duplicate \`name:\` 檢出(YAML 規格禁 duplicate direct key);請合併為單一 \`name:\``,
+          };
+        }
+        const r = setName(t.slice('name:'.length));
+        if (r.malformed !== null) {
+          return {
+            ok: false,
+            problemKind: 'quoted-scalar-malformed',
+            line: i + 1,
+            diagnostic: `${CI_YML}:${i + 1} quoted-scalar malformed(${JSON.stringify(r.malformed.trim())});支援 shape:\`"..."\` (escape \`\\\\\` \`\\t\` \`\\n\` \`\\r\` \`\\"\`) / \`'...'\` (\`''\` escape) / 未加引號並選填尾註解`,
+          };
+        }
+      }
     }
   }
   flush();
-  return items;
+  return { ok: true, value: items };
 }
 
-/** 相容舊介面:只回有名稱的 step(保留重複以便 2a 判定)。 */
-export function extractCiStepNames(yml: string): string[] {
-  return extractCiSteps(yml).flatMap((s) => (s.name === null ? [] : [s.name]));
+/**
+ * 相容舊介面:成功時映射 names(過濾 null)、失敗時原樣 propagate outcome、不 `.flatMap` 靜默降為 []
+ * (A3 defer ⑦/⑧/⑫ Sprint 10 加、structured outcome caller chain)。
+ */
+export function extractCiStepNames(yml: string): ExtractionOutcome<string[]> {
+  const o = extractCiSteps(yml);
+  if (!o.ok) return o;
+  return { ok: true, value: o.value.flatMap((s) => (s.name === null ? [] : [s.name])) };
 }
 
 export function checkCatalogConformance(catalog: ControlCatalog, io: CatalogIo): CatalogFinding[] {
@@ -144,7 +257,14 @@ export function checkCatalogConformance(catalog: ControlCatalog, io: CatalogIo):
     f.push({ code: 'ci.unreadable', msg: `${CI_YML} 讀不到` });
     return f;
   }
-  const steps = extractCiSteps(yml);
+  const outcome = extractCiSteps(yml);
+  if (!outcome.ok) {
+    // A3 defer ⑦/⑧/⑫ Sprint 10:結構化 outcome 錯誤 → 唯一 `ci.yaml.<problemKind>:<line>` finding;
+    // 不重用既有 `ci.step.name-unsupported`、不降為「0 steps → catalog missing」的假紅路徑
+    f.push({ code: `ci.yaml.${outcome.problemKind}:${outcome.line}`, msg: outcome.diagnostic });
+    return f;
+  }
+  const steps = outcome.value;
   for (const st of steps) {
     if (st.unsupported !== null) f.push({ code: `ci.step.name-unsupported:${st.line}`, msg: `${CI_YML}:${st.line} 的 name 是本 checker 不支援的形狀(${JSON.stringify(st.unsupported.trim())};請用單行字面)` });
     else if (st.name === null) f.push({ code: `ci.step.unnamed:${st.line}`, msg: `${CI_YML}:${st.line} 的 step 沒有 name:(無名 step 無法登錄 catalog,反向鎖不接受)` });
@@ -226,7 +346,11 @@ function main(): number {
     console.error('CATALOG_FAIL — 無法判定(exit 2)');
     return 2;
   }
-  const stepCount = extractCiStepNames(buildRealIo(root).readText(CI_YML) ?? '').length;
+  // A3 defer ⑦/⑧/⑫ Sprint 10:extractCiStepNames 已改回 outcome;結構錯誤已在
+  // checkCatalogConformance 內 push 到 findings、此處只在 outcome.ok 時取 length;
+  // 若 outcome 為 error,以 -1 標記(僅供 CATALOG_OK 印訊息用、findings 已擋 exit 2)
+  const namesOutcome = extractCiStepNames(buildRealIo(root).readText(CI_YML) ?? '');
+  const stepCount = namesOutcome.ok ? namesOutcome.value.length : -1;
   if (findings.length === 0) {
     console.log(`CATALOG_OK — ${catalog.controls.length} controls;${CI_YML} ${stepCount} steps(setup ${catalog.ciSetupSteps.length})雙向對應;${CATALOG_DOC_PATH} 與 JSON 一致`);
     return 0;

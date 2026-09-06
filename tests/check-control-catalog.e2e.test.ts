@@ -8,7 +8,14 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { checkCatalogConformance, extractCiStepNames, extractCiSteps, type CatalogIo } from '../scripts/check-control-catalog';
+import { checkCatalogConformance, extractCiStepNames, extractCiSteps, type CatalogIo, type ExtractionOutcome } from '../scripts/check-control-catalog';
+
+// A3 defer ⑦/⑧/⑫ Sprint 10:extractCiSteps/extractCiStepNames 改回 ExtractionOutcome<T>;
+// 測試 helper:成功時取 value、失敗時 throw(既有 test 期望是成功路徑)
+function unwrap<T>(o: ExtractionOutcome<T>): T {
+  if (!o.ok) throw new Error(`unexpected extraction failure: ${o.problemKind}@${o.line}: ${o.diagnostic}`);
+  return o.value;
+}
 import { parseControlCatalog } from '../scripts/lib/control-catalog';
 import { renderCatalog } from '../scripts/render-control-catalog';
 
@@ -99,30 +106,30 @@ const codes = (out: string) => [...out.matchAll(/\[([^\]]+)\]/g)].map((m) => m[1
 
 describe('extractCiSteps(Step 5 r1 C4 / I1)', () => {
   it('抽 steps 區塊內每個 item;保留重複;trim', () => {
-    expect(extractCiStepNames(CI)).toEqual(['Checkout', 'Typecheck', 'Test (vitest)']);
-    expect(extractCiStepNames(CI + '      - name: Typecheck\n')).toEqual(['Checkout', 'Typecheck', 'Test (vitest)', 'Typecheck']);
+    expect(unwrap(extractCiStepNames(CI))).toEqual(['Checkout', 'Typecheck', 'Test (vitest)']);
+    expect(unwrap(extractCiStepNames(CI + '      - name: Typecheck\n'))).toEqual(['Checkout', 'Typecheck', 'Test (vitest)', 'Typecheck']);
   });
   it('無名 step(- run: / - uses:)與 dash 後多空白都被登記;name 在後行也抽得到', () => {
     const yml = CI + '      - run: echo x\n      -   name: Spaced\n      - uses: a/b\n        name: Later\n';
-    const items = extractCiSteps(yml);
+    const items = unwrap(extractCiSteps(yml));
     expect(items.map((s) => s.name)).toEqual(['Checkout', 'Typecheck', 'Test (vitest)', null, 'Spaced', 'Later']);
     expect(items.filter((s) => s.name === null).map((s) => s.line)).toHaveLength(1);
   });
   it('C-1:env: / with: / run: | 底下更深縮排的 name: 不算 step 名;`-` 單獨一行由子行決定 key 欄位;steps: 可接註解', () => {
     const yml = `jobs:\n  ci:\n    steps: # here\n      - name: Baseline Governance Check\n        env:\n          name: Sneaky\n      - uses: actions/upload-artifact@v4\n        with:\n          name: my-artifact\n      - run: |\n          cat <<EOF\n          name: FromShell\n          EOF\n      -\n        name: Dashed\n        run: x\n`;
-    const items = extractCiSteps(yml);
+    const items = unwrap(extractCiSteps(yml));
     expect(items.map((s) => s.name)).toEqual(['Baseline Governance Check', null, null, 'Dashed']);
   });
   it('I-2:steps: 與 - name: 同欄位(YAML 合法)也算區塊;I-4:單引號 \'\' 與雙引號 \\" 跳脫還原', () => {
     const yml = `jobs:\n  ci:\n    steps:\n    - name: A\n      run: x\n    - name: 'It''s'\n    - name: "Say \\"hi\\""\n    env: {}\n`;
-    expect(extractCiStepNames(yml)).toEqual(['A', "It's", 'Say "hi"']);
+    expect(unwrap(extractCiStepNames(yml))).toEqual(['A', "It's", 'Say "hi"']);
   });
   it('引號剝掉、尾端註解剝掉;`name: |` 標 unsupported;matrix include 的 - name 不算 step;steps 以外的 - name 不算', () => {
     const yml = `jobs:\n  ci:\n    strategy:\n      matrix:\n        include:\n          - name: node22\n    steps:\n      - name: "Lint"\n        run: x\n      - name: 'Typecheck' # c\n      - name: Test (vitest) # trailing\n      - name: |\n          multi\n  other:\n    - name: NotAStep\n`;
-    const items = extractCiSteps(yml);
+    const items = unwrap(extractCiSteps(yml));
     expect(items.map((s) => s.name)).toEqual(['Lint', 'Typecheck', 'Test (vitest)', null]);
     expect(items[3]!.unsupported).not.toBeNull();
-    expect(extractCiStepNames(yml)).not.toContain('node22');
+    expect(unwrap(extractCiStepNames(yml))).not.toContain('node22');
   });
 });
 
@@ -262,5 +269,93 @@ describe('check:catalog CLI(真 git fixture)', () => {
     const r = run([`--root=${dir}`]);
     expect(r.code).toBe(2);
     expect(r.err).toMatch(/檔案不存在/);
+  });
+});
+
+// A3 defer ⑦/⑧/⑫ Sprint 10:structured outcome for YAML parser 邊角
+//   FIX 三種:duplicate direct name(⑦)、non-empty flow-style steps(⑧)、quoted-scalar-malformed(⑫a-⑫d)
+//   WONTFIX 兩種:tab-indent(⑥)、mixed-indent(⑪)— hand-rolled parser 無法穩定辨識、decision record 保留
+//   每 fail case 鎖:(a) 直接 extractCiSteps outcome.ok=false + problemKind + line;
+//                    (b) checkCatalogConformance push 唯一 ci.yaml.<problemKind>:<line> finding;
+//                    (c) CLI exit 2、非「0 steps → CATALOG_OK」的假紅路徑(non-vacuous)
+describe('A3 defer ⑦/⑧/⑫ Sprint 10 — structured outcome for YAML parser 邊角', () => {
+  const makeIo = (ci: string): CatalogIo => ({
+    readText: (rel) => (rel === '.github/workflows/ci.yml' ? ci : rel === 'docs/CONTROL-CATALOG.md' ? renderCatalog(parseControlCatalog(JSON.stringify(baseDoc()))) : null),
+    trackedFiles: () => ['.github/workflows/ci.yml', 'tsconfig.json', 'vitest.config.ts', 'docs/CONTROL-CATALOG.md'],
+  });
+
+  it('(T-⑦) 兩個直屬 name: → outcome.ok=false + duplicate-direct-name + line + CLI exit 2 + finding + 非假紅', () => {
+    const yml = `jobs:\n  ci:\n    steps:\n      - name: First\n        name: Second\n        run: x\n`;
+    // (a) direct outcome
+    const o = extractCiSteps(yml);
+    expect(o.ok).toBe(false);
+    if (!o.ok) {
+      expect(o.problemKind).toBe('duplicate-direct-name');
+      expect(o.line).toBe(5);
+      expect(o.diagnostic).toContain('duplicate');
+    }
+    // (b) checkCatalogConformance push 唯一 ci.yaml.<problemKind>:<line> finding
+    const findings = checkCatalogConformance(parseControlCatalog(JSON.stringify(baseDoc())), makeIo(yml));
+    expect(findings.some((x) => x.code === 'ci.yaml.duplicate-direct-name:5')).toBe(true);
+    // (c) CLI exit 2 + non-vacuous(不降為 0 steps / CATALOG_OK)
+    const r = run([`--root=${makeRepo(baseDoc(), { ci: yml })}`]);
+    expect(r.code).toBe(2);
+    expect(codes(r.out)).toContain('ci.yaml.duplicate-direct-name:5');
+    expect(r.out).not.toMatch(/^CATALOG_OK/);
+  });
+
+  it('(T-⑧) 非空 flow-style steps: [{...}] → outcome.ok=false + flow-style-unsupported + line + CLI exit 2 + finding + 非假紅', () => {
+    const yml = `jobs:\n  ci:\n    steps: [{name: Only, run: x}]\n`;
+    const o = extractCiSteps(yml);
+    expect(o.ok).toBe(false);
+    if (!o.ok) {
+      expect(o.problemKind).toBe('flow-style-unsupported');
+      expect(o.line).toBe(3);
+      expect(o.diagnostic).toContain('不支援');
+    }
+    const findings = checkCatalogConformance(parseControlCatalog(JSON.stringify(baseDoc())), makeIo(yml));
+    expect(findings.some((x) => x.code === 'ci.yaml.flow-style-unsupported:3')).toBe(true);
+    const r = run([`--root=${makeRepo(baseDoc(), { ci: yml })}`]);
+    expect(r.code).toBe(2);
+    expect(codes(r.out)).toContain('ci.yaml.flow-style-unsupported:3');
+    expect(r.out).not.toMatch(/^CATALOG_OK/);
+  });
+
+  it('(T-⑫a) "a\\\\b" → outcome.ok=true、name = `a\\b`(unescape \\\\ → \\)', () => {
+    const yml = `jobs:\n  ci:\n    steps:\n      - name: "a\\\\b"\n        run: x\n`;
+    const o = extractCiSteps(yml);
+    expect(o.ok).toBe(true);
+    if (o.ok) expect(o.value[0]!.name).toBe('a\\b');
+  });
+
+  it('(T-⑫b) "a\\tb" → outcome.ok=true、name = `a<TAB>b`(unescape \\t → TAB)', () => {
+    const yml = `jobs:\n  ci:\n    steps:\n      - name: "a\\tb"\n        run: x\n`;
+    const o = extractCiSteps(yml);
+    expect(o.ok).toBe(true);
+    if (o.ok) expect(o.value[0]!.name).toBe('a\tb');
+  });
+
+  it('(T-⑫c) "x" # c "d" → outcome.ok=true、name = `x`(comment 剝除、非 malformed)', () => {
+    const yml = `jobs:\n  ci:\n    steps:\n      - name: "x" # c "d"\n        run: x\n`;
+    const o = extractCiSteps(yml);
+    expect(o.ok).toBe(true);
+    if (o.ok) expect(o.value[0]!.name).toBe('x');
+  });
+
+  it('(T-⑫d) "x" trailing → outcome.ok=false + quoted-scalar-malformed + line + CLI exit 2 + finding + 非假紅', () => {
+    const yml = `jobs:\n  ci:\n    steps:\n      - name: "x" trailing\n        run: x\n`;
+    const o = extractCiSteps(yml);
+    expect(o.ok).toBe(false);
+    if (!o.ok) {
+      expect(o.problemKind).toBe('quoted-scalar-malformed');
+      expect(o.line).toBe(4);
+      expect(o.diagnostic).toContain('malformed');
+    }
+    const findings = checkCatalogConformance(parseControlCatalog(JSON.stringify(baseDoc())), makeIo(yml));
+    expect(findings.some((x) => x.code === 'ci.yaml.quoted-scalar-malformed:4')).toBe(true);
+    const r = run([`--root=${makeRepo(baseDoc(), { ci: yml })}`]);
+    expect(r.code).toBe(2);
+    expect(codes(r.out)).toContain('ci.yaml.quoted-scalar-malformed:4');
+    expect(r.out).not.toMatch(/^CATALOG_OK/);
   });
 });
