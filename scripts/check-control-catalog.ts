@@ -415,7 +415,7 @@ function main(): number {
     for (const x of findings) console.log(`  [${x.code}] ${x.msg}`);
     return 2;
   }
-  // Findings 空 ⇒ stepCount 為 number(discriminated union、TS 已窄化);印 CATALOG_OK
+  // Findings 空 ⇒ 依 seam 契約 stepCount 為 number(runtime invariant、非 TS 窄化);印 CATALOG_OK
   console.log(`CATALOG_OK — ${catalog.controls.length} controls;${CI_YML} ${stepCount} steps(setup ${catalog.ciSetupSteps.length})雙向對應;${CATALOG_DOC_PATH} 與 JSON 一致`);
   return 0;
 }
