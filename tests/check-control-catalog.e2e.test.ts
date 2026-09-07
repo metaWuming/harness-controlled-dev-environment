@@ -344,7 +344,8 @@ describe('A3 defer ⑦/⑧/⑫ Sprint 10 — structured outcome for YAML parser 
 
   it('(T-namesOutcome-propagate) extractCiStepNames 對 error 原樣 propagate、不 map 為 [](wrapper 保 API 契約)', () => {
     // 覆蓋 caller chain 的 wrapper 層:extractCiStepNames 若 mutation 為 `.flatMap` 靜默降為 []
-    // 這個 case 會轉紅;鎖住 main() 第二次讀取拿到 error 時、能得到結構化 outcome 而非 sentinel []
+    // 這個 case 會轉紅;鎖 wrapper 原樣 propagate structured error、供 evaluateCatalogSnapshot
+    // 的 single-snapshot invariant check 使用(seam 內 ok:false 判定依此 wrapper 契約)
     const yml = `jobs:\n  ci:\n    steps:\n      - name: First\n        name: Second\n        run: x\n`;
     const o = extractCiStepNames(yml);
     expect(o.ok).toBe(false);
@@ -385,11 +386,11 @@ describe('A3 defer ⑦/⑧/⑫ Sprint 10 — structured outcome for YAML parser 
     expect(mdReadCount).toBe(1); // conformance 讀一次 md 屬既有契約
   });
 
-  it('(T-single-snapshot-invariant) evaluateCatalogSnapshot 不變式 breakage(mock 導出 conformance 綠但 extractCiStepNames error)→ ok:false + invariant diagnostic', () => {
-    // 極端情況:mock realIo 對兩次 readText(CI_YML) 回不同內容(第一次乾淨、後續 malformed)、
-    // cached IO 只讀第一次;此 case 不會真觸發不變式 breakage(cached 就是這個設計的目的);
-    // 改用直接測 seam 對「conformance 於 malformed yml 直接產 ci.yaml.<problemKind> finding」的路徑,
-    // 確認 findings.length > 0 → result.ok=true + findings 帶錯誤 code(非 exception)
+  it('(T-malformed-snapshot-finding) evaluateCatalogSnapshot 對 malformed snapshot 走正常 structured finding、非 invariant failure', () => {
+    // 驗 malformed snapshot 走 findings 路徑 → result.ok=true + ci.yaml.<problemKind> finding
+    // + stepCount=0(seam 契約);此 case 不觸發 invariant break(seam single-snapshot 設計本身
+    // 避免 conformance 綠但 extractCiStepNames error 的情境、invariant branch 在目前 seam
+    // 接線下不可注入、故用此正向 finding 覆蓋更務實)
     const malformed = `jobs:\n  ci:\n    steps:\n      - name: A\n        name: B\n        run: x\n`;
     const realIo: CatalogIo = {
       readText: (rel) => (rel === '.github/workflows/ci.yml' ? malformed : rel === 'docs/CONTROL-CATALOG.md' ? renderCatalog(parseControlCatalog(JSON.stringify(baseDoc()))) : null),
