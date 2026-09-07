@@ -304,6 +304,41 @@ export function checkCatalogConformance(catalog: ControlCatalog, io: CatalogIo):
   return f;
 }
 
+/**
+ * A3 defer ⑦/⑧/⑫ Sprint 10 Step 4 P1 rereview:production-used orchestration seam。
+ * 對 realIo 的 CI_YML 恰讀一次、建 cached IO、conformance 與 stepCount 共用同一 snapshot;
+ * 消 double-read TOCTOU;所有結構化錯誤(不變式 breakage)以 result 回傳、由 main 轉 exit 2、
+ * 不 throw 未捕捉 exception。
+ *
+ * 回傳:
+ *   - `{ ok: true, findings, stepCount }`:conformance + stepCount 皆完成
+ *   - `{ ok: false, kind: 'invariant', diagnostic }`:findings 空但 extractCiStepNames error
+ *     (single-snapshot 不變式 breakage、屬程式碼漂移、fail-closed exit 2)
+ */
+export function evaluateCatalogSnapshot(
+  catalog: ControlCatalog,
+  realIo: CatalogIo,
+): { ok: true; findings: CatalogFinding[]; stepCount: number } | { ok: false; kind: 'invariant'; diagnostic: string } {
+  const ymlSnapshot = realIo.readText(CI_YML);
+  const cachedIo: CatalogIo = {
+    readText: (rel) => (rel === CI_YML ? ymlSnapshot : realIo.readText(rel)),
+    trackedFiles: () => realIo.trackedFiles(),
+  };
+  const findings = checkCatalogConformance(catalog, cachedIo);
+  if (findings.length > 0) return { ok: true, findings, stepCount: 0 };
+  // Single-snapshot 不變式:findings 空 ⇒ conformance 於同一 yml 成功抽取 ⇒
+  // extractCiStepNames 對同一 yml 必回 ok:true。若破裂:程式碼漂移、fail-closed。
+  const namesOutcome = extractCiStepNames(ymlSnapshot ?? '');
+  if (!namesOutcome.ok) {
+    return {
+      ok: false,
+      kind: 'invariant',
+      diagnostic: `single-snapshot invariant broken:findings 空但 extractCiStepNames error(ci.yaml.${namesOutcome.problemKind}:${namesOutcome.line});${namesOutcome.diagnostic}`,
+    };
+  }
+  return { ok: true, findings, stepCount: namesOutcome.value.length };
+}
+
 export function buildRealIo(root: string): CatalogIo {
   let tracked: string[] | null = null;
   return {
@@ -338,35 +373,28 @@ function main(): number {
     console.error('CATALOG_FAIL — catalog 無法載入(exit 2)');
     return 2;
   }
-  // A3 defer ⑦/⑧/⑫ Sprint 10 Step 4 P1:單一 CI_YML snapshot、消 double-read TOCTOU
-  //   Real IO 只讀 CI_YML 一次;cached IO 對 checkCatalogConformance 與後續 stepCount 都
-  //   回傳同一份內容;findings 空 ⇒ extractCiSteps 於 checkCatalogConformance 內成功 ⇒
-  //   extractCiStepNames 於同一 yml 亦必成功(不變式)。無需 second-read TOCTOU guard。
-  const realIo = buildRealIo(root);
-  const ymlSnapshot = realIo.readText(CI_YML);
-  const cachedIo: CatalogIo = {
-    readText: (rel) => (rel === CI_YML ? ymlSnapshot : realIo.readText(rel)),
-    trackedFiles: () => realIo.trackedFiles(),
-  };
-  let findings: CatalogFinding[];
+  // A3 defer ⑦/⑧/⑫ Sprint 10 Step 4 P1 rereview:呼叫 production-used orchestration seam
+  //   evaluateCatalogSnapshot(catalog, realIo);試錯路徑包 try/catch、不變式 breakage 走
+  //   ok:false + 明確 diagnostic + exit 2、非未捕捉 throw。
+  let result: ReturnType<typeof evaluateCatalogSnapshot>;
   try {
-    findings = checkCatalogConformance(catalog, cachedIo);
+    result = evaluateCatalogSnapshot(catalog, buildRealIo(root));
   } catch (e) {
     console.error(`❌ ${(e as Error).message}`);
     console.error('CATALOG_FAIL — 無法判定(exit 2)');
     return 2;
   }
+  if (!result.ok) {
+    console.error(`❌ ${result.diagnostic}`);
+    console.error('CATALOG_FAIL — single-snapshot 不變式 breakage(exit 2)');
+    return 2;
+  }
+  const { findings, stepCount } = result;
   if (findings.length > 0) {
     console.log(`CATALOG_FAIL (${findings.length}):`);
     for (const x of findings) console.log(`  [${x.code}] ${x.msg}`);
     return 2;
   }
-  // 不變式(single-snapshot):findings 空表示 conformance 已於同一 yml 成功抽取;此處
-  // extractCiStepNames 對同一 yml 必回 ok:true。若因程式碼漂移導致此不變式被破壞、
-  // 用 fail-closed 硬 throw 而非靜默降級。
-  const namesOutcome = extractCiStepNames(ymlSnapshot ?? '');
-  if (!namesOutcome.ok) throw new Error(`unreachable(single-snapshot invariant broken): findings 空但 extractCiStepNames error(${namesOutcome.problemKind}:${namesOutcome.line})`);
-  const stepCount = namesOutcome.value.length;
   console.log(`CATALOG_OK — ${catalog.controls.length} controls;${CI_YML} ${stepCount} steps(setup ${catalog.ciSetupSteps.length})雙向對應;${CATALOG_DOC_PATH} 與 JSON 一致`);
   return 0;
 }

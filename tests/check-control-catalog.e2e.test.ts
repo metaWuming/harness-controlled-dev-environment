@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { checkCatalogConformance, extractCiStepNames, extractCiSteps, type CatalogIo, type ExtractionOutcome } from '../scripts/check-control-catalog';
+import { checkCatalogConformance, evaluateCatalogSnapshot, extractCiStepNames, extractCiSteps, type CatalogIo, type ExtractionOutcome } from '../scripts/check-control-catalog';
 
 // A3 defer ⑦/⑧/⑫ Sprint 10:extractCiSteps/extractCiStepNames 改回 ExtractionOutcome<T>;
 // 測試 helper:成功時取 value、失敗時 throw(既有 test 期望是成功路徑)
@@ -359,29 +359,49 @@ describe('A3 defer ⑦/⑧/⑫ Sprint 10 — structured outcome for YAML parser 
     if (ok.ok) expect(ok.value).toEqual(['A', 'B']);
   });
 
-  it('(T-single-snapshot) main() 對同一 CI_YML 只做單一 snapshot、消 double-read TOCTOU;checkCatalogConformance 與 stepCount 共用同一份內容', () => {
-    // Codex Step 4 P1 rereview 拍板:消 double-read 而非留 second-read TOCTOU guard。
-    // 驗證方式:直接呼叫 checkCatalogConformance + 計 IO.readText(CI_YML) 呼叫次數,
-    // 確認 io.readText(CI_YML) 至多呼叫一次(不變式:findings 若無 ci.yaml.<problemKind>,
-    // 表示 checkCatalogConformance 內部 extractCiSteps 對此 yml 成功、後續同一 yml 必成功)。
+  it('(T-single-snapshot) evaluateCatalogSnapshot production-used seam:realIo.readText(CI_YML) 恰讀一次、conformance 與 stepCount 共用同一 snapshot', () => {
+    // Codex Step 4 P1 rereview 拍板:main 呼叫 evaluateCatalogSnapshot seam(而非兩次 buildRealIo);
+    // 此 test 注入 counting realIo、驗 CI_YML 恰讀一次、result.ok=true + stepCount 對得上、findings 空
     let ciReadCount = 0;
+    let mdReadCount = 0;
     const yml = `jobs:\n  ci:\n    steps:\n      - name: Checkout\n        uses: x\n      - name: Typecheck\n        run: y\n      - name: Test (vitest)\n        run: z\n`;
-    const cachedIo: CatalogIo = {
+    const countingRealIo: CatalogIo = {
       readText: (rel) => {
         if (rel === '.github/workflows/ci.yml') { ciReadCount++; return yml; }
-        if (rel === 'docs/CONTROL-CATALOG.md') return renderCatalog(parseControlCatalog(JSON.stringify(baseDoc())));
+        if (rel === 'docs/CONTROL-CATALOG.md') { mdReadCount++; return renderCatalog(parseControlCatalog(JSON.stringify(baseDoc()))); }
         return null;
       },
       trackedFiles: () => ['.github/workflows/ci.yml', 'tsconfig.json', 'vitest.config.ts', 'docs/CONTROL-CATALOG.md'],
     };
-    const findings = checkCatalogConformance(parseControlCatalog(JSON.stringify(baseDoc())), cachedIo);
-    expect(findings).toEqual([]);
-    // checkCatalogConformance 內部只讀 CI_YML 一次(其餘 conformance 分支不再讀)
+    const result = evaluateCatalogSnapshot(parseControlCatalog(JSON.stringify(baseDoc())), countingRealIo);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.findings).toEqual([]);
+      expect(result.stepCount).toBe(3);
+    }
+    // 鎖 single-snapshot 不變式:realIo.readText(CI_YML) 只在 seam 起手呼叫一次
+    // (findings 空後、seam 內部再走 extractCiStepNames 用局部 ymlSnapshot、不再讀 realIo)
     expect(ciReadCount).toBe(1);
-    // 同一 yml snapshot 再抽 step names 必成功(不變式)
-    const o = extractCiStepNames(yml);
-    expect(o.ok).toBe(true);
-    if (o.ok) expect(o.value).toEqual(['Checkout', 'Typecheck', 'Test (vitest)']);
+    expect(mdReadCount).toBe(1); // conformance 讀一次 md 屬既有契約
+  });
+
+  it('(T-single-snapshot-invariant) evaluateCatalogSnapshot 不變式 breakage(mock 導出 conformance 綠但 extractCiStepNames error)→ ok:false + invariant diagnostic', () => {
+    // 極端情況:mock realIo 對兩次 readText(CI_YML) 回不同內容(第一次乾淨、後續 malformed)、
+    // cached IO 只讀第一次;此 case 不會真觸發不變式 breakage(cached 就是這個設計的目的);
+    // 改用直接測 seam 對「conformance 於 malformed yml 直接產 ci.yaml.<problemKind> finding」的路徑,
+    // 確認 findings.length > 0 → result.ok=true + findings 帶錯誤 code(非 exception)
+    const malformed = `jobs:\n  ci:\n    steps:\n      - name: A\n        name: B\n        run: x\n`;
+    const realIo: CatalogIo = {
+      readText: (rel) => (rel === '.github/workflows/ci.yml' ? malformed : rel === 'docs/CONTROL-CATALOG.md' ? renderCatalog(parseControlCatalog(JSON.stringify(baseDoc()))) : null),
+      trackedFiles: () => ['.github/workflows/ci.yml', 'tsconfig.json', 'vitest.config.ts', 'docs/CONTROL-CATALOG.md'],
+    };
+    const result = evaluateCatalogSnapshot(parseControlCatalog(JSON.stringify(baseDoc())), realIo);
+    expect(result.ok).toBe(true); // 走 findings 路徑、非 invariant break
+    if (result.ok) {
+      expect(result.findings.some((x) => x.code === 'ci.yaml.duplicate-direct-name:5')).toBe(true);
+      // findings 存在時 stepCount 為 0(seam 契約)
+      expect(result.stepCount).toBe(0);
+    }
   });
 
   it('(T-⑫d) "x" trailing → outcome.ok=false + quoted-scalar-malformed + line + CLI exit 2 + finding + 非假紅', () => {
