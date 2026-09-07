@@ -89,7 +89,7 @@ type: note
 >
 > **⏭️ 下一棒候選**(hint 非 truth、起手 git 核實):A3 已 closed;Sprint 15+:A2 defer 集合(17 條 conf ≤ 6、部分已在 A3 catalog 交付)/ P2 / P3 defer 剩餘 backlog(P3 D-② SIGTERM race canonical remains pending);卡外部:無;shared main 233858f + CLAUDE.md M 全程 lock、1 支 stash 保留、無 remote 動作。
 >
-> **check:claims 逐條處置**(base=`a671ab`、Phase 2 時序 4 實測):本 sprint diff 全 bookkeeping;D9 anti-overclaim 全程守;實測 59 added lines / 0 hits。
+> **check:claims 逐條處置**(base=`a671ab`、Phase 2 時序 4 實測):本 sprint diff 全 bookkeeping;D9 anti-overclaim 全程守;實測 60 added lines / 0 hits。
 >
 > 📊 成本:CC ~3h(Phase 0 Explore + /tmp re-audit + plan r1-r8 iterated + Step 3 atomic quarantine + Phase 2 bookkeeping)/ 跨模型 review plan r1-r8 = 7 次 revision + r8 APPROVE / Step 5 獨立發現 0(no code、no adversarial round)。
 >
