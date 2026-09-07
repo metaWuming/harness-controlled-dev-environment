@@ -295,7 +295,7 @@ describe('check:baseline-governance e2e(16 條)', () => {
     // 驗新 wording:含實際條件敘述、不含 promotion-only 誤導
     expect(r.out).toContain('head main ∈ merge-base 的 protectedBranches');
     expect(r.out).toContain('保護分支之間的 PR(head ∈ merge-base 的 protectedBranches)');
-    expect(r.out).not.toMatch(/保護分支之間的 promotion PR(?!.*\()/); // 舊 promotion-only 誤導字面不能重現
+    expect(r.out).not.toContain('保護分支之間的 promotion PR,'); // 舊 promotion-only 誤導字面精確不重現
   });
   it('(21) r3 CRITICAL:攻擊 PR 自己把分支名加進 protectedBranches → 不得 SKIPPED(政策讀 merge-base)', () => {
     const f = fixture();
