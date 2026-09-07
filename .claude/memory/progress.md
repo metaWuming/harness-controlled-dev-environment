@@ -79,7 +79,7 @@ type: note
 
 > **緣起**:Sprint 11 progress ⑨ entry 明列 defer(A3 defer ③⑨ 收乾但 catalog wording drift 觸 STOP 3/6);Owner 2026-09-07 拍板 Sprint 12 有限授權收(`scripts/control-catalog.json` 內 CTRL-CI-012 `locator` + `evidence` 兩 field wording + 用既有 renderer 重生 `docs/CONTROL-CATALOG.md`)。frozen full base `2307a447363ce49ac3a23f28cc5ce1b37d491781`(origin/main = pull request 編號 77 squash merge);shared local main 233858f + CLAUDE.md M(全程 lock)、1 支 stash 保留、agent-* 18 支 worktrees 保留、remote 0 動。plan review r1-r2(r2 APPROVE):r1 NEEDS-REVISION 3 findings(Phase 2 bookkeeping 四段時序缺、數字 line pins 需 symbol anchor、D9(c) 精確化);r2 全部處置。
 >
-> **改動**:2 檔(worktree wt-sprint12-catalog-drift、Sprint 12 frozen tip `78ee155fd66f8da646b7dd36a47cfd6c3379b481`、full-range +5/-5):
+> **改動**:2 檔(worktree wt-sprint12-catalog-drift、Sprint 12 frozen tip `78ee155fd66f8da646b7dd36a47cfd6c3379b481`、Phase 1 numstat:JSON +2/-2 + generated MD +1/-1 = 2 files +3/-3):
 > - `scripts/control-catalog.json` CTRL-CI-012.locator 尾段「者為 promotion PR、明文 SKIPPED」→「則明文 SKIPPED」(加「head 」前綴、去 promotion PR taxonomy)
 > - `scripts/control-catalog.json` CTRL-CI-012.evidence 中段「SKIPPED(promotion PR,政策讀自 merge-base)」→「SKIPPED(head ∈ merge-base 那側 protectedBranches、政策讀自 merge-base)」
 > - `docs/CONTROL-CATALOG.md` regenerate via `npm run catalog:render`(不手改、renderer 決定性硬驗)
@@ -99,11 +99,11 @@ type: note
 >
 > **KEEP 明列**(不修、Sprint 13+ 也 not required):F3 MIGRATION L80(accurate specific promotion scenario)、F4 catalog vs runtime wording(semantically equivalent、Owner intentional)、F7 test case (19) title(characterizes promotion-shaped fixture)。
 >
-> **check:claims 逐條處置**(base=`2307a44`、Phase 2 時序 4 跑):本 sprint diff 全為 wording 校正、無新增絕對化宣稱;D9 anti-overclaim(a-e)全程守。
+> **check:claims 逐條處置**(base=`2307a44`、實測 50 added lines / 1 hit):hit 位於 archive-move blob(byte-for-byte 移動、內容未變、Sprint 11 ⑨ 存量從 progress.md 搬到 progress-2026-09.md);KEEP、無新增宣稱;本 sprint code diff 全為 wording 校正、D9 anti-overclaim(a-e)全程守。
 >
 > 📊 成本:CC ~3h(Phase 0 + plan r1-r2 + Phase 1 + Step 4 review + Step 5 adversarial + Phase 2 bookkeeping)/ 跨模型 review 4 rounds(Codex plan r1-r2 + Codex Step 4 + adversarial 1)/ P1 0 個 / P2 0 個 / Step 5 獨立發現 7 個(F1-F7、STOP #2 WAS triggered + resolved by explicit defer)。
 >
-> 📐 量測:主 session Opus 4.7 全程、Codex supervisor via Herdr pane w6:p4;baseline SHA `2307a447363ce49ac3a23f28cc5ce1b37d491781`;來源分佈(既有缺陷 3・漏改 consumer 4・baseline 後引入 0):既有 = F4/F5/F7(catalog vs runtime wording / CHANGELOG / case (19) title);漏改 consumer = F1/F2/F3/F6(ADOPTION/MIGRATION/ci.yml、Sprint 11 defer 遺漏 downstream)。
+> 📐 量測:主 session Opus 4.7 全程、Codex supervisor via Herdr pane w6:p4;baseline SHA `2307a447363ce49ac3a23f28cc5ce1b37d491781`;來源分佈(既有/KEEP 4・漏改 consumer 3・baseline 後引入 0):既有/KEEP = F3(MIGRATION L80 accurate specific promotion scenario)/F4(catalog「那側」vs runtime SKIPPED「的」semantically equivalent)/F5(CHANGELOG exact head condition dominates parenthetical historical label)/F7(case (19) title characterizes promotion-shaped fixture);漏改 consumer = F1/F2/F6(ADOPTION current guidance / MIGRATION L32 acceptance-evidence label / ci.yml comment-only、Sprint 11 defer 遺漏 downstream)。
 
 
 
