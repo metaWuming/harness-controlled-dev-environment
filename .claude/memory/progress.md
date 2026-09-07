@@ -75,6 +75,31 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-09-07 ⑪ — **A3 CTRL-CI-012 wording chain closure(Sprint 12 defer 收乾、freeze wording chain、closure sprint)**
+
+> **緣起 & scope**:Sprint 12 明列 DEFER F1/F2/F6 集合(downstream SSOT drift、STOP #2 explicit defer)收乾 + freeze CTRL-CI-012 wording chain(closure rule:no new Sprint 14 from low-risk wording findings、only reproducible behavior defect / active operational contradiction / MAJOR blocker)。3 檔 Phase 1 atomic:`docs/ADOPTION.md` Baseline Governance checklist paragraph + `docs/MIGRATION.md` GitFlow upgrade acceptance-evidence label(括號簡短版)+ `.github/workflows/ci.yml` Baseline Governance step comment(2 段 common pattern)+ Protected Branches Drift step comment(1 詞刪)、兩份 docs wording + ci.yml comment-only、workflow logic / if / env / run / steps / triggers / permissions / job topology zero change(awk machine-verified、set -o pipefail、portable BSD/macOS)。
+>
+> **改動**:3 檔 +5/-6(worktree wt-sprint13-wording-closure、frozen tip `bdd22b50ce15cb4fd7681a318f94ff3f5c3d2e5b`、frozen base `8c6d213152ee43f1bb59752f21d3a8616ff46d73`)。D1 common pattern:「同 repo PR 的 `--head` 所帶分支名,若存在於 merge-base 那側 `harness.config.json` 的 `protectedBranches`,腳本明文 SKIPPED」——明列 CLI input + policy trust source、不 expose internal field name(headRef)、不宣稱 base protected;MIGRATION.md GitFlow upgrade acceptance-evidence label 使用括號簡短版;ci.yml Baseline Governance step 兩段 comment 用 common pattern。
+>
+> **審查**:Codex plan r1-r3(supervisor via Herdr Codex pane w6:p4)APPROVE;Codex Step 4 commit-object review r1 NEEDS-REVISION 1 P1(散文級 conf 9、ci.yml 多「的」1 字)→ delta r2 APPROVE;Step 4.5 CSO_NOT_REQUIRED(Owner 明列、governance docs / comment-only 車道、非安全繞過);Step 4.6 無 UI 檔;Step 5 adversarial-reviewer round 1(fresh subagent、tip bdd22b5):0 CRITICAL / 4 INFORMATIONAL、無 STOP、無 fix、無 round 2;**F1-F4 supervisor classification = KEEP / FROZEN by closure rule**(F1 conf 6 catalog/runtime 各自語意正確、exact prose alignment 非契約;F2 conf 5 fork PR 子句 pre-existing 措辭差、語意等價;F3 conf 4 MIGRATION.md GitFlow upgrade acceptance-evidence label 括號簡短版足夠上下文;F4 conf 3 語氣差不影響語意)。
+>
+> **驗證**:worktree wt-sprint13-wording-closure 內 typecheck / lint 綠 / npm run test 全 suite 31 files 1074 pass + 3 skipped 綠 / check:doc-refs 742 refs 0 失效 / check:catalog CATALOG_OK 32 controls(sanity、本 sprint 不改 catalog)/ **workflow comment-only awk machine-verified proof**(set -o pipefail 涵蓋 git diff 失敗、ignore diff headers、only whitespace-prefix # or blank lines、ci.yml non-comment content byte-identical 3904 == 3904 bytes、adversarial re-verified)。catalog / runtime / schema / 其他 CTRL entries / A3 其他 defer / KEEP contexts(MIGRATION.md GitFlow upgrade-specific promotion scenario(F3) + CHANGELOG.md Baseline Governance Added exact-condition historical entry F5 + test case (19) F7 promotion-shaped characterization fixture)/ shared main 233858f + CLAUDE.md M / stash / agent-* worktrees / remote 全 zero-diff、禁區守住。
+>
+> **⭐ 教訓 + 決策 & closure rule**:①**Sprint 13 = closure sprint**、freeze CTRL-CI-012 wording chain;②**common pattern D1**(明列 CLI input + policy trust source、不 expose internal field name、不宣稱 base protected)適用 ADOPTION checklist + ci.yml Baseline Governance step comment 逐字一致、MIGRATION.md GitFlow upgrade acceptance-evidence label 使用括號簡短版;③**Workflow comment-only machine-verified proof**(awk + set -o pipefail + ignore diff headers + only whitespace-prefix # or blank lines)portable BSD/macOS、可推廣所有 workflow comment-only sprint;④**F1-F4 KEEP / FROZEN by closure rule**、不寫 DEFER 避免重新製造 backlog、破壞收斂;⑤**Fetch side effect Step 3 前**:frozen base 8c6d213 不在 local obj、`git fetch origin main:refs/temp/<ref>` 副作用 update refs/remotes/origin/main、已 `git update-ref` 精確 revert 回 stale 2307a44、worktree HEAD + refs/temp 保持 8c6d213、supervisor A APPROVE;retro:未來這種「暫時更新後精確 update-ref 復原」需列為顯式授權流程、否則 STOP。
+>
+> **⏭️ 下一棒候選**(hint 非 truth、起手 git 核實、**closure rule 明列不列 F1-F4 為 Sprint 14 candidate**):
+>   - Sprint 14+ A:A3 defer 集合剩餘項 mini-batch(④/⑤/⑯–㉑ 8 條 conf ≤ 7)
+>   - Sprint 14+ B:A2 defer 集合 / P2 / P3 defer 剩餘或其他 backlog
+>   - 卡外部:無;shared main 233858f + CLAUDE.md M 全程 lock、1 支 stash 保留、無 remote 動作
+>
+> **check:claims 逐條處置**(base=`8c6d213`、Phase 2 時序 4 跑):本 sprint diff 全為 wording 校正、無新增絕對化宣稱;D9 anti-overclaim(a-e)全程守;實測 33 added lines / 0 hits(check:claims --base=8c6d213)、無需處置。
+>
+> 📊 成本:CC ~2h(Phase 0 + plan r1-r3 + Phase 1 + Step 4 r1-r2 delta + Step 5 adversarial + Phase 2 bookkeeping)/ 跨模型 review 6 rounds(plan r1-r3 = 3 + Step 4 r1-r2 delta = 2 + adversarial 1)/ P1 1 個(Step 4「的」字 delta)/ P2 0 / Step 5 獨立發現 4 個(F1-F4 全 KEEP/FROZEN by closure rule)。
+>
+> 📐 量測:主 session Opus 4.7 全程、Codex supervisor via Herdr pane w6:p4;baseline SHA `8c6d213152ee43f1bb59752f21d3a8616ff46d73`;來源分佈(既有/KEEP 4・漏改 consumer 0・baseline 後引入 1):既有 = F1/F2 catalog/runtime SSOT wording drift + fork PR 措辭差 pre-existing、F3/F4 MIGRATION.md GitFlow upgrade acceptance-evidence label 括號簡短版語意精度既有邊界(all KEEP/FROZEN);baseline 後 = Step 4 P1「的」字 delta。
+
+---
+
 📅 2026-09-07 ⑩ — **A3 CTRL-CI-012 catalog wording drift(Sprint 11 defer 收乾、限授權 STOP #3/#6 解除、evidence-first)**
 
 > **緣起**:Sprint 11 progress ⑨ entry 明列 defer(A3 defer ③⑨ 收乾但 catalog wording drift 觸 STOP 3/6);Owner 2026-09-07 拍板 Sprint 12 有限授權收(`scripts/control-catalog.json` 內 CTRL-CI-012 `locator` + `evidence` 兩 field wording + 用既有 renderer 重生 `docs/CONTROL-CATALOG.md`)。frozen full base `2307a447363ce49ac3a23f28cc5ce1b37d491781`(origin/main = pull request 編號 77 squash merge);shared local main 233858f + CLAUDE.md M(全程 lock)、1 支 stash 保留、agent-* 18 支 worktrees 保留、remote 0 動。plan review r1-r2(r2 APPROVE):r1 NEEDS-REVISION 3 findings(Phase 2 bookkeeping 四段時序缺、數字 line pins 需 symbol anchor、D9(c) 精確化);r2 全部處置。
