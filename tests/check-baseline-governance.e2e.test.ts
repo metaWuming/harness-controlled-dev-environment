@@ -270,7 +270,7 @@ describe('check:baseline-governance e2e(16 條)', () => {
     r = run([`--root=${g.dir}`, '--base=main', '--head=develop']);
     expect(r.code).toBe(2);
     expect(r.out).toContain('[path.disallowed:scripts/x.ts]');
-    expect(r.out).toContain('不套用「保護分支之間 PR」豁免');
+    expect(r.out).toContain('不套用「head ∈ protectedBranches」豁免');
   });
   // A3 defer ⑨ Sprint 11:SKIPPED 觸發同時涵蓋 promotion(develop→main、head=develop)與
   // backflow(main→develop、head=main)、皆 head ∈ merge-base 的 protectedBranches;
@@ -294,7 +294,7 @@ describe('check:baseline-governance e2e(16 條)', () => {
     expect(r.out).toMatch(/^BASELINE_GOVERNANCE_SKIPPED/);
     // 驗新 wording:含實際條件敘述、不含 promotion-only 誤導
     expect(r.out).toContain('head main ∈ merge-base 的 protectedBranches');
-    expect(r.out).toContain('保護分支之間的 PR(head ∈ merge-base 的 protectedBranches)');
+    expect(r.out).toContain('其內容進入 main 時已逐 PR 受本 gate 檢查');
     expect(r.out).not.toContain('保護分支之間的 promotion PR,'); // 舊 promotion-only 誤導字面精確不重現
   });
   it('(21) r3 CRITICAL:攻擊 PR 自己把分支名加進 protectedBranches → 不得 SKIPPED(政策讀 merge-base)', () => {
@@ -372,9 +372,9 @@ describe('check:baseline-governance e2e(16 條)', () => {
   // ⑬:oldVal === null 首次設定 baseline 時,OK renderer 產出「(方向檢查略過,見 info)」,
   //     必須有對應的「首次設定」info line。
   // ⑭:config.head.invalid / config.base.invalid 兩個 UNDETERMINED 早退,不得丟掉
-  //     上游已寫入的 infoLines(如「merge-base 沒有 harness.config.json、不套用『保護分支之間 PR』豁免」)。
+  //     上游已寫入的 infoLines(如「merge-base 沒有 harness.config.json、不套用『head ∈ protectedBranches』豁免」)。
   //     兩 case 共用前置流程:令 merge-base 的 scripts/harness.config.json 缺失、
-  //     使 protectedBranches 檢查寫入「不套用『保護分支之間 PR』豁免」info line;
+  //     使 protectedBranches 檢查寫入「不套用『head ∈ protectedBranches』豁免」info line;
   //     再分別讓 HEAD / merge-base 的 baseline config 解析失敗(invalid JSON)。
   // ⑮:UNCHANGED + info 與 OK 分支 directionChecked=true/false 的顯示契約。
 
@@ -403,7 +403,7 @@ describe('check:baseline-governance e2e(16 條)', () => {
 
   it('(24) A3 ⑭a:config.head.invalid + 前置 info line → UNDETERMINED 保留 info line', () => {
     // 前置:令 merge-base 的 scripts/harness.config.json 缺失,傳入 --head 觸發
-    //   protectedBranches 檢查、寫入「不套用『保護分支之間 PR』豁免」info line。
+    //   protectedBranches 檢查、寫入「不套用『head ∈ protectedBranches』豁免」info line。
     //   再讓 HEAD 的 baseline config invalid(壞掉的 JSON)。
     const f = fixture();
     // merge-base 沒有 scripts/harness.config.json(fixture 預設不寫)→ info line 會寫
@@ -413,7 +413,7 @@ describe('check:baseline-governance e2e(16 條)', () => {
     expect(r.code, ok(r)).toBe(2);
     expect(r.out).toContain('BASELINE_GOVERNANCE_UNDETERMINED');
     expect(r.out).toContain('[config.head.invalid]');
-    expect(r.out, 'UNDETERMINED 早退不得丟 info line').toContain('不套用「保護分支之間 PR」豁免');
+    expect(r.out, 'UNDETERMINED 早退不得丟 info line').toContain('不套用「head ∈ protectedBranches」豁免');
   });
 
   it('(25) A3 ⑭b:config.base.invalid + 前置 info line → UNDETERMINED 保留 info line', () => {
@@ -434,7 +434,7 @@ describe('check:baseline-governance e2e(16 條)', () => {
     expect(r.code, ok(r)).toBe(2);
     expect(r.out).toContain('BASELINE_GOVERNANCE_UNDETERMINED');
     expect(r.out).toContain('[config.base.invalid]');
-    expect(r.out, 'UNDETERMINED 早退不得丟 info line').toContain('不套用「保護分支之間 PR」豁免');
+    expect(r.out, 'UNDETERMINED 早退不得丟 info line').toContain('不套用「head ∈ protectedBranches」豁免');
   });
 
   it('(26) A3 ⑮a:UNCHANGED + info line → status UNCHANGED + 主訊息 + info 保留', () => {
@@ -445,7 +445,7 @@ describe('check:baseline-governance e2e(16 條)', () => {
     const r = run([`--root=${f.dir}`, '--base=main', '--head=develop']);
     expect(r.code, ok(r)).toBe(0);
     expect(r.out).toMatch(/^BASELINE_UNCHANGED/);
-    expect(r.out, 'UNCHANGED 分支必須保留 info line').toContain('不套用「保護分支之間 PR」豁免');
+    expect(r.out, 'UNCHANGED 分支必須保留 info line').toContain('不套用「head ∈ protectedBranches」豁免');
   });
 
   it('(27) A3 ⑮b:方向確實檢查(directionChecked=true)→ 訊息含「且為舊值後裔」且不含「方向檢查略過」', () => {
