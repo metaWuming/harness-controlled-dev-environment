@@ -65,7 +65,7 @@ export interface GovernanceResult {
 
 export interface GovernanceOptions {
   /**
-   * PR head 分支名(同 repo PR 才傳)。∈ **merge-base 那一側**的 harness.config `protectedBranches` → promotion PR,SKIPPED。
+   * PR head 分支名(同 repo PR 才傳)。∈ **merge-base 那一側**的 harness.config `protectedBranches` → 保護分支之間的 PR(head ∈ merge-base 的 protectedBranches)、SKIPPED。
    * 🔴 Step 5 r3 C:政策必須從 merge-base 讀(`git show <mb>:scripts/harness.config.json`),不能從 PR 的工作樹讀——
    *    否則攻擊 PR 自己把分支名加進 protectedBranches 就能拿到豁免。mb 那側缺 config / 壞 → 不豁免、照常判定。
    */
@@ -96,10 +96,10 @@ export function evaluateBaselineGovernance(baseRef: string, io: GitIo, opts: Gov
       try {
         protectedAtMb = parseHarnessConfig(mbCfgText).protectedBranches;
       } catch (e) {
-        infoLines.push(`  [info] merge-base 的 ${HARNESS_CONFIG_PATH} 解析失敗(${(e as Error).message.slice(0, 80)}),不套用 promotion 豁免`);
+        infoLines.push(`  [info] merge-base 的 ${HARNESS_CONFIG_PATH} 解析失敗(${(e as Error).message.slice(0, 80)}),不套用「保護分支之間 PR」豁免`);
       }
     } else {
-      infoLines.push(`  [info] merge-base 沒有 ${HARNESS_CONFIG_PATH},不套用 promotion 豁免`);
+      infoLines.push(`  [info] merge-base 沒有 ${HARNESS_CONFIG_PATH},不套用「保護分支之間 PR」豁免`);
     }
     if (protectedAtMb !== null && protectedAtMb.includes(opts.headRef)) {
       return {
@@ -131,8 +131,8 @@ export function evaluateBaselineGovernance(baseRef: string, io: GitIo, opts: Gov
   const newCfg = readCfg(head);
   // A3 defer ⑭:config.*.invalid 的 UNDETERMINED 早退不得丟掉 infoLines
   //   (對照 diff.unavailable 分支的 push-then-return pattern)。
-  //   否則上游已寫入的 promotion 相關 info(如「merge-base 沒有 harness.config.json、
-  //   不套用 promotion 豁免」)會在讀者眼前消失、影響診斷判讀。
+  //   否則上游已寫入的相關 info(如「merge-base 沒有 harness.config.json、
+  //   不套用『保護分支之間 PR』豁免」)會在讀者眼前消失、影響診斷判讀。
   if (typeof newCfg === 'object' && 'error' in newCfg) {
     const u = und('config.head.invalid', newCfg.error);
     u.lines.push(...infoLines);
