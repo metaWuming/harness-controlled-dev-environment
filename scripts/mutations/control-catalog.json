@@ -55,8 +55,8 @@
   },
   {
     "file": "scripts/check-control-catalog.ts",
-    "find": "  for (const x of findings) console.log(`  [${x.code}] ${x.msg}`);\n  return 2;",
-    "replace": "  for (const x of findings) console.log(`  [${x.code}] ${x.msg}`);\n  return 0;",
+    "find": "    for (const x of findings) console.log(`  [${x.code}] ${x.msg}`);\n    return 2;",
+    "replace": "    for (const x of findings) console.log(`  [${x.code}] ${x.msg}`);\n    return 0;",
     "label": "M10 checker main:有 findings 仍 exit 0 → e2e 負對照(exit 2 斷言)轉紅"
   },
   {
@@ -73,14 +73,14 @@
   },
   {
     "file": "scripts/check-control-catalog.ts",
-    "find": "  if (q) return { name: q[1] !== undefined ? q[1].replace(/\\\\\"/g, '\"') : q[3]!.replace(/''/g, \"'\"), unsupported: null };",
-    "replace": "  if (false) return { name: q[1] !== undefined ? q[1].replace(/\\\\\"/g, '\"') : q[3]!.replace(/''/g, \"'\"), unsupported: null };",
-    "label": "M13 extractor:不剝引號 → e2e (I1) 轉紅"
+    "find": "      const inner = q[1]!.replace(/''/g, \"'\");",
+    "replace": "      const inner = q[1]!;",
+    "label": "M13 extractor:不剝單引號 escape(single-quote '' unescape 拿掉)→ e2e (I1) 轉紅"
   },
   {
     "file": "scripts/check-control-catalog.ts",
-    "find": "      if (indent === cur.keyIndent && /^name:/.test(t)) setName(t.slice('name:'.length));",
-    "replace": "      if (indent >= cur.keyIndent && /^name:/.test(t)) setName(t.slice('name:'.length));",
+    "find": "      if (indent === cur.keyIndent && /^name:/.test(t)) {",
+    "replace": "      if (indent >= cur.keyIndent && /^name:/.test(t)) {",
     "label": "M14 extractor:接受更深縮排的 name:(env/with 遮蔽)→ e2e (C-1) 轉紅"
   }
 ]
