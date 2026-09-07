@@ -142,6 +142,14 @@ describe('parseControlCatalog — control 欄位', () => {
     expect(repoFilePathViolation(p)).not.toBeNull();
     expect(() => parseControlCatalog(withControl({ implementation: [p] }))).toThrow(/implementation\[0\]/);
   });
+  // A3 defer ③ Sprint 11 characterization:pipe 與 backtick 目前不被
+  // repoFilePathViolation 的 shape 規則拒絕。鎖現行行為、防未來意外收緊。
+  it.each([
+    ['pipe', 'docs/a|b.md'],
+    ['backtick', 'docs/a`b.md'],
+  ])('A3 defer ③ characterization:shape 規則放行原 finding 字元 %s', (_l, p) => {
+    expect(repoFilePathViolation(p)).toBeNull();
+  });
   it('implementation 空 / 重複;testRefs 形狀同規則但可空', () => {
     expect(() => parseControlCatalog(withControl({ implementation: [] }))).toThrow(/implementation 不得為空/);
     expect(() => parseControlCatalog(withControl({ implementation: ['CLAUDE.md', 'CLAUDE.md'] }))).toThrow(/重複/);
