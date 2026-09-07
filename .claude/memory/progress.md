@@ -75,6 +75,28 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-09-07 ⑫ — **A3 remaining-8 extinction audit + collection closure(bookkeeping-only、21/21 terminal)**
+
+> **緣起 & scope**:Sprint 13 wording chain closure 完工;Owner 2026-09-07 拍板 Sprint 14 = A3 remaining-8 extinction audit、目標關閉 A3 collection(21/21 全 terminal disposition)。8 條 target ④/⑤/⑯/⑰/⑱/⑲/⑳/㉑;frozen base `a671ab170f32789dbedecca65137fec1d8733fda`(GitHub live main、Sprint 13 pull request 編號 79 squash);local origin/main 保持 stale 2307a44(Owner 明列)。Phase 1 code = none(bookkeeping-only)。
+>
+> **改動**:3 檔 bookkeeping-only(worktree wt-sprint14-a3-extinction):`progress.md` 加 Sprint 14 ⑫ entry;`TODOS.md` 8 條 strikethrough + disposition markers + A3 集合 header 更新 21/21 closed + Sprint 14 交付段;`progress-archive/progress-2026-09.md` archive Sprint ⑩ block(doc-size 補救、Sprint 12 pattern;含 archive-move relative link fix)。**Object acquisition**:atomic quarantine(pre-fetch guard + candidate refs/temp/sprint14-candidate + `validate_and_promote` 函式 + inline auto fallback via /tmp audit clone bundle + shell control-flow guards);primary_status=0、無 fallback 觸發、origin/main 保持 stale(無 fetch 副作用)。
+>
+> **審查**:Explore r1 audit 讀 233858f stale tree(supervisor 明列 stale evidence provenance 撤)→ `/tmp/harness-s14-audit` clean clone re-audit at a671ab;Codex plan r1-r8 iterated:7 次 revision、r8 APPROVE(evidence provenance + cardinality 21 vs 20 + ⑱ CLOSED-AS-DEDUPLICATED new category + object acquisition atomic quarantine 多輪 shell control-flow tightening);Step 4.5 CSO_NOT_REQUIRED;Step 4.6 無 UI;Step 5 adversarial 不派(0 code、closure rule 承接 Sprint 13、supervisor 明列)。
+>
+> **驗證**:worktree wt-sprint14-a3-extinction 內 check:doc-size / check:bookkeeping HEAD / check:doc-refs / check:claims --base=a671ab 全綠;Object acquisition assertions 全 PASS(before/after origin OID = 2307a44 unchanged、candidate = a671ab frozen、worktree HEAD = a671ab、每 mutation `||` guard 通過);runtime / catalog / schema / workflow 全 zero-diff、禁區守住。
+>
+> **⭐ 教訓 + 決策 & closure rule**:①**A3 collection extinction 21/21 terminal**(11 delivered + 2 WONTFIX ⑥⑪ + Sprint 14 4 CLOSED-AS-DELIVERED ⑤⑯⑳㉑ + 1 CLOSED-AS-DEDUPLICATED ⑱ + 3 WONTFIX ④⑰⑲)、collection closed;②新 terminal category **CLOSED-AS-DEDUPLICATED**(⑱ = A3 duplicate/cross-reference marker、canonical D-② SIGTERM race remains pending in P3、no repair/delivery claim、避免 backlog re-creation);③**Object acquisition atomic quarantine**(supervisor r1-r8 iterate 7 次 revision):pre-fetch guard + candidate slot + validate_and_promote reusable function + inline auto fallback + failure-path ordering(origin/main drift first)+ mutation `||` guards + fallback status refresh + shell control-flow guard;④**Evidence provenance 必用 /tmp clean clone at frozen**(不依賴 shared repo tree、避免 CodeGraph stale bias、supervisor 明列 r1 → r2 P1);⑤**Closure rule 承接 Sprint 13**:no new Sprint 15 from low-risk wording findings。
+>
+> **⏭️ 下一棒候選**(hint 非 truth、起手 git 核實):A3 已 closed;Sprint 15+:A2 defer 集合(17 條 conf ≤ 6、部分已在 A3 catalog 交付)/ P2 / P3 defer 剩餘 backlog(P3 D-② SIGTERM race canonical remains pending);卡外部:無;shared main 233858f + CLAUDE.md M 全程 lock、1 支 stash 保留、無 remote 動作。
+>
+> **check:claims 逐條處置**(base=`a671ab`、Phase 2 時序 4 實測):本 sprint diff 全 bookkeeping;D9 anti-overclaim 全程守;實測 60 added lines / 0 hits。
+>
+> 📊 成本:CC ~3h(Phase 0 Explore + /tmp re-audit + plan r1-r8 iterated + Step 3 atomic quarantine + Phase 2 bookkeeping)/ 跨模型 review plan r1-r8 = 7 次 revision + r8 APPROVE / Step 5 獨立發現 0(no code、no adversarial round)。
+>
+> 📐 量測:主 session Opus 4.7 全程、Codex supervisor via Herdr pane w6:p4;baseline SHA `a671ab170f32789dbedecca65137fec1d8733fda`;來源分佈(既有/KEEP 8・漏改 consumer 0・baseline 後引入 0):既有 = A3 remaining-8 全 documentation/schema-cosmetic/delivered-status/cross-reference marker、all terminal by evidence-verified disposition。
+
+---
+
 📅 2026-09-07 ⑪ — **A3 CTRL-CI-012 wording chain closure(Sprint 12 defer 收乾、freeze wording chain、closure sprint)**
 
 > **緣起 & scope**:Sprint 12 明列 DEFER F1/F2/F6 集合(downstream SSOT drift、STOP #2 explicit defer)收乾 + freeze CTRL-CI-012 wording chain(closure rule:no new Sprint 14 from low-risk wording findings、only reproducible behavior defect / active operational contradiction / MAJOR blocker)。3 檔 Phase 1 atomic:`docs/ADOPTION.md` Baseline Governance checklist paragraph + `docs/MIGRATION.md` GitFlow upgrade acceptance-evidence label(括號簡短版)+ `.github/workflows/ci.yml` Baseline Governance step comment(2 段 common pattern)+ Protected Branches Drift step comment(1 詞刪)、兩份 docs wording + ci.yml comment-only、workflow logic / if / env / run / steps / triggers / permissions / job topology zero change(awk machine-verified、set -o pipefail、portable BSD/macOS)。
@@ -97,39 +119,3 @@ type: note
 > 📊 成本:CC ~2h(Phase 0 + plan r1-r3 + Phase 1 + Step 4 r1-r2 delta + Step 5 adversarial + Phase 2 bookkeeping)/ 跨模型 review 6 rounds(plan r1-r3 = 3 + Step 4 r1-r2 delta = 2 + adversarial 1)/ P1 1 個(Step 4「的」字 delta)/ P2 0 / Step 5 獨立發現 4 個(F1-F4 全 KEEP/FROZEN by closure rule)。
 >
 > 📐 量測:主 session Opus 4.7 全程、Codex supervisor via Herdr pane w6:p4;baseline SHA `8c6d213152ee43f1bb59752f21d3a8616ff46d73`;來源分佈(既有/KEEP 4・漏改 consumer 0・baseline 後引入 1):既有 = F1/F2 catalog/runtime SSOT wording drift + fork PR 措辭差 pre-existing、F3/F4 MIGRATION.md GitFlow upgrade acceptance-evidence label 括號簡短版語意精度既有邊界(all KEEP/FROZEN);baseline 後 = Step 4 P1「的」字 delta。
-
----
-
-📅 2026-09-07 ⑩ — **A3 CTRL-CI-012 catalog wording drift(Sprint 11 defer 收乾、限授權 STOP #3/#6 解除、evidence-first)**
-
-> **緣起**:Sprint 11 progress ⑨ entry 明列 defer(A3 defer ③⑨ 收乾但 catalog wording drift 觸 STOP 3/6);Owner 2026-09-07 拍板 Sprint 12 有限授權收(`scripts/control-catalog.json` 內 CTRL-CI-012 `locator` + `evidence` 兩 field wording + 用既有 renderer 重生 `docs/CONTROL-CATALOG.md`)。frozen full base `2307a447363ce49ac3a23f28cc5ce1b37d491781`(origin/main = pull request 編號 77 squash merge);shared local main 233858f + CLAUDE.md M(全程 lock)、1 支 stash 保留、agent-* 18 支 worktrees 保留、remote 0 動。plan review r1-r2(r2 APPROVE):r1 NEEDS-REVISION 3 findings(Phase 2 bookkeeping 四段時序缺、數字 line pins 需 symbol anchor、D9(c) 精確化);r2 全部處置。
->
-> **改動**:2 檔(worktree wt-sprint12-catalog-drift、Sprint 12 frozen tip `78ee155fd66f8da646b7dd36a47cfd6c3379b481`、Phase 1 numstat:JSON +2/-2 + generated MD +1/-1 = 2 files +3/-3):
-> - `scripts/control-catalog.json` CTRL-CI-012.locator 尾段「者為 promotion PR、明文 SKIPPED」→「則明文 SKIPPED」(加「head 」前綴、去 promotion PR taxonomy)
-> - `scripts/control-catalog.json` CTRL-CI-012.evidence 中段「SKIPPED(promotion PR,政策讀自 merge-base)」→「SKIPPED(head ∈ merge-base 那側 protectedBranches、政策讀自 merge-base)」
-> - `docs/CONTROL-CATALOG.md` regenerate via `npm run catalog:render`(不手改、renderer 決定性硬驗)
-> - 對稱 Sprint 11 D8v2(catalog documentation 對稱 runtime SKIPPED msg 同一原則)
->
-> **審查**:Codex plan r1-r2 APPROVE(supervisor via Herdr Codex pane w6:p4);Codex Step 4 commit-object review APPROVE(independent clean clone、direct parent、只 2 檔、renderer hash A === B === `bdc27814...`、5 STOP boundary、finding source:漏改 consumer);Step 4.5 CSO_NOT_REQUIRED(Owner 明列、governance documentation、非安全繞過);Step 4.6 無 UI 檔;Step 5 adversarial-reviewer round 1(fresh subagent、tip 78ee155):**0 CRITICAL / 7 INFORMATIONAL**;**STOP #2 WAS triggered by discovery of active out-of-scope consumers、resolved by explicit defer to Sprint 13**;supervisor classification:**DEFER Sprint 13** = F1 conf 7 `docs/ADOPTION.md` current guidance、F2 conf 6 `docs/MIGRATION.md` acceptance-evidence label、F6 conf 5 `.github/workflows/ci.yml` comment-only scope(comment-only 需另 sprint 授權、workflow logic remains locked);**KEEP** = F3 conf 6 `docs/MIGRATION.md` GitFlow upgrade sequence(accurate specific promotion scenario、not drift)、F4 conf 4 catalog「那側」vs runtime SKIPPED「的」(semantically equivalent、Owner intentional)、F5 conf 4 `CHANGELOG.md` Unreleased 段(exact head condition dominates parenthetical historical label、optionally include in Sprint 13 bounded inventory)、F7 conf 3 tests/e2e case (19) title「(promotion PR)」(characterizes promotion-shaped fixture);round 2 rereview 不跑(Owner 明列 GO Phase 2)。
->
-> **驗證**:worktree wt-sprint12-catalog-drift 內 typecheck / lint / vitest 全 suite 31 files 1074 passed + 3 skipped;**renderer 決定性硬驗**(不靠 source 目視):第 1 次 `npm run catalog:render` → sha256 A = `bdc27814e05f672d3ce83cd8e340bfb21818a511ac44abb1a1fa0287309ac385`、第 2 次 render → hash B、確認 A === B(zero diff、相對第一次 render 無新增變化);`npm run check:catalog` CATALOG_OK 32 controls;`npm run check:doc-refs` 724 refs 0 失效;runtime / CI workflow / catalog schema / 其他 31 CTRL entries / A3 其他 defer / shared main + CLAUDE.md M / stash / agent-* worktrees / remote 全 zero-diff、禁區守住。
->
-> **⭐ 教訓**:①**catalog SSOT drift 收乾方法**:json 改 → renderer regenerate → renderer 決定性硬驗(render 兩次記 hash、confirm A === B、不靠 source 目視);Sprint 12 首次採用 hash 硬驗、可推廣到所有 renderer-generated 產物 sprint;②**canonical PR-number placeholder token**:literal `PR` + 井號 + 三下劃線 = `PR #___`;Sprint 11「pull request 編號 ___」非 canonical 靜默過 CI、Sprint 12 收 canonical convention(check:todos-markers 認 canonical);③**downstream SSOT drift 分類**(supervisor 明列):**DEFER** = current guidance / acceptance evidence label / comment-only 需另 sprint 授權;**KEEP** = specific accurate scenario / semantically equivalent / characterization-purposeful fixture — 判準看「wording 是否 current operational guidance 或 acceptance evidence」;④**Herdr Codex supervisor 互動**:用 `herdr agent prompt w6:p4` 送 review request、supervisor mid-turn 給 verdict;避免 codex CLI 的 scope flag 與 prompt 互斥(Sprint 11 教訓 ①);⑤**STOP #2 WAS triggered 事實記錄**:adversarial 發現 out-of-scope consumers 屬 STOP #2 觸發、由 explicit defer to Sprint 13 resolved;不寫「STOP #2 untriggered」— supervisor 明列 correct the record。
->
-> **⏭️ 下一棒候選**(hint 非 truth、起手 git 核實):
->   - **Sprint 13 DEFER 集合**(本 sprint 明列):F1 `docs/ADOPTION.md` current guidance + F2 `docs/MIGRATION.md` acceptance-evidence label + F6 `.github/workflows/ci.yml` comment-only(workflow logic locked、需 Owner 明列 comment-only 另授權)+ optional bounded inventory F5 CHANGELOG.md(not required fix)
->   - **Sprint 13+ B**:A3 defer 集合剩餘項 mini-batch(④/⑤/⑯–㉑ 8 條 conf ≤ 7)
->   - **Sprint 13+ C**:A2 defer 集合 / P2 / P3 defer 剩餘
->   - 卡外部:無;shared main 233858f + CLAUDE.md M 全程 lock、1 支 stash 保留、無 remote 動作
->
-> **KEEP 明列**(不修、Sprint 13+ 也 not required):F3 MIGRATION L80(accurate specific promotion scenario)、F4 catalog vs runtime wording(semantically equivalent、Owner intentional)、F7 test case (19) title(characterizes promotion-shaped fixture)。
->
-> **check:claims 逐條處置**(base=`2307a44`、實測 50 added lines / 1 hit):hit 位於 archive-move blob(byte-for-byte 移動、內容未變、Sprint 11 ⑨ 存量從 progress.md 搬到 progress-2026-09.md);KEEP、無新增宣稱;本 sprint code diff 全為 wording 校正、D9 anti-overclaim(a-e)全程守。
->
-> 📊 成本:CC ~3h(Phase 0 + plan r1-r2 + Phase 1 + Step 4 review + Step 5 adversarial + Phase 2 bookkeeping)/ 跨模型 review 4 rounds(Codex plan r1-r2 + Codex Step 4 + adversarial 1)/ P1 0 個 / P2 0 個 / Step 5 獨立發現 7 個(F1-F7、STOP #2 WAS triggered + resolved by explicit defer)。
->
-> 📐 量測:主 session Opus 4.7 全程、Codex supervisor via Herdr pane w6:p4;baseline SHA `2307a447363ce49ac3a23f28cc5ce1b37d491781`;來源分佈(既有/KEEP 4・漏改 consumer 3・baseline 後引入 0):既有/KEEP = F3(MIGRATION L80 accurate specific promotion scenario)/F4(catalog「那側」vs runtime SKIPPED「的」semantically equivalent)/F5(CHANGELOG exact head condition dominates parenthetical historical label)/F7(case (19) title characterizes promotion-shaped fixture);漏改 consumer = F1/F2/F6(ADOPTION current guidance / MIGRATION L32 acceptance-evidence label / ci.yml comment-only、Sprint 11 defer 遺漏 downstream)。
-
-
-
-> 更早的 entries:2026-09-07 ⑨ A3 defer ③⑨、2026-09-07 ⑧ A3 defer ⑦⑧⑫、2026-09-06 ⑦ A3 defer ②、2026-09-06 ⑥ D-② SIGTERM Phase 0、2026-09-06 ⑤ A3 defer ①、2026-09-06 ④ A3 defer ⑬⑭⑮、2026-09-06 ③ D-①、2026-09-06 ② P2#2 defer ⑦、2026-09-06 ① P2#2 defer ⑤、2026-09-05 ⑧ P2#2 defer ⑨、2026-09-05 ⑦ P2#2 defer ③、2026-09-05 ⑥ P3 delivery-refs 移除集合 ①+②、2026-09-05 ⑤ P2#3 defer ⑮、2026-09-05 ④ P2#3 defer ⑭、2026-09-05 ③ P2#3 defer ⑬、2026-09-05 ② P2#3 defer ⑫、2026-09-05 ① P2#3 defer ⑨、2026-09-04 ④ P2#3 defer ④、2026-09-04 ③ P2#3 defer ⑪、2026-09-04 ② P2#3 defer ⑥、2026-09-04 ① P2#3 defer ⑧、2026-09-03 ⑨ P2#3 defer ⑩、2026-09-03 ⑧ P2#3 defer ⑦、2026-09-03 ⑦ P2#3 defer ⑤、2026-09-03 ⑥ A3 defer ⑩、2026-09-03 ① PR A3、2026-09-02 ① PR A2、2026-08-31 ① PR A1.1 見 [progress-archive/progress-2026-09.md](progress-archive/progress-2026-09.md);(2026-08-29 ① PR A1 / 2026-08-28 ⑥ 批 12 / 2026-08-28 ⑤ 批 11 / 2026-08-28 ④ 批 10 / 2026-08-28 ③ 批 9 / 2026-08-28 ② 批 8 / 2026-08-28 批 7 / 2026-08-27 ③ 批 6 / 2026-08-27 ② 批 5 / 2026-08-27 ① 風險車道 及之前)見 [progress-archive/progress-2026-08.md](progress-archive/progress-2026-08.md)
