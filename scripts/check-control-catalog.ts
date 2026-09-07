@@ -80,6 +80,7 @@ function normalizeStepName(raw: string): { name: string | null; unsupported: str
   if (v === '' || v === '|' || v === '>' || v.startsWith('|') || v.startsWith('>')) return { name: null, unsupported: raw, malformed: null };
   if (v.startsWith('"')) {
     // Double-quoted:逐字元走、追蹤 escape 與結尾
+    // F8:用 Object.hasOwn 避 prototype key lookup(未來擴多字元 escape 才不會咬 toString / constructor 等)
     const escapeMap: Record<string, string> = { '\\': '\\', 't': '\t', 'n': '\n', 'r': '\r', '"': '"' };
     let i = 1;
     let inner = '';
@@ -87,7 +88,7 @@ function normalizeStepName(raw: string): { name: string | null; unsupported: str
       const ch = v[i]!;
       if (ch === '\\' && i + 1 < v.length) {
         const next = v[i + 1]!;
-        if (next in escapeMap) {
+        if (Object.hasOwn(escapeMap, next)) {
           inner += escapeMap[next];
           i += 2;
           continue;
@@ -95,9 +96,12 @@ function normalizeStepName(raw: string): { name: string | null; unsupported: str
         return { name: null, unsupported: null, malformed: raw }; // 未支援 escape
       }
       if (ch === '"') {
-        // Closing quote — 檢查 trailing 是 whitespace-only 或 whitespace-then-comment
+        // Closing quote — 檢查 trailing 是空、whitespace-only 或 whitespace-then-comment
+        // F3:刪除 dominated `/^\s*$/` alternative(前兩個 alternative 已 cover)
         const trailing = v.slice(i + 1);
-        if (trailing === '' || /^\s+(#.*)?$/.test(trailing) || /^\s*$/.test(trailing)) {
+        if (trailing === '' || /^\s+(#.*)?$/.test(trailing)) {
+          // F4:空 quoted name(合法 YAML scalar、但無效 step name)走 per-step unsupported
+          if (inner === '') return { name: null, unsupported: raw, malformed: null };
           return { name: inner, unsupported: null, malformed: null };
         }
         return { name: null, unsupported: null, malformed: raw }; // trailing garbage
@@ -110,7 +114,12 @@ function normalizeStepName(raw: string): { name: string | null; unsupported: str
   if (v.startsWith("'")) {
     // Single-quoted:延用既有 `''` escape;non-greedy 修法(以 `[^']|''` 允許 escape 才 close)
     const q = /^'((?:[^']|'')*)'\s*(#.*)?$/.exec(v);
-    if (q) return { name: q[1]!.replace(/''/g, "'"), unsupported: null, malformed: null };
+    if (q) {
+      const inner = q[1]!.replace(/''/g, "'");
+      // F4:空 single-quoted name → per-step unsupported(同 double-quoted 對稱)
+      if (inner === '') return { name: null, unsupported: raw, malformed: null };
+      return { name: inner, unsupported: null, malformed: null };
+    }
     return { name: null, unsupported: null, malformed: raw };
   }
   return { name: v.replace(/\s+#.*$/, ''), unsupported: null, malformed: null };
@@ -174,6 +183,20 @@ export function extractCiSteps(yml: string): ExtractionOutcome<CiStepItem[]> {
       // I-7:`steps:` 後可接註解;`steps: []`(空)也算區塊(0 個 step)
       if (/^steps:(\s*#.*|\s*\[\s*\])?$/.test(t)) stepsIndent = indent;
       continue;
+    }
+    // F1:multiline flow-style `steps:\n  [{...}]` 偵測(⑧ paired control 補洞)
+    //   當 steps: 已進 block(stepsIndent ≥ 0)、尚無 item 起手(itemIndent < 0)、
+    //   本行縮排 > stepsIndent 且 trim 起手為 `[`:paired control 判定
+    //   - `[]` 或 `[]<optional comment>` → empty flow multiline、合法 0 items、continue
+    //   - 其他形式 → problemKind='flow-style-unsupported'(明列 unsupported、不擴 parser)
+    if (itemIndent < 0 && indent > stepsIndent && t.startsWith('[')) {
+      if (/^\[\s*\](\s*#.*)?$/.test(t)) continue;
+      return {
+        ok: false,
+        problemKind: 'flow-style-unsupported',
+        line: i + 1,
+        diagnostic: `${CI_YML}:${i + 1} 本 checker 不支援合法的 non-empty flow-style \`steps:\`(multiline);建議改 block-style(每個 step 用 \`- name:\` 一行起)`,
+      };
     }
     if (t === '-' || t.startsWith('- ')) {
       if (itemIndent < 0) itemIndent = indent;
@@ -305,38 +328,41 @@ export function checkCatalogConformance(catalog: ControlCatalog, io: CatalogIo):
 }
 
 /**
- * A3 defer ⑦/⑧/⑫ Sprint 10 Step 4 P1 rereview:production-used orchestration seam。
- * 對 realIo 的 CI_YML 恰讀一次、建 cached IO、conformance 與 stepCount 共用同一 snapshot;
- * 消 double-read TOCTOU;所有結構化錯誤(不變式 breakage)以 result 回傳、由 main 轉 exit 2、
- * 不 throw 未捕捉 exception。
+ * A3 defer ⑦/⑧/⑫ Sprint 10 Step 4 P1 rereview + Step 5 F2/F5 收:production-used
+ * orchestration seam。對 realIo 的 CI_YML 恰讀一次、建 cached IO、conformance 與 stepCount
+ * 共用同一 snapshot;消 double-read TOCTOU。
  *
- * 回傳:
- *   - `{ ok: true, findings, stepCount }`:conformance + stepCount 皆完成
- *   - `{ ok: false, kind: 'invariant', diagnostic }`:findings 空但 extractCiStepNames error
- *     (single-snapshot 不變式 breakage、屬程式碼漂移、fail-closed exit 2)
+ * 回傳 discriminated union(依 findings 有無區分 stepCount 語義):
+ *   - `{ findings: []; stepCount: number }`:conformance 全綠、真實 step count
+ *   - `{ findings: CatalogFinding[]; stepCount: null }`:conformance 有 finding;
+ *     stepCount 不算完成、明列 null(避免 consumer 誤讀 0 為 zero-steps 假訊號)
+ *
+ * Single-snapshot 不變式 breakage(findings 空但 extractCiStepNames error)理論上
+ * 由 pure-function 對同一 string 兩次呼叫的一致性保證不可注入;若程式碼漂移導致
+ * 該不變式破裂 → 內部 throw(main 呼叫端 try/catch 會轉為 exit 2 + 明確 diagnostic、
+ * 非未捕捉 exception)、不留 unreachable union arm。
  */
 export function evaluateCatalogSnapshot(
   catalog: ControlCatalog,
   realIo: CatalogIo,
-): { ok: true; findings: CatalogFinding[]; stepCount: number } | { ok: false; kind: 'invariant'; diagnostic: string } {
+): { findings: CatalogFinding[]; stepCount: number | null } {
   const ymlSnapshot = realIo.readText(CI_YML);
   const cachedIo: CatalogIo = {
     readText: (rel) => (rel === CI_YML ? ymlSnapshot : realIo.readText(rel)),
     trackedFiles: () => realIo.trackedFiles(),
   };
   const findings = checkCatalogConformance(catalog, cachedIo);
-  if (findings.length > 0) return { ok: true, findings, stepCount: 0 };
+  if (findings.length > 0) return { findings, stepCount: null };
   // Single-snapshot 不變式:findings 空 ⇒ conformance 於同一 yml 成功抽取 ⇒
-  // extractCiStepNames 對同一 yml 必回 ok:true。若破裂:程式碼漂移、fail-closed。
+  // extractCiStepNames 對同一 yml 必回 ok:true(pure-function 一致性)。
+  // 若破裂:程式碼漂移、內部 throw、main try/catch 轉 exit 2。
   const namesOutcome = extractCiStepNames(ymlSnapshot ?? '');
   if (!namesOutcome.ok) {
-    return {
-      ok: false,
-      kind: 'invariant',
-      diagnostic: `single-snapshot invariant broken:findings 空但 extractCiStepNames error(ci.yaml.${namesOutcome.problemKind}:${namesOutcome.line});${namesOutcome.diagnostic}`,
-    };
+    throw new Error(
+      `single-snapshot invariant broken:findings 空但 extractCiStepNames error(ci.yaml.${namesOutcome.problemKind}:${namesOutcome.line});${namesOutcome.diagnostic}`,
+    );
   }
-  return { ok: true, findings, stepCount: namesOutcome.value.length };
+  return { findings, stepCount: namesOutcome.value.length };
 }
 
 export function buildRealIo(root: string): CatalogIo {
@@ -373,9 +399,8 @@ function main(): number {
     console.error('CATALOG_FAIL — catalog 無法載入(exit 2)');
     return 2;
   }
-  // A3 defer ⑦/⑧/⑫ Sprint 10 Step 4 P1 rereview:呼叫 production-used orchestration seam
-  //   evaluateCatalogSnapshot(catalog, realIo);試錯路徑包 try/catch、不變式 breakage 走
-  //   ok:false + 明確 diagnostic + exit 2、非未捕捉 throw。
+  // A3 defer ⑦/⑧/⑫ Sprint 10:呼叫 production-used orchestration seam evaluateCatalogSnapshot;
+  // seam 內部 invariant breakage 若發生 throw、main try/catch 轉 exit 2 + 明確 diagnostic。
   let result: ReturnType<typeof evaluateCatalogSnapshot>;
   try {
     result = evaluateCatalogSnapshot(catalog, buildRealIo(root));
@@ -384,17 +409,13 @@ function main(): number {
     console.error('CATALOG_FAIL — 無法判定(exit 2)');
     return 2;
   }
-  if (!result.ok) {
-    console.error(`❌ ${result.diagnostic}`);
-    console.error('CATALOG_FAIL — single-snapshot 不變式 breakage(exit 2)');
-    return 2;
-  }
   const { findings, stepCount } = result;
   if (findings.length > 0) {
     console.log(`CATALOG_FAIL (${findings.length}):`);
     for (const x of findings) console.log(`  [${x.code}] ${x.msg}`);
     return 2;
   }
+  // Findings 空 ⇒ stepCount 為 number(discriminated union、TS 已窄化);印 CATALOG_OK
   console.log(`CATALOG_OK — ${catalog.controls.length} controls;${CI_YML} ${stepCount} steps(setup ${catalog.ciSetupSteps.length})雙向對應;${CATALOG_DOC_PATH} 與 JSON 一致`);
   return 0;
 }

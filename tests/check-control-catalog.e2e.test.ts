@@ -360,49 +360,93 @@ describe('A3 defer ⑦/⑧/⑫ Sprint 10 — structured outcome for YAML parser 
     if (ok.ok) expect(ok.value).toEqual(['A', 'B']);
   });
 
-  it('(T-single-snapshot) evaluateCatalogSnapshot production-used seam:realIo.readText(CI_YML) 恰讀一次、conformance 與 stepCount 共用同一 snapshot', () => {
-    // Codex Step 4 P1 rereview 拍板:main 呼叫 evaluateCatalogSnapshot seam(而非兩次 buildRealIo);
-    // 此 test 注入 counting realIo、驗 CI_YML 恰讀一次、result.ok=true + stepCount 對得上、findings 空
+  it('(T-single-snapshot) evaluateCatalogSnapshot production-used seam:realIo.readText(CI_YML) 恰讀一次、findings 空時 stepCount 對得上', () => {
+    // Codex Step 4 P1 拍板:main 呼叫 evaluateCatalogSnapshot seam(而非兩次 buildRealIo);
+    // Step 5 F7 收:只鎖 CI_YML 單讀(seam 契約);MD 讀取次數屬 checkCatalogConformance 實作細節、不 over-couple
     let ciReadCount = 0;
-    let mdReadCount = 0;
     const yml = `jobs:\n  ci:\n    steps:\n      - name: Checkout\n        uses: x\n      - name: Typecheck\n        run: y\n      - name: Test (vitest)\n        run: z\n`;
     const countingRealIo: CatalogIo = {
       readText: (rel) => {
         if (rel === '.github/workflows/ci.yml') { ciReadCount++; return yml; }
-        if (rel === 'docs/CONTROL-CATALOG.md') { mdReadCount++; return renderCatalog(parseControlCatalog(JSON.stringify(baseDoc()))); }
+        if (rel === 'docs/CONTROL-CATALOG.md') return renderCatalog(parseControlCatalog(JSON.stringify(baseDoc())));
         return null;
       },
       trackedFiles: () => ['.github/workflows/ci.yml', 'tsconfig.json', 'vitest.config.ts', 'docs/CONTROL-CATALOG.md'],
     };
     const result = evaluateCatalogSnapshot(parseControlCatalog(JSON.stringify(baseDoc())), countingRealIo);
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.findings).toEqual([]);
-      expect(result.stepCount).toBe(3);
-    }
+    expect(result.findings).toEqual([]);
+    expect(result.stepCount).toBe(3);
     // 鎖 single-snapshot 不變式:realIo.readText(CI_YML) 只在 seam 起手呼叫一次
-    // (findings 空後、seam 內部再走 extractCiStepNames 用局部 ymlSnapshot、不再讀 realIo)
     expect(ciReadCount).toBe(1);
-    expect(mdReadCount).toBe(1); // conformance 讀一次 md 屬既有契約
   });
 
-  it('(T-malformed-snapshot-finding) evaluateCatalogSnapshot 對 malformed snapshot 走正常 structured finding、非 invariant failure', () => {
-    // 驗 malformed snapshot 走 findings 路徑 → result.ok=true + ci.yaml.<problemKind> finding
-    // + stepCount=0(seam 契約);此 case 不觸發 invariant break(seam single-snapshot 設計本身
-    // 避免 conformance 綠但 extractCiStepNames error 的情境、invariant branch 在目前 seam
-    // 接線下不可注入、故用此正向 finding 覆蓋更務實)
+  it('(T-malformed-snapshot-finding) evaluateCatalogSnapshot 對 malformed snapshot 走正常 structured finding、stepCount:null', () => {
+    // Step 5 F5 收:findings.length > 0 時 stepCount:null(不宣稱 step count 已完成、
+    // 避免 consumer 誤讀 0 為 zero-steps 假訊號);invariant branch 已由 seam 內 throw 保護、
+    // main try/catch 轉 exit 2、無 unreachable union arm
     const malformed = `jobs:\n  ci:\n    steps:\n      - name: A\n        name: B\n        run: x\n`;
     const realIo: CatalogIo = {
       readText: (rel) => (rel === '.github/workflows/ci.yml' ? malformed : rel === 'docs/CONTROL-CATALOG.md' ? renderCatalog(parseControlCatalog(JSON.stringify(baseDoc()))) : null),
       trackedFiles: () => ['.github/workflows/ci.yml', 'tsconfig.json', 'vitest.config.ts', 'docs/CONTROL-CATALOG.md'],
     };
     const result = evaluateCatalogSnapshot(parseControlCatalog(JSON.stringify(baseDoc())), realIo);
-    expect(result.ok).toBe(true); // 走 findings 路徑、非 invariant break
-    if (result.ok) {
-      expect(result.findings.some((x) => x.code === 'ci.yaml.duplicate-direct-name:5')).toBe(true);
-      // findings 存在時 stepCount 為 0(seam 契約)
-      expect(result.stepCount).toBe(0);
+    expect(result.findings.some((x) => x.code === 'ci.yaml.duplicate-direct-name:5')).toBe(true);
+    // findings 存在時 stepCount 為 null(seam 契約)
+    expect(result.stepCount).toBeNull();
+  });
+
+  it('(T-flow-multiline) multiline non-empty flow-style `steps: 換行 [{...}]` → flow-style-unsupported + line + exit 2 + finding + 非假紅', () => {
+    // F1 收:multiline flow-style 覆蓋補洞(single-line 已鎖 T-⑧;paired empty 見 T-flow-multiline-empty)
+    const yml = `jobs:\n  ci:\n    steps:\n      [\n        {name: RealStep, run: x}\n      ]\n`;
+    const o = extractCiSteps(yml);
+    expect(o.ok).toBe(false);
+    if (!o.ok) {
+      expect(o.problemKind).toBe('flow-style-unsupported');
+      expect(o.line).toBe(4);
+      expect(o.diagnostic).toContain('不支援');
     }
+    const findings = checkCatalogConformance(parseControlCatalog(JSON.stringify(baseDoc())), makeIo(yml));
+    expect(findings.some((x) => x.code === 'ci.yaml.flow-style-unsupported:4')).toBe(true);
+    const r = run([`--root=${makeRepo(baseDoc(), { ci: yml })}`]);
+    expect(r.code).toBe(2);
+    expect(codes(r.out)).toContain('ci.yaml.flow-style-unsupported:4');
+    expect(r.out).not.toMatch(/^CATALOG_OK/);
+  });
+
+  it('(T-flow-multiline-empty) multiline empty flow-style `steps: 換行 []` → 合法 0 items、ok:true(paired control)', () => {
+    // F1 paired control:multiline empty flow 是 legal YAML 0 items、不應觸發 unsupported
+    const yml = `jobs:\n  ci:\n    steps:\n      []\n`;
+    const o = extractCiSteps(yml);
+    expect(o.ok).toBe(true);
+    if (o.ok) expect(o.value).toEqual([]);
+  });
+
+  it('(T-empty-double-quoted) `name: ""` → per-step unsupported(F4:空 quoted name 非有效 step name)', () => {
+    // F4 收:空 double-quoted name(合法 YAML scalar、但無效 step name)走 per-step unsupported 而非 unregistered
+    const yml = `jobs:\n  ci:\n    steps:\n      - name: ""\n        run: x\n`;
+    const o = extractCiSteps(yml);
+    expect(o.ok).toBe(true);
+    if (o.ok) {
+      expect(o.value[0]!.name).toBeNull();
+      expect(o.value[0]!.unsupported).not.toBeNull();
+    }
+    // 下游 checkCatalogConformance push ci.step.name-unsupported、非 ci.step.unregistered
+    const findings = checkCatalogConformance(parseControlCatalog(JSON.stringify(baseDoc())), makeIo(yml));
+    expect(findings.some((x) => x.code.startsWith('ci.step.name-unsupported:'))).toBe(true);
+    expect(findings.some((x) => x.code.startsWith('ci.step.unregistered:'))).toBe(false);
+  });
+
+  it('(T-empty-single-quoted) `name: \'\'` → per-step unsupported(F4:對稱 double-quoted)', () => {
+    const yml = `jobs:\n  ci:\n    steps:\n      - name: ''\n        run: x\n`;
+    const o = extractCiSteps(yml);
+    expect(o.ok).toBe(true);
+    if (o.ok) {
+      expect(o.value[0]!.name).toBeNull();
+      expect(o.value[0]!.unsupported).not.toBeNull();
+    }
+    const findings = checkCatalogConformance(parseControlCatalog(JSON.stringify(baseDoc())), makeIo(yml));
+    expect(findings.some((x) => x.code.startsWith('ci.step.name-unsupported:'))).toBe(true);
+    expect(findings.some((x) => x.code.startsWith('ci.step.unregistered:'))).toBe(false);
   });
 
   it('(T-⑫d) "x" trailing → outcome.ok=false + quoted-scalar-malformed + line + CLI exit 2 + finding + 非假紅', () => {

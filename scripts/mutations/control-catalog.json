@@ -73,9 +73,9 @@
   },
   {
     "file": "scripts/check-control-catalog.ts",
-    "find": "    if (q) return { name: q[1]!.replace(/''/g, \"'\"), unsupported: null, malformed: null };",
-    "replace": "    if (q) return { name: v, unsupported: null, malformed: null };",
-    "label": "M13 extractor:不剝單引號(single-quote strip 拿掉)→ e2e (I1) 轉紅"
+    "find": "      const inner = q[1]!.replace(/''/g, \"'\");",
+    "replace": "      const inner = q[1]!;",
+    "label": "M13 extractor:不剝單引號 escape(single-quote '' unescape 拿掉)→ e2e (I1) 轉紅"
   },
   {
     "file": "scripts/check-control-catalog.ts",
