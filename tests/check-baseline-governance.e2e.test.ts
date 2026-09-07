@@ -272,6 +272,31 @@ describe('check:baseline-governance e2e(16 條)', () => {
     expect(r.out).toContain('[path.disallowed:scripts/x.ts]');
     expect(r.out).toContain('不套用 promotion 豁免');
   });
+  // A3 defer ⑨ Sprint 11:SKIPPED 觸發同時涵蓋 promotion(develop→main、head=develop)與
+  // backflow(main→develop、head=main)、皆 head ∈ merge-base 的 protectedBranches;
+  // wording 需明列實際條件、不固化 promotion/backflow 角色標籤到 runtime msg。
+  it('(23) A3 defer ⑨:--base=develop --head=main(backflow)→ SKIPPED、msg 含條件式描述、不含 promotion-only 誤導', () => {
+    const f = fixture();
+    f.git('checkout', '-q', 'main');
+    f.write('scripts/harness.config.json', HC);
+    f.commit('cfg on main'); // merge-base 那側含 protectedBranches=[develop,main]
+    // 建 develop 分支(自 cfg on main),使 mb(develop, later-main-HEAD) 落在此 commit
+    f.git('checkout', '-q', '-b', 'develop');
+    f.write('develop-tip.md', 'develop side\n');
+    f.commit('develop tip');
+    // 回 main、推進 main tip;此時 HEAD 在 main tip、mb(develop, HEAD) = 'cfg on main' commit
+    f.git('checkout', '-q', 'main');
+    f.write('main-new.md', 'main new content\n');
+    f.commit('main new'); // HEAD on main tip、!= mb(develop, main-tip)
+    // 回灌 PR 模擬:base=develop、--head=main(main ∈ merge-base 的 protectedBranches)
+    const r = run([`--root=${f.dir}`, '--base=develop', '--head=main']);
+    expect(r.code, ok(r)).toBe(0);
+    expect(r.out).toMatch(/^BASELINE_GOVERNANCE_SKIPPED/);
+    // 驗新 wording:含實際條件敘述、不含 promotion-only 誤導
+    expect(r.out).toContain('head main ∈ merge-base 的 protectedBranches');
+    expect(r.out).toContain('保護分支之間的 PR(head ∈ merge-base 的 protectedBranches)');
+    expect(r.out).not.toMatch(/保護分支之間的 promotion PR(?!.*\()/); // 舊 promotion-only 誤導字面不能重現
+  });
   it('(21) r3 CRITICAL:攻擊 PR 自己把分支名加進 protectedBranches → 不得 SKIPPED(政策讀 merge-base)', () => {
     const f = fixture();
     f.git('checkout', '-q', 'main');

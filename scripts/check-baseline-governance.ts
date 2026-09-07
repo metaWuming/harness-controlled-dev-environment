@@ -11,8 +11,9 @@
 // 規則(全部 fail-closed;無法判定 exit 2):
 //   0. 判定輸入只有 argv:`--base=<ref>`(必填、單一,PR 的 base 分支)、選用 `--head=<name>`(PR 的 head 分支名,
 //      **只在同 repo 的 PR** 才由 CI 傳入;fork PR 不傳)、選用 `--root=<dir>`(e2e fixture);**不讀任何 env**。
-//      `--head` ∈ **merge-base 那側** harness.config 宣告的 protectedBranches → 保護分支之間的 promotion PR
-//      (develop → main),其內容在進入 head 分支時已逐 PR 受本 gate 檢查 → 明文 SKIPPED、exit 0(Step 5 r1 C3;
+//      `--head` ∈ **merge-base 那側** harness.config 宣告的 protectedBranches → 保護分支之間的 PR
+//      (head ∈ merge-base 的 protectedBranches;例:promotion `develop → main`、backflow `main → develop`),
+//      其內容在進入 head 分支時已逐 PR 受本 gate 檢查 → 明文 SKIPPED、exit 0(Step 5 r1 C3;
 //      r3:政策必須讀 merge-base,PR 自己的 config 改不到豁免名單)。
 //   1. mb = merge-base(base, HEAD);取不到 / mb == HEAD → 2。
 //   2. 兩端 config 的 baseline 值相同 → 0(BASELINE_UNCHANGED)。
@@ -105,7 +106,7 @@ export function evaluateBaselineGovernance(baseRef: string, io: GitIo, opts: Gov
         status: 'SKIPPED',
         findings: [],
         lines: [
-          `BASELINE_GOVERNANCE_SKIPPED — head ${opts.headRef} ∈ merge-base 的 protectedBranches:保護分支之間的 promotion PR,其內容進入 ${opts.headRef} 時已逐 PR 受本 gate 檢查(fork PR 不會走到這裡;政策讀自 merge-base,PR 改不到)`,
+          `BASELINE_GOVERNANCE_SKIPPED — head ${opts.headRef} ∈ merge-base 的 protectedBranches:保護分支之間的 PR(head ∈ merge-base 的 protectedBranches),其內容進入 ${opts.headRef} 時已逐 PR 受本 gate 檢查(fork PR 不會走到這裡;政策讀自 merge-base,PR 改不到)`,
           `  [info] 此豁免只在所有 protectedBranches 都真的要求 PR(branch protection / ruleset)時成立;直接 push 到 ${opts.headRef} 不會經過本 gate`,
         ],
       };
