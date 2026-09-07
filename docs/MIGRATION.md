@@ -29,7 +29,7 @@ type: guide
 4. **修 pre-commit / pre-push hooks**(若新交付分支不在既有 `protectedBranches`)。
 5. **驗證 gates**(每步 acceptance evidence):
    - `npm run check:adoption`(A5 集合精確等 / A5.ci.if 三處逐字等)
-   - `npm run check:baseline-governance`(promotion PR 對應 protectedBranches)
+   - `npm run check:baseline-governance`(--head 所帶分支名,若存在於 merge-base 那側 protectedBranches,則 SKIPPED)
    - `npm run check:catalog`(CI step 對應 catalog)
    - `npm run check:no-source-terms`(Source-term scan 對新交付 branch 的 `allowedPrs` 邊界)
    - `npm run check:doc-refs`(檔案引用未斷)

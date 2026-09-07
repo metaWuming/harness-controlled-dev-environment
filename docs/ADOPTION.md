@@ -123,8 +123,7 @@ type: guide
 - [ ] 三處 delivery-branch 的 `if:` 行(Fetch delivery refs / TODOS Markers / Source-term)在 adopted mode 會被 A5.ci.if 驗:
       必須逐字等於 `if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)`
       再對 `deliveryBranches` 每個 b 接 ` || github.ref == 'refs/heads/<b>'`。**`deliveryBranches` 是允許的 `origin/HEAD` 目標白名單**(delivery evidence 語意);出廠 template `deliveryBranches` = `["main"]`,出廠三處 CI condition 顯式列 `main`、另保留 dynamic default branch;**若要新增 `develop` 或其他非 default delivery branch**,依 [`docs/MIGRATION.md`](MIGRATION.md) `[Unreleased]` 附錄 A.1「換交付線 runbook」同步修改 `deliveryBranches`、三處 `if:` conditions 與相關 branch policy(不宣稱只改 `deliveryBranches` 即可完成換線)
-- [ ] `Baseline Governance Check` step(pull_request only)要保留:同 repo PR 會帶 `--head`,保護分支之間的 promotion PR
-      (例 develop → main)依你宣告的 `protectedBranches` 明文跳過;fork PR 不帶 `--head`。⚠️ 這個豁免只在所有
+- [ ] `Baseline Governance Check` step(pull_request only)要保留:同 repo PR 的 `--head` 所帶分支名,若存在於 merge-base 那側 `harness.config.json` 的 `protectedBranches`,腳本明文 SKIPPED;fork PR 不帶 `--head`。⚠️ 這個豁免只在所有
       `protectedBranches` 都真的開了 branch protection / ruleset(必須經 PR、不得直接 push)時成立
       —— GOV-005 branch-protection advisory 屬組織治理層,由 Owner/admin 稽核。
 - [ ] **CTRL-CI-014「Protected Branches Drift Check」**(A3 defer ⑩ 交付):對 PR
