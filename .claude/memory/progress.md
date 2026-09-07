@@ -75,6 +75,38 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-09-07 ⑩ — **A3 CTRL-CI-012 catalog wording drift(Sprint 11 defer 收乾、限授權 STOP #3/#6 解除、evidence-first)**
+
+> **緣起**:Sprint 11 progress ⑨ entry 明列 defer(A3 defer ③⑨ 收乾但 catalog wording drift 觸 STOP 3/6);Owner 2026-09-07 拍板 Sprint 12 有限授權收(`scripts/control-catalog.json` 內 CTRL-CI-012 `locator` + `evidence` 兩 field wording + 用既有 renderer 重生 `docs/CONTROL-CATALOG.md`)。frozen full base `2307a447363ce49ac3a23f28cc5ce1b37d491781`(origin/main = pull request 編號 77 squash merge);shared local main 233858f + CLAUDE.md M(全程 lock)、1 支 stash 保留、agent-* 18 支 worktrees 保留、remote 0 動。plan review r1-r2(r2 APPROVE):r1 NEEDS-REVISION 3 findings(Phase 2 bookkeeping 四段時序缺、數字 line pins 需 symbol anchor、D9(c) 精確化);r2 全部處置。
+>
+> **改動**:2 檔(worktree wt-sprint12-catalog-drift、Sprint 12 frozen tip `78ee155fd66f8da646b7dd36a47cfd6c3379b481`、full-range +5/-5):
+> - `scripts/control-catalog.json` CTRL-CI-012.locator 尾段「者為 promotion PR、明文 SKIPPED」→「則明文 SKIPPED」(加「head 」前綴、去 promotion PR taxonomy)
+> - `scripts/control-catalog.json` CTRL-CI-012.evidence 中段「SKIPPED(promotion PR,政策讀自 merge-base)」→「SKIPPED(head ∈ merge-base 那側 protectedBranches、政策讀自 merge-base)」
+> - `docs/CONTROL-CATALOG.md` regenerate via `npm run catalog:render`(不手改、renderer 決定性硬驗)
+> - 對稱 Sprint 11 D8v2(catalog documentation 對稱 runtime SKIPPED msg 同一原則)
+>
+> **審查**:Codex plan r1-r2 APPROVE(supervisor via Herdr Codex pane w6:p4);Codex Step 4 commit-object review APPROVE(independent clean clone、direct parent、只 2 檔、renderer hash A === B === `bdc27814...`、5 STOP boundary、finding source:漏改 consumer);Step 4.5 CSO_NOT_REQUIRED(Owner 明列、governance documentation、非安全繞過);Step 4.6 無 UI 檔;Step 5 adversarial-reviewer round 1(fresh subagent、tip 78ee155):**0 CRITICAL / 7 INFORMATIONAL**;**STOP #2 WAS triggered by discovery of active out-of-scope consumers、resolved by explicit defer to Sprint 13**;supervisor classification:**DEFER Sprint 13** = F1 conf 7 `docs/ADOPTION.md` current guidance、F2 conf 6 `docs/MIGRATION.md` acceptance-evidence label、F6 conf 5 `.github/workflows/ci.yml` comment-only scope(comment-only 需另 sprint 授權、workflow logic remains locked);**KEEP** = F3 conf 6 `docs/MIGRATION.md` GitFlow upgrade sequence(accurate specific promotion scenario、not drift)、F4 conf 4 catalog「那側」vs runtime SKIPPED「的」(semantically equivalent、Owner intentional)、F5 conf 4 `CHANGELOG.md` Unreleased 段(exact head condition dominates parenthetical historical label、optionally include in Sprint 13 bounded inventory)、F7 conf 3 tests/e2e case (19) title「(promotion PR)」(characterizes promotion-shaped fixture);round 2 rereview 不跑(Owner 明列 GO Phase 2)。
+>
+> **驗證**:worktree wt-sprint12-catalog-drift 內 typecheck / lint / vitest 全 suite 31 files 1074 passed + 3 skipped;**renderer 決定性硬驗**(不靠 source 目視):第 1 次 `npm run catalog:render` → sha256 A = `bdc27814e05f672d3ce83cd8e340bfb21818a511ac44abb1a1fa0287309ac385`、第 2 次 render → hash B、確認 A === B(zero diff、相對第一次 render 無新增變化);`npm run check:catalog` CATALOG_OK 32 controls;`npm run check:doc-refs` 724 refs 0 失效;runtime / CI workflow / catalog schema / 其他 31 CTRL entries / A3 其他 defer / shared main + CLAUDE.md M / stash / agent-* worktrees / remote 全 zero-diff、禁區守住。
+>
+> **⭐ 教訓**:①**catalog SSOT drift 收乾方法**:json 改 → renderer regenerate → renderer 決定性硬驗(render 兩次記 hash、confirm A === B、不靠 source 目視);Sprint 12 首次採用 hash 硬驗、可推廣到所有 renderer-generated 產物 sprint;②**canonical PR-number placeholder token**:literal `PR` + 井號 + 三下劃線 = `PR #___`;Sprint 11「pull request 編號 ___」非 canonical 靜默過 CI、Sprint 12 收 canonical convention(check:todos-markers 認 canonical);③**downstream SSOT drift 分類**(supervisor 明列):**DEFER** = current guidance / acceptance evidence label / comment-only 需另 sprint 授權;**KEEP** = specific accurate scenario / semantically equivalent / characterization-purposeful fixture — 判準看「wording 是否 current operational guidance 或 acceptance evidence」;④**Herdr Codex supervisor 互動**:用 `herdr agent prompt w6:p4` 送 review request、supervisor mid-turn 給 verdict;避免 codex CLI 的 scope flag 與 prompt 互斥(Sprint 11 教訓 ①);⑤**STOP #2 WAS triggered 事實記錄**:adversarial 發現 out-of-scope consumers 屬 STOP #2 觸發、由 explicit defer to Sprint 13 resolved;不寫「STOP #2 untriggered」— supervisor 明列 correct the record。
+>
+> **⏭️ 下一棒候選**(hint 非 truth、起手 git 核實):
+>   - **Sprint 13 DEFER 集合**(本 sprint 明列):F1 `docs/ADOPTION.md` current guidance + F2 `docs/MIGRATION.md` acceptance-evidence label + F6 `.github/workflows/ci.yml` comment-only(workflow logic locked、需 Owner 明列 comment-only 另授權)+ optional bounded inventory F5 CHANGELOG.md(not required fix)
+>   - **Sprint 13+ B**:A3 defer 集合剩餘項 mini-batch(④/⑤/⑯–㉑ 8 條 conf ≤ 7)
+>   - **Sprint 13+ C**:A2 defer 集合 / P2 / P3 defer 剩餘
+>   - 卡外部:無;shared main 233858f + CLAUDE.md M 全程 lock、1 支 stash 保留、無 remote 動作
+>
+> **KEEP 明列**(不修、Sprint 13+ 也 not required):F3 MIGRATION L80(accurate specific promotion scenario)、F4 catalog vs runtime wording(semantically equivalent、Owner intentional)、F7 test case (19) title(characterizes promotion-shaped fixture)。
+>
+> **check:claims 逐條處置**(base=`2307a44`、Phase 2 時序 4 跑):本 sprint diff 全為 wording 校正、無新增絕對化宣稱;D9 anti-overclaim(a-e)全程守。
+>
+> 📊 成本:CC ~3h(Phase 0 + plan r1-r2 + Phase 1 + Step 4 review + Step 5 adversarial + Phase 2 bookkeeping)/ 跨模型 review 4 rounds(Codex plan r1-r2 + Codex Step 4 + adversarial 1)/ P1 0 個 / P2 0 個 / Step 5 獨立發現 7 個(F1-F7、STOP #2 WAS triggered + resolved by explicit defer)。
+>
+> 📐 量測:主 session Opus 4.7 全程、Codex supervisor via Herdr pane w6:p4;baseline SHA `2307a447363ce49ac3a23f28cc5ce1b37d491781`;來源分佈(既有缺陷 3・漏改 consumer 4・baseline 後引入 0):既有 = F4/F5/F7(catalog vs runtime wording / CHANGELOG / case (19) title);漏改 consumer = F1/F2/F3/F6(ADOPTION/MIGRATION/ci.yml、Sprint 11 defer 遺漏 downstream)。
+
+---
+
 📅 2026-09-07 ⑨ — **A3 defer ③⑨ evidence / diagnostic mini-batch(③ WONTFIX + ⑨ FIX、standard governance diagnostic、catalog wording drift 明列 defer)**
 
 > **緣起**:TODOS.md A3 Step 5 defer 集合 2 條(③/⑨、0 CRITICAL 未修);Codex Sprint 11 拍板 mini-batch。Phase 0 evidence audit(Explore agent + CodeGraph)核實 ③ `repoFilePathViolation` 下游全 exact-match(`tracked.has(p)` on `git ls-files -z` Set + `startsWith('tests/')` + `endsWith('.json')`)、無 shell/regex/argv 插值 → WONTFIX + 2 characterization test;⑨ SKIPPED wording promotion-only、對 backflow 誤導但 logic 對 → FIX 純 wording + docstring + header comment 兩例 + 1 deterministic backflow e2e。frozen full base `1549ed8beb2abbdaf70240ccf4e0dd09c9f100e9`(origin/main = pull request 編號 76 squash);shared local main 233858f + CLAUDE.md M(全程 lock)、1 支 stash 保留、agent-* 18 支 worktrees 保留、remote 全 0 動。plan review r1-r3(r3 APPROVE):逐輪校正 characterization comment 範圍(不擴 dollar/semicolon)、⑨ 訊息不固化 promotion/backflow 為 runtime taxonomy、e2e fixture deterministic 檢查(head=main ∈ merge-base protectedBranches)。**前 session context 用盡於 Codex Step 4 round 1 派工後、本 session 從 P1 收乾 round 2 接手**。
