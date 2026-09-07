@@ -338,30 +338,34 @@ function main(): number {
     console.error('CATALOG_FAIL — catalog 無法載入(exit 2)');
     return 2;
   }
+  // A3 defer ⑦/⑧/⑫ Sprint 10 Step 4 P1:單一 CI_YML snapshot、消 double-read TOCTOU
+  //   Real IO 只讀 CI_YML 一次;cached IO 對 checkCatalogConformance 與後續 stepCount 都
+  //   回傳同一份內容;findings 空 ⇒ extractCiSteps 於 checkCatalogConformance 內成功 ⇒
+  //   extractCiStepNames 於同一 yml 亦必成功(不變式)。無需 second-read TOCTOU guard。
+  const realIo = buildRealIo(root);
+  const ymlSnapshot = realIo.readText(CI_YML);
+  const cachedIo: CatalogIo = {
+    readText: (rel) => (rel === CI_YML ? ymlSnapshot : realIo.readText(rel)),
+    trackedFiles: () => realIo.trackedFiles(),
+  };
   let findings: CatalogFinding[];
   try {
-    findings = checkCatalogConformance(catalog, buildRealIo(root));
+    findings = checkCatalogConformance(catalog, cachedIo);
   } catch (e) {
     console.error(`❌ ${(e as Error).message}`);
     console.error('CATALOG_FAIL — 無法判定(exit 2)');
     return 2;
   }
-  // A3 defer ⑦/⑧/⑫ Sprint 10:extractCiStepNames 已改回 outcome。
-  // 順序:先印 findings(第一次讀已 push 到 findings 的 ci.yaml.<problemKind>:<line>),
-  // 再處理 TOCTOU 保護(findings 空 + 第二次 extractCiStepNames error 時、fail-closed exit 2、
-  // 不靜默降為 sentinel 繼續走 CATALOG_OK exit 0)。
   if (findings.length > 0) {
     console.log(`CATALOG_FAIL (${findings.length}):`);
     for (const x of findings) console.log(`  [${x.code}] ${x.msg}`);
     return 2;
   }
-  const namesOutcome = extractCiStepNames(buildRealIo(root).readText(CI_YML) ?? '');
-  if (!namesOutcome.ok) {
-    // TOCTOU: findings 空但 stepCount 抽取失敗 → 只可能是第二次讀 ci.yml 拿到不同內容;fail-closed
-    console.error(`❌ ${namesOutcome.diagnostic}`);
-    console.error(`CATALOG_FAIL — ${CI_YML} step 抽取失敗(ci.yaml.${namesOutcome.problemKind}:${namesOutcome.line};第二次讀取捕捉、TOCTOU 保護、exit 2)`);
-    return 2;
-  }
+  // 不變式(single-snapshot):findings 空表示 conformance 已於同一 yml 成功抽取;此處
+  // extractCiStepNames 對同一 yml 必回 ok:true。若因程式碼漂移導致此不變式被破壞、
+  // 用 fail-closed 硬 throw 而非靜默降級。
+  const namesOutcome = extractCiStepNames(ymlSnapshot ?? '');
+  if (!namesOutcome.ok) throw new Error(`unreachable(single-snapshot invariant broken): findings 空但 extractCiStepNames error(${namesOutcome.problemKind}:${namesOutcome.line})`);
   const stepCount = namesOutcome.value.length;
   console.log(`CATALOG_OK — ${catalog.controls.length} controls;${CI_YML} ${stepCount} steps(setup ${catalog.ciSetupSteps.length})雙向對應;${CATALOG_DOC_PATH} 與 JSON 一致`);
   return 0;

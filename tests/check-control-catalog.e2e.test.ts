@@ -359,16 +359,29 @@ describe('A3 defer ⑦/⑧/⑫ Sprint 10 — structured outcome for YAML parser 
     if (ok.ok) expect(ok.value).toEqual(['A', 'B']);
   });
 
-  it('(T-main-toctou-guard) main() 第二次讀取拿到 error → CLI exit 2 + 明確診斷、非「CATALOG_OK -1 steps」假綠', () => {
-    // 說明:此 test 用 first-read error 路徑觸發同一 guard(main 的 namesOutcome.ok=false 分支)
-    // 真實 TOCTOU(第一讀成功、第二讀失敗)需 filesystem race、非 deterministic;此 case 至少鎖住
-    // guard 結構存在——若把 main 的 `if (!namesOutcome.ok) return 2` 拿掉、error 就會漏成 CATALOG_OK
-    const yml = `jobs:\n  ci:\n    steps:\n      - name: A\n        name: B\n        run: x\n`;
-    const r = run([`--root=${makeRepo(baseDoc(), { ci: yml })}`]);
-    expect(r.code).toBe(2);
-    // Non-vacuous:不能是 CATALOG_OK ... -1 steps 這種靜默 sentinel 假綠
-    expect(r.out).not.toMatch(/CATALOG_OK.*-1 steps/);
-    expect(r.err + r.out).toContain('ci.yaml');
+  it('(T-single-snapshot) main() 對同一 CI_YML 只做單一 snapshot、消 double-read TOCTOU;checkCatalogConformance 與 stepCount 共用同一份內容', () => {
+    // Codex Step 4 P1 rereview 拍板:消 double-read 而非留 second-read TOCTOU guard。
+    // 驗證方式:直接呼叫 checkCatalogConformance + 計 IO.readText(CI_YML) 呼叫次數,
+    // 確認 io.readText(CI_YML) 至多呼叫一次(不變式:findings 若無 ci.yaml.<problemKind>,
+    // 表示 checkCatalogConformance 內部 extractCiSteps 對此 yml 成功、後續同一 yml 必成功)。
+    let ciReadCount = 0;
+    const yml = `jobs:\n  ci:\n    steps:\n      - name: Checkout\n        uses: x\n      - name: Typecheck\n        run: y\n      - name: Test (vitest)\n        run: z\n`;
+    const cachedIo: CatalogIo = {
+      readText: (rel) => {
+        if (rel === '.github/workflows/ci.yml') { ciReadCount++; return yml; }
+        if (rel === 'docs/CONTROL-CATALOG.md') return renderCatalog(parseControlCatalog(JSON.stringify(baseDoc())));
+        return null;
+      },
+      trackedFiles: () => ['.github/workflows/ci.yml', 'tsconfig.json', 'vitest.config.ts', 'docs/CONTROL-CATALOG.md'],
+    };
+    const findings = checkCatalogConformance(parseControlCatalog(JSON.stringify(baseDoc())), cachedIo);
+    expect(findings).toEqual([]);
+    // checkCatalogConformance 內部只讀 CI_YML 一次(其餘 conformance 分支不再讀)
+    expect(ciReadCount).toBe(1);
+    // 同一 yml snapshot 再抽 step names 必成功(不變式)
+    const o = extractCiStepNames(yml);
+    expect(o.ok).toBe(true);
+    if (o.ok) expect(o.value).toEqual(['Checkout', 'Typecheck', 'Test (vitest)']);
   });
 
   it('(T-⑫d) "x" trailing → outcome.ok=false + quoted-scalar-malformed + line + CLI exit 2 + finding + 非假紅', () => {
