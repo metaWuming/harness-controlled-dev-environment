@@ -182,7 +182,7 @@ jobs:
         # —— fetch 失敗 → ref 不存在 → 腳本 exit 2(fail-closed),不假設 fetch-depth 0 產生 remote ref。
         # base 用 env 傳、在 run 內引號展開,不做 workflow 表達式的 shell 內插;腳本本身不讀任何 env。
         # Step 5 r1 C3:base 用 PR 真正的 base 分支(GitFlow 進 develop 的 PR 不能拿 main 當 base);
-        # 同 repo 的 PR 的 --head 所帶分支名,若存在於 merge-base 那側 harness.config.json 的
+        # 同 repo PR 的 --head 所帶分支名,若存在於 merge-base 那側 harness.config.json 的
         # protectedBranches,腳本明文 SKIPPED;fork PR 不傳 --head(fork 分支名可任取,不得拿來當豁免)。
         if: github.event_name == 'pull_request'
         env:
