@@ -275,7 +275,7 @@ describe('check:baseline-governance e2e(16 條)', () => {
   // A3 defer ⑨ Sprint 11:SKIPPED 觸發同時涵蓋 promotion(develop→main、head=develop)與
   // backflow(main→develop、head=main)、皆 head ∈ merge-base 的 protectedBranches;
   // wording 需明列實際條件、不固化 promotion/backflow 角色標籤到 runtime msg。
-  it('(23) A3 defer ⑨:--base=develop --head=main(backflow)→ SKIPPED、msg 含條件式描述、不含 promotion-only 誤導', () => {
+  it('(29) A3 defer ⑨:--base=develop --head=main(backflow)→ SKIPPED、msg 含條件式描述、不含 promotion-only 誤導', () => {
     const f = fixture();
     f.git('checkout', '-q', 'main');
     f.write('scripts/harness.config.json', HC);
