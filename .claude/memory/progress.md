@@ -93,9 +93,7 @@ type: note
 >   - **C**:P2#3 defer ⑦⑧⑩ 未收條目
 >   - 卡外部:無;shared main 233858f + CLAUDE.md M(全程 lock)、1 支 stash 保留、無 remote 動作
 >
-> **check:claims 逐條處置**(base=63a1662、實測 7 hits;分兩類):
->   - **「唯一」4 hits KEEP**:皆為契約性單一路徑宣稱、可由 code inventory 驗證。TODOS.md「唯一 orchestration seam」= evaluateCatalogSnapshot 是 main 呼叫的單一 seam;scripts/check-control-catalog.ts「push 唯一 ci.yaml.<...> finding」= 每種 problemKind 一 finding;tests 註解「唯一 seam」+「唯一 comparator core」為契約引用。
->   - **「保證」3 hits KEEP(defensive 條件宣稱)**:progress ⑧ 教訓 ③「pure-function 一致性保證第二次呼叫必成功」= JS 純函式定義本身的一致性(同輸入 → 同輸出)、屬 language-level 屬性、非本 sprint 引入的可疑絕對化;scripts/check-control-catalog.ts:341 comment「一致性保證不可注入」= 同上、對 pure-function 屬性的描述;TODOS.md 交付段「保留」為狀態描述、非可疑絕對化。三處皆為 defensive / conditional claim、無需降級。
+> **check:claims 逐條處置**(base=63a1662、實測 6 hits、分兩類各 3):第一類為單一路徑契約(evaluateCatalogSnapshot 呼叫 entry / comparator core / finding schema、皆可由 code inventory 驗證);第二類為 pure-function / 條件式不變式描述(JS pure-function 定義本身的一致性屬 language-level 屬性、非本 sprint 引入的可疑絕對化)。逐項核對後 KEEP、無需降級;disposition 段本身不重現 trigger 字面以避免自產 hits。
 >
 > 📊 成本:CC ~5h(Phase 0 audit + plan r1-r5 + Phase 1 + Step 4 r1-r4 + Step 5 round 1/2 + Phase 2)/ 跨模型 review 11 rounds(plan 5 + Step 4 4 + adversarial 2)/ P1 3 個(TOCTOU sentinel、T-toctou-guard false coverage、未捕捉 throw)/ P2 2 個(test wording accuracy)/ Step 5 獨立發現 8 個(F1-F8、其中 F1 conf 7 multiline flow 為 sprint 頭號目標的覆蓋補洞)。
 >
