@@ -359,8 +359,9 @@ describe('check:adoption e2e', () => {
     expect(r.code, r.out + r.err).toBe(0);
   });
 
-  it('① 正對照:comment 含字面 if: false 不誤傷(comment filter)', () => {
-    const f = adoptedWithStepMod((s) => s.replace('      - name: Adoption Readiness Check\n', '      # 舊寫法是 if: false;新版拿掉\n      - name: Adoption Readiness Check\n'));
+  it('① 正對照:same-step comment(- name: 後、run: 前、direct key indent)含字面 if: false 不誤傷', () => {
+    // Comment 放 same mapping indent(itemIndent + 2)、屬 target step window、regex 錨定 + `^\\s*#` filter 應 skip
+    const f = adoptedWithStepMod((s) => s.replace('      - name: Adoption Readiness Check\n', '      - name: Adoption Readiness Check\n        # 舊寫法是 if: false;新版拿掉\n'));
     const r = run([`--root=${makeRepo(f)}`]);
     expect(r.code, r.out + r.err).toBe(0);
   });
@@ -371,10 +372,42 @@ describe('check:adoption e2e', () => {
     expect(r.code, r.out + r.err).toBe(0);
   });
 
-  it('① 正對照:env 內 block scalar 含 if: false 字面不誤傷(env value 縮排較深、非 direct key)', () => {
+  it('① 正對照:env 內 nested block scalar 含 if: false 字面不誤傷(env value 縮排較深、非 direct key)', () => {
     const f = adoptedWithStepMod((s) => s.replace('        run: npm run check:adoption\n', '        run: npm run check:adoption\n        env:\n          NOTE: |\n            legacy: if: false\n'));
     const r = run([`--root=${makeRepo(f)}`]);
     expect(r.code, r.out + r.err).toBe(0);
+  });
+
+  it('① 正對照:nested with 含字面 continue-on-error: true 不誤傷(indent 較深、非 direct key)', () => {
+    // 改造:target step 用 uses: + with: 而非 run:(仍保留 run: line 讓 filter 命中);with 內含 continue-on-error 字面
+    const f = adoptedWithStepMod((s) => s.replace('        run: npm run check:adoption\n', '        run: npm run check:adoption\n        with:\n          continue-on-error: "true"\n'));
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(0);
+  });
+
+  it('① 正對照(explicit direct-key baseline):真 direct run(itemIndent+2 = 8 spaces)過 shape check(sanity control)', () => {
+    // 與 E-self / adopted 完整 fixture 重疊、明列以確保 direct-key check 不誤傷 baseline
+    const f = adoptedFiles();
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(0);
+  });
+
+  it('① 負對照(Sprint 15 Step 4 P1 修):real target 刪、另一 step 用 run: | scalar 內含精確字面 `run: npm run check:adoption` → exit 2 + A7', () => {
+    // 真 Adoption Readiness Check step 完全移除;另一 step (Source-term scan) 改用 run: |,scalar 內含精確字面
+    // scalar 內容縮排 10 spaces、非 direct key(itemIndent 6 + 2 = 8),direct-key check 應 skip 該行、validCount=0、A7 fail
+    const f = adoptedFiles();
+    let yml = f['.github/workflows/ci.yml']!;
+    // 刪真 target step
+    yml = yml.replace('      - name: Adoption Readiness Check\n        run: npm run check:adoption\n', '');
+    // 改造 Source-term scan 為 run: | + scalar 內含 CI_ADOPTION_LINE 精確字面
+    yml = yml.replace(
+      '        run: npm run check:no-source-terms\n',
+      '        run: |\n          npm run check:no-source-terms\n          # legacy note: run: npm run check:adoption\n'
+    );
+    f['.github/workflows/ci.yml'] = yml;
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(2);
+    expect(r.out).toContain('[fail] A7:');
   });
 
   // ─────────────────────────── Sprint 15 ④ 4.5 bullet lexical normalized repo-relative concrete path

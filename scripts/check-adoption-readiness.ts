@@ -24,7 +24,7 @@
 //   * 現行 shipped invocations 未提供 --root:
 //     - .github/workflows/ci.yml `npm run check:adoption`
 //     - package.json:scripts.check:adoption 預設 invocation
-//     以上 fallback 到 `git rev-parse --show-toplevel`(trusted、repo checkout)
+//     以上 fallback 到 `git rev-parse --show-toplevel`(selected current repo checkout;caller 仍須確保執行該 checkout 程式碼符合既有 trust model)
 //   * CLI 本身接受 --root=<dir>;呼叫者(含 `npm run check:adoption -- --root=<dir>` 透傳)
 //     MUST 只傳 trusted directory — 會 dynamic import 該 root 的
 //     `scripts/cso-trigger.config.ts`(等同執行對方任意 code)
@@ -309,6 +309,21 @@ export function isRepoRelativeConcretePath(s: string): boolean {
 }
 
 /**
+ * ① checkCiRunsAdoption 支援:找 target run line 所屬 sequence item 的 itemIndent。
+ * 回傳 { itemIndent, itemStart } 或 null 若找不到合格 item。
+ */
+export function findStepItem(lines: readonly string[], runLineIdx: number, runKeyIndent: string): { itemIndent: number; itemStart: number } | null {
+  for (let i = runLineIdx; i >= 0; i--) {
+    const l = lines[i];
+    const m = /^(\s*)- /.exec(l);
+    if (m && m[1].length < runKeyIndent.length) {
+      return { itemIndent: m[1].length, itemStart: i };
+    }
+  }
+  return null;
+}
+
+/**
  * ① checkCiRunsAdoption step envelope shape check(Sprint 15 ① 修)。
  * 判定 CI_ADOPTION_LINE 所屬 step 是否被 disabled(if: false / if: ${{ false }}) 或 non-blocking (continue-on-error: true)。
  * Structural rule(無 key 名稱白名單):
@@ -319,19 +334,9 @@ export function isRepoRelativeConcretePath(s: string): boolean {
  * 只驗 confirmed canonical shapes + whitespace variants;不擴 if:0 / no / quoted 未驗形狀。
  */
 export function isStepDisabledOrNonBlocking(lines: readonly string[], runLineIdx: number, runKeyIndent: string): boolean {
-  // itemIndent:由 runLineIdx 往上找最近 indent < runKeyIndent.length 的 sequence item
-  let itemIndentLen = -1;
-  let itemStart = -1;
-  for (let i = runLineIdx; i >= 0; i--) {
-    const l = lines[i];
-    const m = /^(\s*)- /.exec(l);
-    if (m && m[1].length < runKeyIndent.length) {
-      itemIndentLen = m[1].length;
-      itemStart = i;
-      break;
-    }
-  }
-  if (itemIndentLen < 0 || itemStart < 0) return false; // 找不到 item start、保守回 false(不視為 disabled)
+  const item = findStepItem(lines, runLineIdx, runKeyIndent);
+  if (!item) return false; // 找不到 item start、保守回 false(不視為 disabled)
+  const { itemIndent: itemIndentLen, itemStart } = item;
   // window 終點:往下第一個非空非註解 line、且 indent < itemIndentLen 離開 steps block、或 indent === itemIndentLen 且為下一 sequence item
   let itemEnd = lines.length;
   for (let i = itemStart + 1; i < lines.length; i++) {
@@ -371,6 +376,11 @@ function checkCiRunsAdoption(id: string): Check {
       // 取 run-key indent(leading spaces of the matched line、不含 tab 假設 GitHub Actions 慣用 space)
       const indentMatch = /^(\s*)/.exec(l);
       const runKeyIndent = indentMatch ? indentMatch[1] : '';
+      // Sprint 15 Step 4 修:驗 target line 是所屬 step 的 direct mapping key
+      // (runKeyIndent === itemIndent + 2),否則視為 scalar content 或非 direct key、不計 valid
+      // 對現行支援形狀 `- name: X\n  run: Y`:itemIndent = dash spaces、direct key indent = itemIndent + 2
+      const item = findStepItem(lines, i, runKeyIndent);
+      if (!item || runKeyIndent.length !== item.itemIndent + 2) continue; // scalar content or 非 direct key
       if (isStepDisabledOrNonBlocking(lines, i, runKeyIndent)) {
         disabledCount++;
       } else {
