@@ -182,6 +182,21 @@ TODOS.md             # 工作追蹤（SSOT）
 - `scripts/cso-trigger.config.ts` 五域路徑表（**出廠為空** = fail-closed、必須填才能生效）
 - `.claude/memory/LESSONS.md` 你自己的教訓
 
+### Agent adapter 架構（`claude` / `codex`；v1）
+
+CLAUDE.md 是 **canonical policy surface**：Part 1–3 的核心行為原則與 Part 4 專案上下文供 adapter 共用；v1 保留 `CLAUDE.md` 這個檔名（避免 36 處引用重構），並含少量 Claude-specific 的呼叫方式（例如 skill / slash command / subagent frontmatter），其他 runtime 由 thin adapter 轉譯為當前可用的等價 capability。
+
+v1 兩支 adapter（`scripts/lib/harness-config.ts` `KNOWN_ADAPTERS`）：
+
+| Adapter | Reference 檔 | 檢查合約（`scripts/check-adoption-readiness.ts` A6） |
+|---|---|---|
+| `claude` | `CLAUDE.md`（canonical policy 本體） | A6.claude.file / link / sop / settings |
+| `codex` | `AGENTS.md`（thin adapter、獨立整行 `@CLAUDE.md` 匯入 canonical） | A6.codex.file / link |
+
+`AGENTS.md` 只寫「Codex 這一側必需、且無法由 canonical 繼承」的 minimal overlay；禁止複製 CLAUDE.md 規則（避免兩份 SSOT 漂移）。checker 對 A6.codex.link 的判定是「必須有恰為 `@CLAUDE.md` 這樣一整行的 import 語法」，散文提及不算。
+
+**採用者宣告**：`scripts/harness.config.json` `requiredAgentAdapters` 出廠為 `["claude", "codex"]`（對應模板同時交付 `CLAUDE.md` 與 `AGENTS.md`）。導入者依實際使用情況：兩個都用就保留、只用其中一個就改成 `["claude"]` 或 `["codex"]` 單宣告。runtime loader 只驗未知 adapter；不強制兩者並存。
+
 ---
 
 ## 五、教訓 → 機器化的升級階梯
