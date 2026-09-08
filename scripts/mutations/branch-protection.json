@@ -1,0 +1,146 @@
+[
+  {
+    "file": "scripts/lib/branch-protection.ts",
+    "find": "if (!isObject(rsc)) {\n    findings.push('required_status_checks object 不存在(A)');",
+    "replace": "if (!isObject(rsc)) {\n    // findings.push('required_status_checks object 不存在(A)');",
+    "label": "P1 assertion A revert:required_status_checks 存在檢查 → case 2 轉紅"
+  },
+  {
+    "file": "scripts/lib/branch-protection.ts",
+    "find": "if (!Array.isArray(contexts) || contexts.length === 0) {\n      findings.push('required_status_checks.contexts 陣列為空或非陣列(B)');",
+    "replace": "if (!Array.isArray(contexts) || contexts.length === 0) {\n      // findings.push('required_status_checks.contexts 陣列為空或非陣列(B)');",
+    "label": "P2 assertion B revert:contexts 非空檢查 → case 3 轉紅"
+  },
+  {
+    "file": "scripts/lib/branch-protection.ts",
+    "find": "if (!isObject(ea) || ea.enabled !== true) {\n    findings.push('enforce_admins.enabled 非 true(C)');",
+    "replace": "if (!isObject(ea) || ea.enabled !== true) {\n    // findings.push('enforce_admins.enabled 非 true(C)');",
+    "label": "P3 assertion C revert:enforce_admins 檢查 → case 4 轉紅"
+  },
+  {
+    "file": "scripts/lib/branch-protection.ts",
+    "find": "if (!isObject(rpr)) {\n    findings.push('required_pull_request_reviews object 不存在(D)');",
+    "replace": "if (!isObject(rpr)) {\n    // findings.push('required_pull_request_reviews object 不存在(D)');",
+    "label": "P4 assertion D revert:required_pull_request_reviews 檢查 → case 5 轉紅"
+  },
+  {
+    "file": "scripts/check-branch-protection.ts",
+    "find": "if (status === null) return 'gh CLI exit non-zero、無 HTTP status 資訊';",
+    "replace": "if (status === null) return 'gh CLI ok';",
+    "label": "P5 fail-open on non-zero exit + 無 status → case 10 轉紅"
+  },
+  {
+    "file": "scripts/check-branch-protection.ts",
+    "find": "  if (token === null) {\n    if (fork.isFork) {",
+    "replace": "  if (false && token === null) {\n    if (fork.isFork) {",
+    "label": "P6 preflight token 檢查 revert(改直接呼叫 gh)→ case 11a 轉紅"
+  },
+  {
+    "file": "scripts/lib/branch-protection.ts",
+    "find": "  // D. required_pull_request_reviews object 存在",
+    "replace": "  // Rejects restrictions when object is null (scope creep)\n  const restr = protection.restrictions;\n  if (restr === null || restr === undefined) findings.push('restrictions 缺(scope creep)');\n  // D. required_pull_request_reviews object 存在",
+    "label": "P7 加驗 restrictions(scope creep)→ case 7 轉紅"
+  },
+  {
+    "file": "scripts/check-branch-protection.ts",
+    "find": "  if (status === 401) return `gh api 401、token 無效或無 admin scope`;",
+    "replace": "  if (status === 401) return `gh api ok`;",
+    "label": "P8 fail-open on gh 401 → case 11b 轉紅"
+  },
+  {
+    "file": "scripts/lib/branch-protection.ts",
+    "find": "export function parseBranchProtection(json: string): unknown {\n  return JSON.parse(json);\n}",
+    "replace": "export function parseBranchProtection(json: string): unknown {\n  try { return JSON.parse(json); } catch { return {}; }\n}",
+    "label": "P9 parseBranchProtection catch fallback → case 6 unit 轉紅"
+  },
+  {
+    "file": "scripts/check-branch-protection.ts",
+    "find": "      ? `gh api 403、fork PR 缺 admin token 讀 branch protection、head repo ≠ base repo`\n      : `gh api 403、token 缺 admin: read scope、非 fork context`;",
+    "replace": "      ? `gh api 403、token 缺 admin: read scope、非 fork context`\n      : `gh api 403、fork PR 缺 admin token 讀 branch protection、head repo ≠ base repo`;",
+    "label": "P10 fork vs non-fork diagnostic wording 對調 → case 11c 或 14 diagnostic 轉紅"
+  },
+  {
+    "file": "scripts/check-branch-protection.ts",
+    "find": "    const status = parseHttpStatus(stdout) ?? parseHttpStatus(stderr);",
+    "replace": "    const status = null; // 移除 HTTP status parse",
+    "label": "P11 移除 HTTP status parse(改只看 exit code)→ case 15a/15b/11b/11c/14 轉紅"
+  },
+  {
+    "file": "scripts/check-branch-protection.ts",
+    "find": "    try {\n      protection = parseBranchProtection(res.body);\n    } catch (e) {",
+    "replace": "    try {\n      protection = res.body ? JSON.parse(res.body) || {} : {};\n    } catch (e) {",
+    "label": "P12 JSON malformed 走 assertion path(非 parse throw catch)→ case 15c 轉紅"
+  },
+  {
+    "file": "scripts/check-branch-protection.ts",
+    "find": "    const stdout = execFileSync('gh', ['api', '--include', endpoint], {",
+    "replace": "    const stdout = execFileSync('gh', ['api', endpoint], {",
+    "label": "P13 移除 --include flag(status parse 失效)→ CRLF/status 相關 case 轉紅"
+  },
+  {
+    "file": ".github/workflows/branch-protection.yml",
+    "find": "permissions:\n  contents: read",
+    "replace": "permissions:\n  contents: read\n  administration: read",
+    "label": "P14a 加 invalid administration: read permission → case 20 「無 administration:」轉紅"
+  },
+  {
+    "file": ".github/workflows/branch-protection.yml",
+    "find": "      GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_TOKEN }}",
+    "replace": "      GH_TOKEN: ${{ secrets.OTHER_TOKEN }}",
+    "label": "P14b 改 GH_TOKEN secret name → case 20 「GH_TOKEN=BRANCH_PROTECTION_TOKEN」轉紅"
+  },
+  {
+    "file": ".github/workflows/branch-protection.yml",
+    "find": "      GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_TOKEN }}\n      GITHUB_REPOSITORY: ${{ github.repository }}",
+    "replace": "      GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_TOKEN }}",
+    "label": "P14c 移除 GITHUB_REPOSITORY mapping → case 20 「GITHUB_REPOSITORY mapping」轉紅"
+  },
+  {
+    "file": ".github/workflows/branch-protection.yml",
+    "find": "permissions:\n  contents: read\n\njobs:",
+    "replace": "env:\n  GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_TOKEN }}\n\npermissions:\n  contents: read\n\njobs:",
+    "label": "P14d secret relocation:把 BRANCH_PROTECTION_TOKEN 移到 workflow-level env(scope broaden) → case 20 「secret binding 恰 1 次且在 job block 內」轉紅(count 變 2)"
+  },
+  {
+    "file": ".github/workflows/branch-protection.yml",
+    "find": "on:\n  schedule:\n    - cron: '0 0 * * *'  # daily UTC 00:00",
+    "replace": "on:\n  schedule:\n    - cron: '0 0 * * *'  # daily UTC 00:00\n  pull_request:\n    branches: [main]",
+    "label": "P15 branch-protection.yml 加 pull_request trigger → case 20 「on: 只含 schedule」轉紅"
+  },
+  {
+    "file": ".github/workflows/ci.yml",
+    "find": "permissions:\n  contents: read",
+    "replace": "permissions:\n  contents: read\nenv:\n  GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_TOKEN }}",
+    "label": "P16 ci.yml 加 BRANCH_PROTECTION_TOKEN env(secret 洩入 PR CI)→ case 20 cross-file 轉紅"
+  },
+  {
+    "file": ".github/workflows/branch-protection.yml",
+    "find": "        with:\n          ref: main",
+    "replace": "        with:\n          ref: ${{ github.head_ref }}",
+    "label": "P17 checkout 改 head_ref(PR-controlled ref、trust boundary 破壞)→ case 20 「無 head_ref」轉紅"
+  },
+  {
+    "file": ".github/workflows/branch-protection.yml",
+    "find": "on:\n  schedule:\n    - cron: '0 0 * * *'  # daily UTC 00:00\n",
+    "replace": "on:\n  schedule:\n    - cron: '0 0 * * *'  # daily UTC 00:00\n  workflow_dispatch:\n",
+    "label": "P18 加 workflow_dispatch trigger → case 20 「on: 只含 schedule」轉紅"
+  },
+  {
+    "file": ".github/workflows/branch-protection.yml",
+    "find": "permissions:\n  contents: read\n\njobs:",
+    "replace": "permissions:\n  contents: read\n  administration: read\n\njobs:",
+    "label": "P19 加 administration: read invalid scope → case 20 「無 administration:」轉紅"
+  },
+  {
+    "file": ".github/workflows/branch-protection.yml",
+    "find": "      - name: Setup Node\n        uses: actions/setup-node@v4",
+    "replace": "      - name: Setup Node\n        uses: actions/other-action@v4",
+    "label": "P20a 移除 actions/setup-node@v4 → case 20 「setup-node@v4」bootstrap assertion 轉紅"
+  },
+  {
+    "file": ".github/workflows/branch-protection.yml",
+    "find": "      - name: Install dependencies\n        run: npm ci",
+    "replace": "      - name: Install dependencies\n        run: npm install",
+    "label": "P20b 移除 npm ci(改 npm install)→ case 20 「npm ci」bootstrap assertion 轉紅"
+  }
+]
