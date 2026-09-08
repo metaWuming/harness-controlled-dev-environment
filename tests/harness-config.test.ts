@@ -4,7 +4,7 @@
 // scripts/lib/harness-config.ts 檔頭列的一條規則;改壞 loader 任何一條都要有人紅。
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -27,7 +27,7 @@ const VALID_TEMPLATE = {
   templatePackageName: 'harness-controlled-dev-environment',
   protectedBranches: ['develop', 'main'],
   deliveryBranches: ['main'],
-  requiredAgentAdapters: ['claude'],
+  requiredAgentAdapters: ['claude', 'codex'],
   githubGovernanceRequired: false,
 };
 
@@ -294,5 +294,34 @@ describe('loadHarnessConfig — 檔案層', () => {
         expect(gitAccepts(name), `${name} git`).toBe(true);
       }
     });
+  });
+});
+
+// ─────────────────────────── Sprint 17 B1 shipped-artifact regression
+// 攻 shipped root artifact(非 fixture)、3 assertion 對應反向探針:
+//  1. config revert 兩 adapter → assertion 1 紅
+//  2. AGENTS.md 刪整檔 → assertion 2 紅(真 git-tracked probe、非 existsSync 冒充)
+//  3. AGENTS.md 刪整行 @CLAUDE.md → assertion 3 紅
+describe('Sprint 17 B1 shipped-artifact regression', () => {
+  it('shipped harness.config.json 宣告 [claude, codex] + AGENTS.md tracked 且含整行 @CLAUDE.md', () => {
+    // 1. Config assert:shipped requiredAgentAdapters 兩 adapter
+    expect(loadHarnessConfig(REPO).requiredAgentAdapters).toEqual(['claude', 'codex']);
+
+    // 2. AGENTS.md tracked probe:真 git ls-files --error-unmatch(非 existsSync)
+    expect(() =>
+      execFileSync('git', ['ls-files', '--error-unmatch', '--', 'AGENTS.md'], {
+        cwd: REPO,
+        stdio: 'pipe',
+      })
+    ).not.toThrow();
+
+    // 3. AGENTS.md content:剝 HTML comments 後恰一行 trim === '@CLAUDE.md'(A6.codex.link 契約對齊)
+    const raw = readFileSync(path.join(REPO, 'AGENTS.md'), 'utf-8');
+    const stripped = raw.replace(/<!--[\s\S]*?-->/g, '');
+    const importLines = stripped
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l === '@CLAUDE.md');
+    expect(importLines.length).toBe(1);
   });
 });

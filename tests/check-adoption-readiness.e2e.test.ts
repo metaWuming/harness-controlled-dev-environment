@@ -139,7 +139,7 @@ function templateFiles(): Record<string, string> {
       templatePackageName: 'harness-controlled-dev-environment',
       protectedBranches: ['develop', 'main'],
       deliveryBranches: ['main'],
-      requiredAgentAdapters: ['claude'],
+      requiredAgentAdapters: ['claude', 'codex'],
       githubGovernanceRequired: false,
     }),
     'scripts/cso-trigger.config.ts': 'export const CSO_TRIGGER_PATTERNS: { domain: string; pattern: RegExp }[] = [];\nexport const CSO_NOT_APPLICABLE: { domain: string; reason: string }[] = [];\n',
