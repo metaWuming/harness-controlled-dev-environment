@@ -123,6 +123,38 @@ export interface Part4Section {
 export const FILL_MARKER = '<!-- 填';
 export const PLACEHOLDER_RE = /^(TBD|TODO|待填|待補|待定|N\/?A|xxx+|\.{3}|…|<[^>]*>)$/i;
 
+// ───────────────────────────────────────── AGENTS.md overlay parser(Sprint 18 B2)
+// designated heading exact byte-precise;boundary 統一用 trimmed.startsWith('## ');code fence 內的 heading out-of-scope。
+
+export const OVERLAY_HEADING = '## Project-specific Codex overlay';
+
+export interface AgentsOverlayParse {
+  /** 0 = absent(opt-out);1 = present;> 1 = duplicate。 */
+  presenceCount: number;
+  /** exactly-1 時的 designated section 原始 body(未 strip comment);其他情況 null。 */
+  designatedBodyRaw: string | null;
+}
+
+export function parseAgentsOverlay(md: string): AgentsOverlayParse {
+  const lines = md.split('\n');
+  const trimmedLines = lines.map((l) => l.trim());
+  const projIndices: number[] = [];
+  for (let i = 0; i < trimmedLines.length; i++) {
+    if (trimmedLines[i] === OVERLAY_HEADING) projIndices.push(i);
+  }
+  if (projIndices.length === 0) return { presenceCount: 0, designatedBodyRaw: null };
+  if (projIndices.length > 1) return { presenceCount: projIndices.length, designatedBodyRaw: null };
+  const startIdx = projIndices[0]! + 1;
+  let endIdx = lines.length;
+  for (let i = startIdx; i < lines.length; i++) {
+    if (trimmedLines[i]!.startsWith('## ')) {
+      endIdx = i;
+      break;
+    }
+  }
+  return { presenceCount: 1, designatedBodyRaw: lines.slice(startIdx, endIdx).join('\n') };
+}
+
 /** 切出 `### 4.x` 六段;段 = 標題到下一個 `### ` / `## ` / `---`。缺的段不會出現在 Map。 */
 export function parsePart4(md: string): Map<Part4Id, Part4Section> {
   const out = new Map<Part4Id, Part4Section>();
@@ -468,6 +500,41 @@ export const checkTemplateAdrRefs: Check = (_cfg, io) =>
     fail('T9', m)
   );
 
+// ── Sprint 18 B2:template mode T10 — AGENTS.md project-specific overlay skeleton
+// conditional on `codex` ∈ requiredAgentAdapters(shipped default 含 codex → 觸發;
+// adopter 若砍成 claude-only、T10 不觸發、shipped skeleton affordance 允許消失)。
+// 4 distinct message subtypes:heading-missing / heading-duplicate / marker-missing / body-nonskeleton。
+// finding code 精確單一 'T10';subtype 由 message 辨識。
+export const checkTemplateAgentsOverlaySkeleton: Check = (cfg, io) => {
+  if (!cfg.requiredAgentAdapters.includes('codex')) return [];
+  const md = io.readText('AGENTS.md');
+  if (md === null) {
+    return [fail('T10', 'AGENTS.md 缺 designated heading `## Project-specific Codex overlay`(檔案不存在或讀不到)')];
+  }
+  const parse = parseAgentsOverlay(md);
+  if (parse.presenceCount === 0) {
+    return [fail('T10', 'AGENTS.md 缺 designated heading `## Project-specific Codex overlay`')];
+  }
+  if (parse.presenceCount > 1) {
+    return [
+      fail('T10', `AGENTS.md 含重複 designated heading \`## Project-specific Codex overlay\`(${parse.presenceCount} occurrence、應為 1)`),
+    ];
+  }
+  const body = parse.designatedBodyRaw!;
+  if (!body.includes(FILL_MARKER)) {
+    return [
+      fail('T10', 'AGENTS.md `## Project-specific Codex overlay` section 無 `<!-- 填` marker(shipped template 應保留 skeleton marker)'),
+    ];
+  }
+  const stripped = body.replace(/<!--[\s\S]*?-->/g, '');
+  if (stripped.trim() !== '') {
+    return [
+      fail('T10', 'AGENTS.md `## Project-specific Codex overlay` section body 除 marker/註解外含其他 content(shipped template 應為 skeleton)'),
+    ];
+  }
+  return [exception('T10', 'AGENTS.md project-specific overlay skeleton')];
+};
+
 export const TEMPLATE_CHECKS: readonly Check[] = [
   checkTemplateProjectId,
   checkTemplatePackageName,
@@ -476,6 +543,7 @@ export const TEMPLATE_CHECKS: readonly Check[] = [
   checkTemplatePart4Skeleton,
   checkCiRunsAdoption('T6'),
   checkTemplateSourceTermInfo,
+  checkTemplateAgentsOverlaySkeleton,
   checkTemplateNoPersonalPaths,
   checkTemplateAdrRefs,
 ];
@@ -690,6 +758,25 @@ export const ADAPTER_ASSERTIONS: Record<AdapterName, Check> = {
     const md = io.readText('AGENTS.md');
     if (md !== null && !md.split('\n').some((l) => l.trim() === '@CLAUDE.md')) {
       out.push(fail('A6.codex.link', 'AGENTS.md 必須含整行 `@CLAUDE.md`(import 語法,直接連到 canonical policy;散文提及不算)'));
+    }
+    // Sprint 18 B2:project-specific overlay 補號檢查(section-scoped、absent = opt-out)
+    if (md !== null) {
+      const parse = parseAgentsOverlay(md);
+      if (parse.presenceCount > 1) {
+        out.push(
+          fail(
+            'A6.codex.overlay.parser',
+            `AGENTS.md 含重複 designated heading \`## Project-specific Codex overlay\`(${parse.presenceCount} occurrence、應為 1)`
+          )
+        );
+      } else if (parse.presenceCount === 1 && parse.designatedBodyRaw!.includes(FILL_MARKER)) {
+        out.push(
+          fail(
+            'A6.codex.overlay-fill',
+            'AGENTS.md `## Project-specific Codex overlay` section 仍含 `<!-- 填` marker(填完要刪掉註解;若無需要可清空 body 或整段刪除)'
+          )
+        );
+      }
     }
     return out;
   },
