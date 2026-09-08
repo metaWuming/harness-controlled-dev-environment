@@ -62,6 +62,12 @@ type: guide
       `adversarial-reviewer` 獨立審 diff)可直接用;要調語氣或加專屬 agent 就改這裡
 - [ ] 你的專案有 UI → 確認 `CLAUDE.md` §4.2 填了 design token 來源檔,
       否則 SOP Step 4.6 視覺關沒有對照基準。純後端專案 → 視覺關永遠不觸發,不必設定
+- [ ] 宣告了 `codex` adapter → 開 `AGENTS.md`,決定 `## Project-specific Codex overlay`
+      這段怎麼處理:填自己專案的 Codex-specific override(例:專案 skill 名、
+      design token 讀法、專屬工具說明),或整段刪除(explicit opt-out)、或清空
+      本 section 內容。**`<!-- 填 -->` marker 必須清掉**,不然 adopted mode
+      `check:adoption` A6.codex.overlay-fill 會擋。precedence 契約在 `AGENTS.md`
+      本身(`@CLAUDE.md` line 後、兩 H2 前),不必自己記
 
 ## 3. 安全敏感域路徑表(Step 4.5 安全關的前置)
 

@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import type { HarnessConfig } from '../scripts/lib/harness-config';
 import {
   ADOPTED_CHECKS,
+  OVERLAY_HEADING,
   TEMPLATE_CHECKS,
   checkAdapters,
   checkAdoptedProjectId,
@@ -16,6 +17,7 @@ import {
   checkNoDestructivePlaceholders,
   checkPart4Content,
   checkTemplateAdrRefs,
+  checkTemplateAgentsOverlaySkeleton,
   checkTemplateCsoEmpty,
   checkTemplateDestructivePlaceholders,
   checkTemplateNoPersonalPaths,
@@ -26,6 +28,7 @@ import {
   extractCiBranches,
   extractPreCommitBranches,
   extractPrePushBranches,
+  parseAgentsOverlay,
   parsePart4,
   runAdoptionChecks,
   type CheckerIo,
@@ -277,6 +280,8 @@ describe('template mode T1–T9', () => {
       files: {
         ...adrOkFiles(),
         'CLAUDE.md': CLAUDE_TEMPLATE,
+        // Sprint 18 B2:template mode shipped AGENTS.md skeleton(codex ∈ shipped default 觸發 T10)
+        'AGENTS.md': `@CLAUDE.md\n\n## Template-shared Codex defaults\n\n- default\n\n## Project-specific Codex overlay\n\n<!-- 填 -->\n`,
         'scripts/lib/destructive-guard.ts': DESTRUCTIVE_TEMPLATE,
         '.github/workflows/ci.yml': CI_OK + `# 見 ${ADR_PATH} 的「決策」\n# 見 ${ADR_PATH} 的「決策」\n`,
         // PR A3 P0 起 progress.md 不在 EXPECTED_ADR_REFS 內 → 這裡不得含 ADR 引用
@@ -343,7 +348,7 @@ describe('template mode T1–T9', () => {
   });
   it('runAdoptionChecks(template):首行 TEMPLATE_MODE、不含 READY、有 fail 時 ready=false', () => {
     const r = runAdoptionChecks(TEMPLATE_CFG, tIo());
-    expect(r.lines[0]).toMatch(/^TEMPLATE_MODE — adoption checks NOT applied; 3 template exceptions:/);
+    expect(r.lines[0]).toMatch(/^TEMPLATE_MODE — adoption checks NOT applied; 4 template exceptions:/);
     expect(r.lines.join('\n')).not.toContain('READY');
     expect(r.ready).toBe(true);
     const bad = runAdoptionChecks({ ...TEMPLATE_CFG, projectId: 'x' }, tIo());
@@ -538,6 +543,160 @@ describe('adopted mode A6 adapter 逐條斷言', () => {
   });
   it('只宣告 claude 時不檢查 codex', () => {
     expect(checkAdapters({ ...ADOPTED_CFG, requiredAgentAdapters: ['claude'] }, adoptedIo({ files: { 'AGENTS.md': 'nope' } }))).toEqual([]);
+  });
+});
+
+// ─────────────────────────── Sprint 18 B2:AGENTS.md project-specific overlay override
+// Owner objective:讓下游專案可以 override AGENTS.md 的 overlay。
+// 契約:designated heading = `## Project-specific Codex overlay`;
+// - adopted + codex req:section absent = opt-out pass;marker in section body = fail(A6.codex.overlay-fill);
+//   duplicate heading = fail(A6.codex.overlay.parser);marker outside section 不 impersonate。
+// - template + codex req(shipped default):section 必存在、body 必含 marker、除 marker/comment 外無其他 content;
+//   否則 T10(4 distinct message subtype:heading-missing / duplicate / marker-missing / body-nonskeleton)。
+// - codex ∉ requiredAgentAdapters:T10 不觸發、A6 codex 不觸發、AGENTS.md absent/present 皆 pass。
+
+const CODEX_ONLY_TEMPLATE_CFG: HarnessConfig = { ...TEMPLATE_CFG, requiredAgentAdapters: ['claude'] };
+const CODEX_ONLY_ADOPTED_CFG: HarnessConfig = { ...ADOPTED_CFG, requiredAgentAdapters: ['claude'] };
+
+const BASE_HEAD = `<!-- header -->\n\n@CLAUDE.md\n\n**Precedence**:\n1. CLAUDE.md canonical wins.\n2. Project-specific overrides Template-shared.\n3. Project-specific 不 override CLAUDE.md.\n\n## Template-shared Codex defaults\n\n- default a\n- default b\n\n`;
+
+function agentsWithSection(sectionBody: string): string {
+  return `${BASE_HEAD}${OVERLAY_HEADING}\n\n${sectionBody}\n`;
+}
+
+function agentsNoSection(): string {
+  return `${BASE_HEAD}## Other Section\n\n- unrelated content\n`;
+}
+
+describe('parseAgentsOverlay helper — 統一 trim normalization、code fence out-of-scope', () => {
+  it('absent(0 occurrence)→ opt-out pass', () => {
+    const parse = parseAgentsOverlay(agentsNoSection());
+    expect(parse.presenceCount).toBe(0);
+    expect(parse.designatedBodyRaw).toBeNull();
+  });
+  it('exactly 1 occurrence → body extracted (原始未 strip comment)', () => {
+    const parse = parseAgentsOverlay(agentsWithSection('<!-- 填 -->\n'));
+    expect(parse.presenceCount).toBe(1);
+    expect(parse.designatedBodyRaw).toContain('<!-- 填 -->');
+  });
+  it('duplicate designated heading(> 1 occurrence)→ 偵測到 count', () => {
+    const md = `${agentsWithSection('foo\n')}\n${OVERLAY_HEADING}\n\n- bar\n`;
+    const parse = parseAgentsOverlay(md);
+    expect(parse.presenceCount).toBe(2);
+    expect(parse.designatedBodyRaw).toBeNull();
+  });
+  it('boundary = trimmed.startsWith("## ")(對稱 designated match、含 whitespace-normalized H2)', () => {
+    const md = `${BASE_HEAD}${OVERLAY_HEADING}\n\ndesignated body\n\n  ## Other Section\n\n<!-- 填 -->\n`;
+    const parse = parseAgentsOverlay(md);
+    expect(parse.presenceCount).toBe(1);
+    // marker 應在 Other Section 內、非 designated body 內
+    expect(parse.designatedBodyRaw).toContain('designated body');
+    expect(parse.designatedBodyRaw).not.toContain('<!-- 填');
+  });
+});
+
+describe('Sprint 18 B2 acceptance matrix — 18 case fixed', () => {
+  // ─── Adopted mode(codex 需要):case 1-5 + 14-15
+  it('case 1:marker in designated section → A6.codex.overlay-fill', () => {
+    const md = agentsWithSection('<!-- 填 -->\n');
+    expect(ids(checkAdapters(ADOPTED_CFG, adoptedIo({ files: { 'AGENTS.md': md } })))).toEqual(['A6.codex.overlay-fill']);
+  });
+  it('case 2:marker outside designated section 不 impersonate(pass)', () => {
+    // marker 在 template-shared 段(BASE_HEAD 之前 include, 但這裡放在其他非 designated section)
+    const md = `${agentsWithSection('adopter override content\n')}## Other Section\n\n<!-- 填 -->\n`;
+    expect(checkAdapters(ADOPTED_CFG, adoptedIo({ files: { 'AGENTS.md': md } }))).toEqual([]);
+  });
+  it('case 3:marker removed(designated section 有內容無 marker)→ pass', () => {
+    const md = agentsWithSection('adopter 專案 skill 名:mySkill\n');
+    expect(checkAdapters(ADOPTED_CFG, adoptedIo({ files: { 'AGENTS.md': md } }))).toEqual([]);
+  });
+  it('case 4:section deleted(explicit opt-out)→ pass', () => {
+    const md = agentsNoSection();
+    expect(checkAdapters(ADOPTED_CFG, adoptedIo({ files: { 'AGENTS.md': md } }))).toEqual([]);
+  });
+  it('case 5:duplicate designated headings → A6.codex.overlay.parser', () => {
+    const md = `${agentsWithSection('foo\n')}\n${OVERLAY_HEADING}\n\n- bar\n`;
+    expect(ids(checkAdapters(ADOPTED_CFG, adoptedIo({ files: { 'AGENTS.md': md } })))).toEqual(['A6.codex.overlay.parser']);
+  });
+  it('case 14:adopted + codex ∉ requiredAgentAdapters → overlay 不觸發(pass)', () => {
+    const md = agentsWithSection('<!-- 填 -->\n');
+    expect(checkAdapters(CODEX_ONLY_ADOPTED_CFG, adoptedIo({ files: { 'AGENTS.md': md } }))).toEqual([]);
+  });
+  it('case 15:adopted、whitespace-normalized H2 boundary、marker 在 Other section body → pass', () => {
+    const md = `${BASE_HEAD}${OVERLAY_HEADING}\n\ndesignated body\n\n  ## Other Section\n\n<!-- 填 -->\n`;
+    expect(checkAdapters(ADOPTED_CFG, adoptedIo({ files: { 'AGENTS.md': md } }))).toEqual([]);
+  });
+
+  // ─── Template mode(codex 需要):case 6-11 + 16-18
+  it('case 6:template shipped skeleton(minimal 1-line marker)→ T10 exception(pass)', () => {
+    const md = agentsWithSection('<!-- 填 -->\n');
+    const findings = checkTemplateAgentsOverlaySkeleton(TEMPLATE_CFG, makeIo({ files: { 'AGENTS.md': md } }));
+    expect(fails(findings)).toEqual([]);
+    expect(findings.some((f) => f.kind === 'exception' && f.id === 'T10')).toBe(true);
+  });
+  it('case 7:template missing designated heading → T10 heading-missing', () => {
+    const md = agentsNoSection();
+    const f = fails(checkTemplateAgentsOverlaySkeleton(TEMPLATE_CFG, makeIo({ files: { 'AGENTS.md': md } })));
+    expect(f).toHaveLength(1);
+    expect(f[0]!.id).toBe('T10');
+    expect(f[0]!.msg).toMatch(/heading/);
+  });
+  it('case 8:template missing marker → T10 marker-missing', () => {
+    const md = agentsWithSection('adopter 內容無 marker\n');
+    const f = fails(checkTemplateAgentsOverlaySkeleton(TEMPLATE_CFG, makeIo({ files: { 'AGENTS.md': md } })));
+    expect(f).toHaveLength(1);
+    expect(f[0]!.id).toBe('T10');
+    expect(f[0]!.msg).toMatch(/marker/);
+  });
+  it('case 9:template duplicate designated headings → T10 heading-duplicate', () => {
+    const md = `${agentsWithSection('<!-- 填 -->\n')}${OVERLAY_HEADING}\n\n<!-- 填 -->\n`;
+    const f = fails(checkTemplateAgentsOverlaySkeleton(TEMPLATE_CFG, makeIo({ files: { 'AGENTS.md': md } })));
+    expect(f).toHaveLength(1);
+    expect(f[0]!.id).toBe('T10');
+    expect(f[0]!.msg).toMatch(/重複|duplicate/i);
+  });
+  it('case 10:template non-skeleton body → T10 body-nonskeleton', () => {
+    const md = agentsWithSection('<!-- 填 -->\n\n這是不該存在的可見文字。\n');
+    const f = fails(checkTemplateAgentsOverlaySkeleton(TEMPLATE_CFG, makeIo({ files: { 'AGENTS.md': md } })));
+    expect(f).toHaveLength(1);
+    expect(f[0]!.id).toBe('T10');
+    expect(f[0]!.msg).toMatch(/body|content/i);
+  });
+  it('case 11:template + codex required + AGENTS.md missing → T10 heading-missing(合併語意)', () => {
+    const f = fails(checkTemplateAgentsOverlaySkeleton(TEMPLATE_CFG, makeIo({ files: {} })));
+    expect(f).toHaveLength(1);
+    expect(f[0]!.id).toBe('T10');
+    expect(f[0]!.msg).toMatch(/heading/);
+  });
+  it('case 12:template + codex ∉ requiredAgentAdapters + AGENTS.md absent → no T10', () => {
+    const findings = checkTemplateAgentsOverlaySkeleton(CODEX_ONLY_TEMPLATE_CFG, makeIo({ files: {} }));
+    expect(findings).toEqual([]);
+  });
+  it('case 13:template + codex ∉ requiredAgentAdapters + AGENTS.md present 無 designated → no T10', () => {
+    const findings = checkTemplateAgentsOverlaySkeleton(CODEX_ONLY_TEMPLATE_CFG, makeIo({ files: { 'AGENTS.md': agentsNoSection() } }));
+    expect(findings).toEqual([]);
+  });
+  it('case 16:template shipped 多行 marker comment(含 adopter guidance 中間行)→ pass', () => {
+    const multilineMarker = '<!-- 填:此段供下游專案填自己的 Codex-specific override。\n若無需要:清空本 section 或刪除本 heading 到下個 heading 之間全部(含此註解)。\nBoundary 為下個 `## ` heading。 -->\n';
+    const md = agentsWithSection(multilineMarker);
+    const findings = checkTemplateAgentsOverlaySkeleton(TEMPLATE_CFG, makeIo({ files: { 'AGENTS.md': md } }));
+    expect(fails(findings)).toEqual([]);
+    expect(findings.some((f) => f.kind === 'exception' && f.id === 'T10')).toBe(true);
+  });
+  it('case 17:template 多行 marker comment 後跟 visible paragraph(非 `## ` 行)→ T10 body-nonskeleton', () => {
+    const body = '<!-- 填:多行 marker\n第二行說明\n第三行說明 -->\n\n這是採用者未刪的可見說明(paragraph、非 heading、非 comment)。\n';
+    const md = agentsWithSection(body);
+    const f = fails(checkTemplateAgentsOverlaySkeleton(TEMPLATE_CFG, makeIo({ files: { 'AGENTS.md': md } })));
+    expect(f).toHaveLength(1);
+    expect(f[0]!.id).toBe('T10');
+    expect(f[0]!.msg).toMatch(/body|content/i);
+  });
+  it('case 18:template marker comment + 非 marker HTML comment(無 visible content)→ pass', () => {
+    const body = '<!-- 填:marker comment -->\n\n<!-- 這是另一個非 marker HTML comment(explanation、多行也 OK) -->\n';
+    const md = agentsWithSection(body);
+    const findings = checkTemplateAgentsOverlaySkeleton(TEMPLATE_CFG, makeIo({ files: { 'AGENTS.md': md } }));
+    expect(fails(findings)).toEqual([]);
+    expect(findings.some((f) => f.kind === 'exception' && f.id === 'T10')).toBe(true);
   });
 });
 

@@ -145,6 +145,8 @@ function templateFiles(): Record<string, string> {
     'scripts/cso-trigger.config.ts': 'export const CSO_TRIGGER_PATTERNS: { domain: string; pattern: RegExp }[] = [];\nexport const CSO_NOT_APPLICABLE: { domain: string; reason: string }[] = [];\n',
     'scripts/lib/destructive-guard.ts': "const FLAG_ENV = 'PROJECT_DESTRUCTIVE_OK';\nconst CONFIRM_TOKEN = 'PROJECT-PROD';\nexport { FLAG_ENV, CONFIRM_TOKEN };\n",
     'CLAUDE.md': CLAUDE_SKELETON,
+    // Sprint 18 B2:template mode shipped AGENTS.md skeleton(codex ∈ shipped default 觸發 T10)
+    'AGENTS.md': `@CLAUDE.md\n\n## Template-shared Codex defaults\n\n- default\n\n## Project-specific Codex overlay\n\n<!-- 填 -->\n`,
     '.github/workflows/ci.yml': CI_TEMPLATE,
     [ADR_PATH]: '# ADR\n\n## 決策\n\n## 已知限制\n',
     // PR A3 P0 起 progress.md 不在 EXPECTED_ADR_REFS 內,T8 仍要讀得到它
@@ -194,12 +196,12 @@ export const CSO_NOT_APPLICABLE = [{ domain: '橫切保守項', reason: '本專�
 }
 
 describe('check:adoption e2e', () => {
-  it('E-self:本 repo(template)exit 0、首行 TEMPLATE_MODE、不含 READY、列 T3/T4/T5 exception', () => {
+  it('E-self:本 repo(template)exit 0、首行 TEMPLATE_MODE、不含 READY、列 T3/T4/T5/T10 exception', () => {
     const r = run([]);
     expect(r.code, r.err).toBe(0);
-    expect(r.out.split('\n')[0]).toMatch(/^TEMPLATE_MODE — adoption checks NOT applied; 3 template exceptions:/);
+    expect(r.out.split('\n')[0]).toMatch(/^TEMPLATE_MODE — adoption checks NOT applied; 4 template exceptions:/);
     expect(r.out).not.toContain('READY');
-    for (const id of ['T3', 'T4', 'T5']) expect(r.out).toContain(`[exception] ${id}:`);
+    for (const id of ['T3', 'T4', 'T5', 'T10']) expect(r.out).toContain(`[exception] ${id}:`);
     expect(r.out).toContain('[info] T7:');
   });
   it('template fixture exit 0', () => {
