@@ -89,7 +89,7 @@ type: note
 >
 > **⏭️ 下一棒候選**(hint 非 truth):**無主動 sprint**;唯一具名觸發 = P3 D-② SIGTERM 的新 Linux CI deterministic failing regression 才 reopen Phase 1;不泛稱 external event。shared main 233858f + CLAUDE.md M 全程 lock、1 支 stash 保留、無 remote 動作。
 >
-> **check:claims 逐條處置**(base=`7347191`、Phase 2 時序 4 實測):待跑;預估 D9 anti-overclaim 全程守、bookkeeping wording 未新增絕對化宣稱。
+> **check:claims 逐條處置**(base=`7347191`、實測):**71 added lines / 5 hits**(全「唯一」claims、supervisor 明列拍板具名 reopen 條件):progress.md:88(教訓 & repo-done 段唯一觸發)/ :90(下一棒候選唯一具名觸發)/ TODOS.md:161(watchlist 唯一 reopen condition)/ :167(watchlist Sprint 17 唯一具名觸發)/ :175(P3 D-② marker 唯一 reopen 條件)。**5 hits 全 supervisor 明列具名對象 = P3 D-② SIGTERM 的新 Linux CI deterministic failing regression**;宣稱的集合列得出來(單一具名 canonical、SSOT 有指涉)→ 留著、非 overclaim;D9 anti-overclaim 全程守。
 >
 > 📊 成本:CC ~3h(Phase 0 Explore audit + plan r1-r6 iterated + Step 3 atomic quarantine + Phase 2 bookkeeping)/ 跨模型 implementation review N rounds(plan 6 + Step 4 iterate;final review 依實際輪數、不回寫)/ Step 5 獨立發現 0(no code、no adversarial)。
 >
