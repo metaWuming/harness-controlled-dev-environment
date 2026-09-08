@@ -1,0 +1,86 @@
+[
+  {
+    "file": "scripts/lib/destructive-guard.ts",
+    "find": "  if (config === null) {\n    error(`❌ ${scriptName}:destructive-guard.config.ts EXPECTED_TARGET_IDENTITY 未導入(null)`);",
+    "replace": "  if (false && config === null) {\n    error(`❌ ${scriptName}:destructive-guard.config.ts EXPECTED_TARGET_IDENTITY 未導入(null)`);",
+    "label": "P1 layer 5 config-null branch → fail-open → case 1 轉紅"
+  },
+  {
+    "file": "scripts/lib/destructive-guard.ts",
+    "find": "  if (!allowedHosts.includes(target.host)) {",
+    "replace": "  if (false && !allowedHosts.includes(target.host)) {",
+    "label": "P2 layer 5 hostname compare skip → case 3a 轉紅"
+  },
+  {
+    "file": "scripts/lib/destructive-guard.ts",
+    "find": "  if (config.allowedDbNames && config.allowedDbNames.length > 0) {\n    if (!config.allowedDbNames.includes(target.dbname)) {",
+    "replace": "  if (false && config.allowedDbNames && config.allowedDbNames.length > 0) {\n    if (!config.allowedDbNames.includes(target.dbname)) {",
+    "label": "P3 layer 5 dbname declared skip → case 5 轉紅"
+  },
+  {
+    "file": "scripts/lib/destructive-guard.ts",
+    "find": "  const allowedHosts = config.allowedHosts.map((h) => h.toLowerCase());",
+    "replace": "  const allowedHosts = config.allowedHosts;",
+    "label": "P4 layer 5 allowlist lowercase-normalize revert(reverse fixture URL lowercase + allowlist uppercase → case 3b 轉紅)"
+  },
+  {
+    "file": "scripts/lib/destructive-guard.ts",
+    "find": "    if (!maxRowsArg) {\n      error(`❌ ${scriptName}:layer 6 未帶 --max-rows=<N> CLI flag",
+    "replace": "    if (false && !maxRowsArg) {\n      error(`❌ ${scriptName}:layer 6 未帶 --max-rows=<N> CLI flag",
+    "label": "P5 layer 6 --max-rows required check → case 6 轉紅"
+  },
+  {
+    "file": "scripts/lib/destructive-guard.ts",
+    "find": "    if (n > expectedMaxRowsBound) {",
+    "replace": "    if (n >= expectedMaxRowsBound) {",
+    "label": "P6 layer 6 bound compare `>` → `>=`(邊界誤判)→ case 7 邊界 == pass 轉紅"
+  },
+  {
+    "file": "scripts/lib/destructive-guard.ts",
+    "find": "    if (!/^[1-9]\\d*$/.test(raw)) {",
+    "replace": "    if (false && !/^[1-9]\\d*$/.test(raw)) {",
+    "label": "P7 layer 6 非正整數 check skip → case 8 轉紅"
+  },
+  {
+    "file": "scripts/lib/destructive-guard.ts",
+    "find": "    log(`ℹ️  ${scriptName}:本 guard 不驗實際 DELETE 數、caller 責任 enforce actual affected count ≤ ${maxRows}`);",
+    "replace": "    // caller-responsibility log removed",
+    "label": "P8 layer 6 caller-responsibility stderr wording 移除 → case 10 轉紅"
+  },
+  {
+    "file": "scripts/lib/destructive-guard.ts",
+    "find": "  if (nodeEnv === 'production') {\n    error(`❌ NODE_ENV=${env.NODE_ENV}",
+    "replace": "  if (false && nodeEnv === 'production') {\n    error(`❌ NODE_ENV=${env.NODE_ENV}",
+    "label": "P9 layer 1 NODE_ENV=production block skip → case 9a 轉紅"
+  },
+  {
+    "file": "scripts/lib/destructive-guard.ts",
+    "find": "  if (/prod(uction)?/i.test(dbUrl)) {",
+    "replace": "  if (false && /prod(uction)?/i.test(dbUrl)) {",
+    "label": "P10 layer 2 DB URL 'prod' string block skip → case 9b 轉紅"
+  },
+  {
+    "file": "scripts/lib/destructive-guard.ts",
+    "find": "  if (env[FLAG_ENV] !== '1') {",
+    "replace": "  if (false && env[FLAG_ENV] !== '1') {",
+    "label": "P11 layer 3 FLAG_ENV=1 gate skip → case 9c 轉紅"
+  },
+  {
+    "file": "scripts/lib/destructive-guard.ts",
+    "find": "  if (!argv.includes(`--confirm=${CONFIRM_TOKEN}`)) {",
+    "replace": "  if (false && !argv.includes(`--confirm=${CONFIRM_TOKEN}`)) {",
+    "label": "P12 layer 4 --confirm token gate skip → case 9d 轉紅"
+  },
+  {
+    "file": "scripts/lib/destructive-guard.ts",
+    "find": "    const masked = dbUrl.replace(/(\\/\\/[^:/@]+:)[^@]+@/, '$1***@');",
+    "replace": "    const masked = dbUrl;",
+    "label": "P13 layer 2 password mask 移除(明文 leak)→ case 13 stderr 含 'secret' 轉紅"
+  },
+  {
+    "file": "scripts/lib/destructive-guard.ts",
+    "find": "  } catch (e) {\n    // F4:e.message 可能含原始 DATABASE_URL(含 password)。與 layer 2 同套遮罩後再 echo,避免 leak\n    const detail = (e instanceof Error ? e.message : String(e)).replace(/(\\/\\/[^:/@]+:)[^@]+@/, '$1***@');\n    error(`❌ ${scriptName}:DATABASE_URL invalid URL",
+    "replace": "  } catch (e) {\n    // fail-open on invalid URL\n    return { isApply: false, maxRows: null };\n    const detail = (e instanceof Error ? e.message : String(e)).replace(/(\\/\\/[^:/@]+:)[^@]+@/, '$1***@');\n    error(`❌ ${scriptName}:DATABASE_URL invalid URL",
+    "label": "P14 invalid URL catch → silent return(fail-open on parse error)→ case 3e 轉紅"
+  }
+]
