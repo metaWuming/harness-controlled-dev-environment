@@ -44,7 +44,7 @@ const TEMPLATE_CFG: HarnessConfig = {
   templatePackageName: 'harness-controlled-dev-environment',
   protectedBranches: ['develop', 'main'],
   deliveryBranches: ['main'],
-  requiredAgentAdapters: ['claude'],
+  requiredAgentAdapters: ['claude', 'codex'],
   githubGovernanceRequired: false,
 };
 const ADOPTED_CFG: HarnessConfig = {

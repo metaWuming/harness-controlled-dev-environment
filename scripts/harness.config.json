@@ -11,9 +11,10 @@
     "main"
   ],
   "requiredAgentAdapters": [
-    "claude"
+    "claude",
+    "codex"
   ],
   "githubGovernanceRequired": false,
   "mergeStrategy": "squash",
-  "_comment": "Harness 的 canonical 宣告 config(PR A2)。mode 是「顯式靜態宣告」:template = 本模板 repo 自身;adopted = 已導入的下游專案。沒有自動偵測、沒有預設——缺檔 / 拼錯 / 未知欄位一律 fail-closed。導入時把 mode 改成 adopted、projectId 改成你的 slug、對齊分支與 adapter,然後跑 `npm run check:adoption` 直到 READY(步驟見 docs/ADOPTION.md §0)。schemaVersion 2(PR A3)加必要欄位 mergeStrategy(squash | merge-commit | rebase | fast-forward),CLAUDE.md §4.6 必須以反引號提到它;schemaVersion 1 一律拒收,升級見 docs/MIGRATION.md。schema / loader / 分支名文法定義:scripts/lib/harness-config.ts。"
+  "_comment": "Harness 的 canonical 宣告 config(PR A2)。mode 是「顯式靜態宣告」:template = 本模板 repo 自身;adopted = 已導入的下游專案。沒有自動偵測、沒有預設——缺檔 / 拼錯 / 未知欄位一律 fail-closed。導入時把 mode 改成 adopted、projectId 改成你的 slug、對齊分支與 adapter,然後跑 `npm run check:adoption` 直到 READY(步驟見 docs/ADOPTION.md §0)。schemaVersion 2(PR A3)加必要欄位 mergeStrategy(squash | merge-commit | rebase | fast-forward),CLAUDE.md §4.6 必須以反引號提到它;schemaVersion 1 一律拒收,升級見 docs/MIGRATION.md。requiredAgentAdapters(Sprint 17 B1)shipped default 兩 adapter [claude, codex] 對應模板本身同時交付 CLAUDE.md + AGENTS.md;導入者可依實際使用改為 [\"claude\"] 或 [\"codex\"] 單宣告(runtime loader 只驗未知 adapter、不強制兩者並存)。schema / loader / 分支名文法定義:scripts/lib/harness-config.ts。"
 }

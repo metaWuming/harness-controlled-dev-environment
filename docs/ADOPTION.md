@@ -16,7 +16,11 @@ type: guide
       `mergeStrategy` 選 `squash` / `merge-commit` / `rebase` / `fast-forward`(§4.6 要以反引號提到它)
       (小寫英數與 `-`,不得含 template / placeholder / project)、`protectedBranches` /
       `deliveryBranches` 對齊你的分支策略、`requiredAgentAdapters` 宣告你會用的 agent
-      (v1 認得 `claude` / `codex`)、`githubGovernanceRequired` 需要 CODEOWNERS 時設 true
+      (v1 認得 `claude` / `codex`;模板出廠是 `["claude", "codex"]` 兩個都宣告、
+      對應同時交付 `CLAUDE.md` 與 `AGENTS.md`。只用其中一個就砍成 `["claude"]` 或
+      `["codex"]` 單宣告即可;宣告 `codex` 時 `AGENTS.md` 必須被 git 追蹤且含
+      恰為 `@CLAUDE.md` 這樣一整行的 import 語法)、`githubGovernanceRequired`
+      需要 CODEOWNERS 時設 true
 - [ ] **不改 = 停在 template mode**:CI 的 `check:adoption` 只會列出 template exception、
       **不會替你驗導入**。它刻意不猜 mode——沒有這個檔、或 mode 不明確,一律 exit 2 要求你選
 - [ ] 分支名只接受**字面名**(英數起頭、其餘英數 `.` `_` `/` `-`):不接受 glob(`feature/*`)、
