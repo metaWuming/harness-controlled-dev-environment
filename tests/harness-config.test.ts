@@ -3,6 +3,7 @@
 // 契約:顯式靜態宣告、fail-closed、無 fallback、無正規化。每條負對照對應
 // scripts/lib/harness-config.ts 檔頭列的一條規則;改壞 loader 任何一條都要有人紅。
 
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -249,5 +250,49 @@ describe('loadHarnessConfig — 檔案層', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+  // ─────────────────────────── Sprint 15 ② literalBranchNameViolation 補 3 rules
+  describe('Sprint 15 ② 補 git branch-name 必要 component rules', () => {
+    const positives = ['main', 'feature/x', 'release-1.2', 'a./b'];
+    const negatives: Array<[string, RegExp]> = [
+      ['main.', /\.{1}\`? 結尾/],
+      ['a/.b', /component 不得以 \`?\.\`? 開頭/],
+      ['feat/x.lock/y', /\.lock\`? 結尾/],
+    ];
+
+    for (const name of positives) {
+      it(`正對照:\`${name}\` validator 過`, () => {
+        expect(literalBranchNameViolation(name)).toBeNull();
+      });
+    }
+
+    for (const [name, expected] of negatives) {
+      it(`負對照:\`${name}\` validator 拒`, () => {
+        const v = literalBranchNameViolation(name);
+        expect(v).not.toBeNull();
+        expect(v!).toMatch(expected);
+      });
+    }
+
+    it('git check-ref-format 對照 regression:validator 與 git 判定一致(3 neg + 4 pos)', () => {
+      const gitAccepts = (name: string): boolean => {
+        try {
+          execFileSync('git', ['check-ref-format', '--branch', name], { stdio: 'pipe' });
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      // 3 neg:validator 拒(non-null)+ git 拒(false);一致
+      for (const [name] of negatives) {
+        expect(literalBranchNameViolation(name), `${name} validator`).not.toBeNull();
+        expect(gitAccepts(name), `${name} git`).toBe(false);
+      }
+      // 4 pos:validator 過(null)+ git 過(true);一致
+      for (const name of positives) {
+        expect(literalBranchNameViolation(name), `${name} validator`).toBeNull();
+        expect(gitAccepts(name), `${name} git`).toBe(true);
+      }
+    });
   });
 });

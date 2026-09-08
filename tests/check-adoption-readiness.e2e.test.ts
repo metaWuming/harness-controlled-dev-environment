@@ -298,4 +298,183 @@ describe('check:adoption e2e', () => {
     expect(r.code).toBe(2);
     expect(r.err).toContain('CSO_TRIGGER_PATTERNS');
   });
+  // ─────────────────────────── Sprint 15 ① checkCiRunsAdoption step envelope shape check
+  const adoptedWithStepMod = (mod: (line: string) => string) => {
+    const f = adoptedFiles();
+    f['.github/workflows/ci.yml'] = f['.github/workflows/ci.yml']!.replace(
+      '      - name: Adoption Readiness Check\n        run: npm run check:adoption\n',
+      mod('      - name: Adoption Readiness Check\n        run: npm run check:adoption\n')
+    );
+    return f;
+  };
+
+  it('① 負對照:step 加 if: false(direct-key、run 前)→ exit 2 點名 A7', () => {
+    const f = adoptedWithStepMod((s) => s.replace('        run: npm run check:adoption\n', '        if: false\n        run: npm run check:adoption\n'));
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(2);
+    expect(r.out).toContain('[fail] A7:');
+    expect(r.out).toMatch(/disabled|non-blocking/);
+  });
+
+  it('① 負對照:step 加 if: ${{ false }}(expression、run 後、雙向覆蓋驗證)→ exit 2 點名 A7', () => {
+    const f = adoptedWithStepMod((s) => s.replace('        run: npm run check:adoption\n', '        run: npm run check:adoption\n        if: ${{ false }}\n'));
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(2);
+    expect(r.out).toContain('[fail] A7:');
+  });
+
+  it('① 負對照:step 加 continue-on-error: true → exit 2 點名 A7', () => {
+    const f = adoptedWithStepMod((s) => s.replace('        run: npm run check:adoption\n', '        continue-on-error: true\n        run: npm run check:adoption\n'));
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(2);
+    expect(r.out).toContain('[fail] A7:');
+  });
+
+  it('① 正對照:step if: true → 過(READY)', () => {
+    const f = adoptedWithStepMod((s) => s.replace('        run: npm run check:adoption\n', '        if: true\n        run: npm run check:adoption\n'));
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(0);
+  });
+
+  it('① 正對照:step if: ${{ github.event_name == \'push\' }}(conditional expression、非 literal false)→ 過', () => {
+    const f = adoptedWithStepMod((s) => s.replace('        run: npm run check:adoption\n', "        if: ${{ github.event_name == 'push' }}\n        run: npm run check:adoption\n"));
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(0);
+  });
+
+  it('① 正對照:step continue-on-error: false → 過', () => {
+    const f = adoptedWithStepMod((s) => s.replace('        run: npm run check:adoption\n', '        continue-on-error: false\n        run: npm run check:adoption\n'));
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(0);
+  });
+
+  it('① 正對照:相鄰 step 有 continue-on-error: true 不污染 target(structural sibling isolation)', () => {
+    const f = adoptedFiles();
+    // 相鄰 step「Source-term scan」加 continue-on-error: true;target「Adoption Readiness Check」保持預設
+    f['.github/workflows/ci.yml'] = f['.github/workflows/ci.yml']!.replace(
+      '      - name: Source-term scan\n',
+      '      - name: Source-term scan\n        continue-on-error: true\n'
+    );
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(0);
+  });
+
+  it('① 正對照:same-step comment(- name: 後、run: 前、direct key indent)含字面 if: false 不誤傷', () => {
+    // Comment 放 same mapping indent(itemIndent + 2)、屬 target step window、regex 錨定 + `^\\s*#` filter 應 skip
+    const f = adoptedWithStepMod((s) => s.replace('      - name: Adoption Readiness Check\n', '      - name: Adoption Readiness Check\n        # 舊寫法是 if: false;新版拿掉\n'));
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(0);
+  });
+
+  it('① 正對照:nested env 含字面 continue-on-error: true 不誤傷(indent 較深、非 direct key)', () => {
+    const f = adoptedWithStepMod((s) => s.replace('        run: npm run check:adoption\n', '        run: npm run check:adoption\n        env:\n          continue-on-error: "true"\n'));
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(0);
+  });
+
+  it('① 正對照:env 內 nested block scalar 含 if: false 字面不誤傷(env value 縮排較深、非 direct key)', () => {
+    const f = adoptedWithStepMod((s) => s.replace('        run: npm run check:adoption\n', '        run: npm run check:adoption\n        env:\n          NOTE: |\n            legacy: if: false\n'));
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(0);
+  });
+
+  it('① 正對照:nested with 含字面 continue-on-error: true 不誤傷(indent 較深、非 direct key)', () => {
+    // 改造:target step 保留 direct run、另加 nested with mapping(with 內含 continue-on-error 字面)
+    const f = adoptedWithStepMod((s) => s.replace('        run: npm run check:adoption\n', '        run: npm run check:adoption\n        with:\n          continue-on-error: "true"\n'));
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(0);
+  });
+
+  it('① 正對照(explicit direct-key baseline):真 direct run(itemIndent+2 = 8 spaces)過 shape check(sanity control)', () => {
+    // 與 E-self / adopted 完整 fixture 重疊、明列以確保 direct-key check 不誤傷 baseline
+    const f = adoptedFiles();
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(0);
+  });
+
+  it('① 負對照(Sprint 15 Step 4 P1 修、mutation-sensitive):real target 刪、另一 step 用 run: | scalar 內含 exact `run: npm run check:adoption` 字面 → exit 2 + A7', () => {
+    // Scalar content line 本身 trim 後 exactly === CI_ADOPTION_LINE(無 comment prefix)、否則 pre-fix filter 也命中 0
+    // 真 Adoption Readiness Check step 完全移除;另一 step (Source-term scan) 改用 run: |,scalar 內含 exact 字面
+    // Scalar 內容行縮排 10 spaces、非 direct key(itemIndent 6 + 2 = 8),direct-key check 應 skip 該行、validCount=0、A7 fail
+    // 反向探針(手動 evidence):暫時 revert 65a3b0d 的 checkCiRunsAdoption(移除 direct-key guard、只 l.trim() === CI_ADOPTION_LINE)
+    // → 本 test 轉紅(舊程式 filter 命中 scalar 內容行、validCount=1、A7 pass、exit 0 = false-green);restore c249b5c → 全綠(exit 2 + A7)
+    const f = adoptedFiles();
+    let yml = f['.github/workflows/ci.yml']!;
+    // 刪真 target step
+    yml = yml.replace('      - name: Adoption Readiness Check\n        run: npm run check:adoption\n', '');
+    // 改造 Source-term scan 為 run: | + scalar 內含 CI_ADOPTION_LINE exact 字面(無 comment prefix)
+    yml = yml.replace(
+      '        run: npm run check:no-source-terms\n',
+      '        run: |\n          npm run check:no-source-terms\n          run: npm run check:adoption\n'
+    );
+    f['.github/workflows/ci.yml'] = yml;
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(2);
+    expect(r.out).toContain('[fail] A7:');
+  });
+
+  // Sprint 15 Step 5 F1 修:三個 canonical detector 加 trailing anchor(只允許 whitespace + optional YAML comment + EOL)
+  it('① 正對照(F1):step 加 if: false || <expr>(legit short-circuit conditional)不判 disabled', () => {
+    const f = adoptedWithStepMod((s) => s.replace('        run: npm run check:adoption\n', "        if: false || github.event_name == 'push'\n        run: npm run check:adoption\n"));
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(0);
+  });
+
+  it('① 正對照(F1):step 加 continue-on-error: true && false(legit short-circuit conditional)不判 non-blocking', () => {
+    const f = adoptedWithStepMod((s) => s.replace('        run: npm run check:adoption\n', '        continue-on-error: true && false\n        run: npm run check:adoption\n'));
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(0);
+  });
+
+  it('① 負對照(F1):step 加 if: false 附 trailing YAML comment 仍判 disabled(canonical + comment tail)', () => {
+    const f = adoptedWithStepMod((s) => s.replace('        run: npm run check:adoption\n', '        if: false  # legacy note、暫停\n        run: npm run check:adoption\n'));
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(2);
+    expect(r.out).toContain('[fail] A7:');
+  });
+
+  it('① 負對照(F1):step 加 continue-on-error: true 附 trailing YAML comment 仍判 non-blocking', () => {
+    const f = adoptedWithStepMod((s) => s.replace('        run: npm run check:adoption\n', '        continue-on-error: true  # legacy note\n        run: npm run check:adoption\n'));
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(2);
+    expect(r.out).toContain('[fail] A7:');
+  });
+
+  // ─────────────────────────── Sprint 15 ④ 4.5 bullet lexical normalized repo-relative concrete path
+  const adoptedWith45Bullet = (bullet: string) => {
+    const f = adoptedFiles();
+    f['CLAUDE.md'] = f['CLAUDE.md']!.replace(
+      '- `prisma/schema.prisma`\n- `.env.local`',
+      '- `prisma/schema.prisma`\n- `.env.local`\n- `' + bullet + '`'
+    );
+    return f;
+  };
+
+  const neg45Cases: Array<[string, string]> = [
+    ['bare .', '.'],
+    ['bare ..', '..'],
+    ['./existing-dir(非 canonical ./ prefix)', './scripts'],
+    ['../existing-parent(dot-dot segment)', '../scripts'],
+    ['a/../b(中間 dot-dot)', 'scripts/../scripts'],
+    ['a//existing-dir(中間 empty segment)', 'scripts//lib'],
+    ['/etc/passwd(absolute)', '/etc/passwd'],
+    ['backslash windows path', 'scripts\\lib'],
+  ];
+
+  for (const [label, bullet] of neg45Cases) {
+    it(`④ 負對照:4.5 bullet \`${label}\` → exit 2 點名 A2.4.5`, () => {
+      const f = adoptedWith45Bullet(bullet);
+      const r = run([`--root=${makeRepo(f)}`]);
+      expect(r.code, r.out + r.err).toBe(2);
+      expect(r.out).toContain('[fail] A2.4.5:');
+      expect(r.out).toContain('repo-relative concrete path');
+    });
+  }
+
+  it('④ 正對照:4.5 bullet tracked file / dir / .env* 全過', () => {
+    // adopted fixture 現有 2 bullet(prisma/schema.prisma tracked + .env.local .env*)已覆蓋 2 pos;加 scripts/ (existing dir)第 3 pos
+    const f = adoptedWith45Bullet('scripts');
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(0);
+  });
 });

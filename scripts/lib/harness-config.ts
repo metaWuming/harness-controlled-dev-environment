@@ -96,7 +96,11 @@ export function literalBranchNameViolation(name: unknown): string | null {
   if (name.includes('..')) return '不得含 `..`';
   if (name.includes('//')) return '不得含 `//`';
   if (name.endsWith('/')) return '不得以 `/` 結尾';
-  if (name.endsWith('.lock')) return '不得以 `.lock` 結尾';
+  // Sprint 15 ②:git branch-name 必要 component rules(pure、不 shell I/O)
+  // 檢核常見必要規則、非 git grammar 全套;現行 regex 已限字元集、隱式擋 control chars / ~ / ^ / : / ? / * / [ / whitespace
+  if (name.endsWith('.')) return '不得以 `.` 結尾(git 拒 trailing dot)';
+  if (name.split('/').some((c) => c.startsWith('.'))) return '任一 slash-separated component 不得以 `.` 開頭(git 拒)';
+  if (name.split('/').some((c) => c.endsWith('.lock'))) return '任一 slash-separated component 不得以 `.lock` 結尾(git 拒;取代舊 whole-string endsWith)';
   if (name.includes('@{')) return '不得含 `@{`';
   if (name === 'HEAD') return '不得是 `HEAD`';
   for (const pfx of ['refs/', 'heads/', 'remotes/', 'origin/']) {
