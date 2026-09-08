@@ -75,6 +75,29 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-09-08 ⑭ — **Repo remaining-backlog convergence audit + repo-done for current evidence / active backlog exhausted(ACTIONABLE=0、bookkeeping-only)**
+
+> **緣起 & scope**:Sprint 15 A2 collection 17/17 closed;Owner 2026-09-08 拍板 Sprint 16 = repo remaining-backlog convergence audit / repo-done decision(不做單條或單一 collection 修補 sprint)。硬收斂規則(supervisor):只 current frozen tree deterministic reproduce + behavior false-green/false-red / active operational contradiction / security-trust regression / required CI blocker 才 ACTIONABLE。frozen base `734719153c7eda63f4fc39f83bc33a3198595b46`(PR #81 live merge tip)。
+>
+> **改動**:2-3 檔 bookkeeping-only(worktree wt-sprint16-repo-convergence):`TODOS.md` 4 處(delivery-refs 集合加交付 PR #66 段 + A1.1 集合 header/內容 strikethrough + 交付段 + P3 D-② SIGTERM item 加 strikethrough + terminal marker + `## ✅ Repo-done for current evidence / active backlog exhausted(Sprint 16)` 章節含 External evidence watchlist 子段);`progress.md` 加 Sprint 14 ⑭ entry;archive Sprint ⑫ if doc-size 超標。Object acquisition:Sprint 14 r8 anchor + Sprint 15 local bundle pattern(local bundle from `/tmp/harness-s16-audit` + validate_and_promote);primary_status=0、fallback 未觸發、before/after origin OID = 2307a44 unchanged、shared main 233858f + CLAUDE.md M / stash / 19 total worktrees / remote 全 0 line 動。
+>
+> **審查**:plan review r1-r6(5 revisions、r6 APPROVE + GO Step 3);Explore audit(a4d628e2、151814 subagent tokens、409243 ms);Codex Step 4 commit-object bookkeeping-only(iterate 若需);Step 4.5 CSO_NOT_REQUIRED(Owner 明列);Step 4.6 無 UI;Step 5 adversarial 不派(0 code、Owner 明列除非 audit facts 有爭議);frozen full-range final review 待送。
+>
+> **驗證**:worktree wt-sprint16-repo-convergence 內 check:doc-size / check:doc-refs / check:bookkeeping HEAD / check:claims --base=7347191 / git diff --check 全綠。
+>
+> **⭐ 教訓 + 決策 & repo-done**:①**Repo-done for current evidence / active backlog exhausted**:6 collections + 1 standalone P3 D-② record 全 terminal;raw ledger records 88 / unique canonical items 87(S5↔P3 dedupe 後、兩口徑均 terminal);ACTIONABLE=0;②**Sprint 16 引入 External evidence watchlist(非 active backlog)子段**:canonical P3 D-② SIGTERM 移出 active TODO 語意、只在 watchlist 引用 canonical 與唯一 reopen condition;避免 pending vs terminal 矛盾;③**A1.1 defer 集合 23/23 terminal breakdown**:4 CLOSED-AS-DELIVERED(S1-S4)+ 1 CLOSED-AS-DEDUPLICATED(S5 → canonical P3 D-②、沿用 Sprint 14 A3 ⑱ 模式)+ 5 WONTFIX(G-1 到 G-5)+ 13 INSUFFICIENT-EVIDENCE(non-enumerated、evidence 散失、與 A2 ⑰ 同形);④**只 P3 D-② watch item 明列唯一具名 reopen 條件 = P3 D-② SIGTERM 的新 Linux CI deterministic failing regression**;其他 INSUFFICIENT-EVIDENCE terminal items 不帶本 ledger 預留的 reopen 條件、未來新缺陷走一般 evidence intake、不泛稱 external event、不宣稱永不再開;⑤**Closure rule 承接 Sprint 13/14/15**:no new Sprint 17 backlog from self-review low-risk;INSUFFICIENT-EVIDENCE-KEEP-FROZEN 分類成 terminal standard(Sprint 15 引入、Sprint 16 沿用擴出 External evidence watchlist 語意);⑥**Delivery-refs 移除 sprint defer 集合**(2 條)Sprint 16 bookkeeping variance 補:DR-①+DR-② 全 CLOSED-AS-DELIVERED via commit `393ef53`(pull request 編號 66、MIGRATION 附錄 A.1 換交付線 runbook 7 步 + docs wording 修)、對齊 progress-archive:457 SSOT。
+>
+> **⏭️ 下一棒候選**(hint 非 truth):**無主動 sprint**;唯一具名觸發 = P3 D-② SIGTERM 的新 Linux CI deterministic failing regression 才 reopen Phase 1;不泛稱 external event。shared main 233858f + CLAUDE.md M 全程 lock、1 支 stash 保留、無 remote 動作。
+>
+> **check:claims 逐條處置**(base=`7347191`、Phase 2 時序 4 實測):待跑;預估 D9 anti-overclaim 全程守、bookkeeping wording 未新增絕對化宣稱。
+>
+> 📊 成本:CC ~3h(Phase 0 Explore audit + plan r1-r6 iterated + Step 3 atomic quarantine + Phase 2 bookkeeping)/ 跨模型 implementation review N rounds(plan 6 + Step 4 iterate;final review 依實際輪數、不回寫)/ Step 5 獨立發現 0(no code、no adversarial)。
+>
+> 📐 量測:主 session Opus 4.7 全程、Codex supervisor via Herdr pane w6:p4;baseline SHA `734719153c7eda63f4fc39f83bc33a3198595b46`;來源分佈(既有 backlog 全 terminal 分類):6 CLOSED-AS-DELIVERED(A1.1 spun-out S1-S4 + delivery-refs DR-① DR-②)、1 CLOSED-AS-DEDUPLICATED(A1.1 S5)、5 WONTFIX(A1.1 G-1..G-5)、2 INSUFFICIENT-EVIDENCE disposition groups(A1.1 non-enumerated 13 + canonical P3 D-② 1)。
+
+---
+
+
 📅 2026-09-08 ⑬ — **A2 defer 集合 17/17 terminal closure(gate correctness、3 code fixes + 1 docstring + INSUFFICIENT-EVIDENCE-KEEP-FROZEN 新分類、承接 Sprint 13/14 closure rule)**
 
 > **緣起 & scope**:Sprint 14 A3 collection closed;Owner 2026-09-08 拍板 Sprint 15 = A2 Step 5 defer 集合 17 條 extinction audit + collection convergence。subsystem = adoption-readiness READY correctness / input validity layer。Phase 0 audit 發現 ACTIONABLE = 3、跨 shape/grammar subsystem、STOP-AND-REPORT supervisor → 拍板選 B 收斂版:①②④ atomic bounded batch + ⑦ docstring + ⑰ INSUFFICIENT-EVIDENCE 新分類。frozen base `4877792998f46d179547b1436b1e53b9af2f2d7c`(PR #80 live merge tip);local origin/main 保持 stale 2307a44。
@@ -94,26 +117,3 @@ type: note
 > 📊 成本:CC ~6h(Phase 0 Explore + /tmp re-audit + plan r1-r5 iterated + Step 3 atomic quarantine + Phase 1 3 behavior fixes(①②④)+ 1 docstring(⑦)+ Step 4 commit-object 3 verdicts + Step 4.5 CSO 評估 + Step 5 adversarial 2 round + supervisor classification + Phase 2 bookkeeping)/ 跨模型 implementation review 10 rounds(plan 5 + Step 4 commit-object 3 + Step 5 adversarial 2)/ Step 5 獨立發現 9(supervisor 分類 3 FIX + 6 KEEP)。
 >
 > 📐 量測:主 session Opus 4.7 全程、Codex supervisor via Herdr pane w6:p4;baseline SHA `4877792998f46d179547b1436b1e53b9af2f2d7c`;來源分佈(既有 3 ACTIONABLE + 6 delivered pre-Sprint 15 + 7 KEEP + 1 INSUFFICIENT-EVIDENCE = 17):既有 ACTIONABLE = ①(shape checker false-green)+ ②(grammar vs git 契約)+ ④(shape check 空洞 semantic);既有 delivered = ⑪-⑯ PR #44;既有 KEEP = ③⑤⑥⑦⑧⑨⑩;INSUFFICIENT-EVIDENCE = ⑰(r1 defer 文字散失、原始 review artifact 未進 tracked)。
-
----
-
-
-📅 2026-09-07 ⑫ — **A3 remaining-8 extinction audit + collection closure(bookkeeping-only、21/21 terminal)**
-
-> **緣起 & scope**:Sprint 13 wording chain closure 完工;Owner 2026-09-07 拍板 Sprint 14 = A3 remaining-8 extinction audit、目標關閉 A3 collection(21/21 全 terminal disposition)。8 條 target ④/⑤/⑯/⑰/⑱/⑲/⑳/㉑;frozen base `a671ab170f32789dbedecca65137fec1d8733fda`(GitHub live main、Sprint 13 pull request 編號 79 squash);local origin/main 保持 stale 2307a44(Owner 明列)。Phase 1 code = none(bookkeeping-only)。
->
-> **改動**:3 檔 bookkeeping-only(worktree wt-sprint14-a3-extinction):`progress.md` 加 Sprint 14 ⑫ entry;`TODOS.md` 8 條 strikethrough + disposition markers + A3 集合 header 更新 21/21 closed + Sprint 14 交付段;`progress-archive/progress-2026-09.md` archive Sprint ⑩ block(doc-size 補救、Sprint 12 pattern;含 archive-move relative link fix)。**Object acquisition**:atomic quarantine(pre-fetch guard + candidate refs/temp/sprint14-candidate + `validate_and_promote` 函式 + inline auto fallback via /tmp audit clone bundle + shell control-flow guards);primary_status=0、無 fallback 觸發、origin/main 保持 stale(無 fetch 副作用)。
->
-> **審查**:Explore r1 audit 讀 233858f stale tree(supervisor 明列 stale evidence provenance 撤)→ `/tmp/harness-s14-audit` clean clone re-audit at a671ab;Codex plan r1-r8 iterated:7 次 revision、r8 APPROVE(evidence provenance + cardinality 21 vs 20 + ⑱ CLOSED-AS-DEDUPLICATED new category + object acquisition atomic quarantine 多輪 shell control-flow tightening);Step 4.5 CSO_NOT_REQUIRED;Step 4.6 無 UI;Step 5 adversarial 不派(0 code、closure rule 承接 Sprint 13、supervisor 明列)。
->
-> **驗證**:worktree wt-sprint14-a3-extinction 內 check:doc-size / check:bookkeeping HEAD / check:doc-refs / check:claims --base=a671ab 全綠;Object acquisition assertions 全 PASS(before/after origin OID = 2307a44 unchanged、candidate = a671ab frozen、worktree HEAD = a671ab、每 mutation `||` guard 通過);runtime / catalog / schema / workflow 全 zero-diff、禁區守住。
->
-> **⭐ 教訓 + 決策 & closure rule**:①**A3 collection extinction 21/21 terminal**(11 delivered + 2 WONTFIX ⑥⑪ + Sprint 14 4 CLOSED-AS-DELIVERED ⑤⑯⑳㉑ + 1 CLOSED-AS-DEDUPLICATED ⑱ + 3 WONTFIX ④⑰⑲)、collection closed;②新 terminal category **CLOSED-AS-DEDUPLICATED**(⑱ = A3 duplicate/cross-reference marker、canonical D-② SIGTERM race remains pending in P3、no repair/delivery claim、避免 backlog re-creation);③**Object acquisition atomic quarantine**(supervisor r1-r8 iterate 7 次 revision):pre-fetch guard + candidate slot + validate_and_promote reusable function + inline auto fallback + failure-path ordering(origin/main drift first)+ mutation `||` guards + fallback status refresh + shell control-flow guard;④**Evidence provenance 必用 /tmp clean clone at frozen**(不依賴 shared repo tree、避免 CodeGraph stale bias、supervisor 明列 r1 → r2 P1);⑤**Closure rule 承接 Sprint 13**:no new Sprint 15 from low-risk wording findings。
->
-> **⏭️ 下一棒候選**(hint 非 truth、起手 git 核實):A3 已 closed;Sprint 15+:A2 defer 集合(17 條 conf ≤ 6、部分已在 A3 catalog 交付)/ P2 / P3 defer 剩餘 backlog(P3 D-② SIGTERM race canonical remains pending);卡外部:無;shared main 233858f + CLAUDE.md M 全程 lock、1 支 stash 保留、無 remote 動作。
->
-> **check:claims 逐條處置**(base=`a671ab`、Phase 2 時序 4 實測):本 sprint diff 全 bookkeeping;D9 anti-overclaim 全程守;實測 60 added lines / 0 hits。
->
-> 📊 成本:CC ~3h(Phase 0 Explore + /tmp re-audit + plan r1-r8 iterated + Step 3 atomic quarantine + Phase 2 bookkeeping)/ 跨模型 review plan r1-r8 = 7 次 revision + r8 APPROVE / Step 5 獨立發現 0(no code、no adversarial round)。
->
-> 📐 量測:主 session Opus 4.7 全程、Codex supervisor via Herdr pane w6:p4;baseline SHA `a671ab170f32789dbedecca65137fec1d8733fda`;來源分佈(既有/KEEP 8・漏改 consumer 0・baseline 後引入 0):既有 = A3 remaining-8 全 documentation/schema-cosmetic/delivered-status/cross-reference marker、all terminal by evidence-verified disposition。
