@@ -20,6 +20,18 @@
 //   npx tsx scripts/check-adoption-readiness.ts              # 對 repo root
 //   npx tsx scripts/check-adoption-readiness.ts --root=<dir>  # 對指定 root(e2e fixture 用)
 //
+// --root=<dir> 明列契約:
+//   * 現行 shipped invocations 未提供 --root:
+//     - .github/workflows/ci.yml `npm run check:adoption`
+//     - package.json:scripts.check:adoption 預設 invocation
+//     以上 fallback 到 `git rev-parse --show-toplevel`(trusted、repo checkout)
+//   * CLI 本身接受 --root=<dir>;呼叫者(含 `npm run check:adoption -- --root=<dir>` 透傳)
+//     MUST 只傳 trusted directory — 會 dynamic import 該 root 的
+//     `scripts/cso-trigger.config.ts`(等同執行對方任意 code)
+//   * e2e test 用 mkdtemp tmpdir fixture(trusted)
+//   * 未來 user-facing wrapper 若接外部 root(如 CLI runbook 讀 user input)
+//     需先重拍 trust design(root 白名單、或改 static parse、禁 dynamic import untrusted TS)
+//
 // 每條檢查 = 一個 export 的純函式(注入 I/O),dispatch 表 TEMPLATE_CHECKS / ADOPTED_CHECKS
 // 也是 export 的純資料 —— 讓 e2e 與 mutation 探針有明確攻擊點。
 //
@@ -217,6 +229,10 @@ export function checkPart4Content(cfg: HarnessConfig, io: CheckerIo): Finding[] 
           }
           for (const t of toks) {
             const bare = t.replace(/\/$/, '');
+            if (!isRepoRelativeConcretePath(bare)) {
+              out.push(fail('A2.4.5', `### 4.5 的 \`${t}\` 需為 repo-relative concrete path(不含 . / .. segments、絕對路徑、非 canonical \`./\` prefix、中間 empty segment、backslash)`));
+              continue;
+            }
             const ok =
               tracked.has(bare) ||
               io.isDir(bare) ||
@@ -274,12 +290,99 @@ export function checkCsoDomainDisposition(
   return out;
 }
 
+/**
+ * 4.5 bullet lexical normalized repo-relative concrete path 檢查(Sprint 15 ④ 修)。
+ * 拒絕:absolute / dot / dot-dot segments / 非 canonical `./` prefix / 中間 empty / backslash / empty string。
+ * caller 應先去單一 trailing slash(directory notation);split 後末尾不再是 empty。
+ * 不做 symlink / canonical filesystem resolution(out of scope)。
+ */
+export function isRepoRelativeConcretePath(s: string): boolean {
+  if (s === '') return false;
+  if (s.startsWith('/')) return false;
+  if (s.includes('\\')) return false;
+  if (s.startsWith('./')) return false;
+  const segs = s.split('/');
+  for (const seg of segs) {
+    if (seg === '.' || seg === '..' || seg === '') return false;
+  }
+  return true;
+}
+
+/**
+ * ① checkCiRunsAdoption step envelope shape check(Sprint 15 ① 修)。
+ * 判定 CI_ADOPTION_LINE 所屬 step 是否被 disabled(if: false / if: ${{ false }}) 或 non-blocking (continue-on-error: true)。
+ * Structural rule(無 key 名稱白名單):
+ *   itemIndent = 由 target run 往上找最近一個 indent 小於 run-key indent 的 sequence item(`^\s*- `)。
+ *   window 起點 = 該 sequence item 起始 dash 行。
+ *   window 終點 = 往下第一個非空非註解 line 且(indent < itemIndent 離開 steps block 或 indent = itemIndent 且為下一 sequence item)。
+ * Direct-key regex:從行首錨定 run-key exact spaces、只匹配 direct mapping key;註解與更深縮排(env/with/scalar)自動 skip。
+ * 只驗 confirmed canonical shapes + whitespace variants;不擴 if:0 / no / quoted 未驗形狀。
+ */
+export function isStepDisabledOrNonBlocking(lines: readonly string[], runLineIdx: number, runKeyIndent: string): boolean {
+  // itemIndent:由 runLineIdx 往上找最近 indent < runKeyIndent.length 的 sequence item
+  let itemIndentLen = -1;
+  let itemStart = -1;
+  for (let i = runLineIdx; i >= 0; i--) {
+    const l = lines[i];
+    const m = /^(\s*)- /.exec(l);
+    if (m && m[1].length < runKeyIndent.length) {
+      itemIndentLen = m[1].length;
+      itemStart = i;
+      break;
+    }
+  }
+  if (itemIndentLen < 0 || itemStart < 0) return false; // 找不到 item start、保守回 false(不視為 disabled)
+  // window 終點:往下第一個非空非註解 line、且 indent < itemIndentLen 離開 steps block、或 indent === itemIndentLen 且為下一 sequence item
+  let itemEnd = lines.length;
+  for (let i = itemStart + 1; i < lines.length; i++) {
+    const l = lines[i];
+    if (l.trim() === '' || /^\s*#/.test(l)) continue; // 空行 / 註解 skip
+    const indentMatch = /^(\s*)/.exec(l);
+    const indentLen = indentMatch ? indentMatch[1].length : 0;
+    if (indentLen < itemIndentLen) { itemEnd = i; break; }
+    if (indentLen === itemIndentLen && /^\s*- /.test(l)) { itemEnd = i; break; }
+  }
+  // 在 window 內掃描 direct mapping key(indent === runKeyIndent.length + regex 從行首錨定 exact spaces)
+  const directPrefix = runKeyIndent;
+  const ifFalseRe = new RegExp('^' + directPrefix.replace(/\s/g, '\\s') + 'if:\\s*false\\b');
+  const ifExprFalseRe = new RegExp('^' + directPrefix.replace(/\s/g, '\\s') + 'if:\\s*\\$\\{\\{\\s*false\\s*\\}\\}');
+  const cotTrueRe = new RegExp('^' + directPrefix.replace(/\s/g, '\\s') + 'continue-on-error:\\s*true\\b');
+  for (let i = itemStart; i < itemEnd; i++) {
+    const l = lines[i];
+    if (/^\s*#/.test(l)) continue; // 註解 skip
+    if (ifFalseRe.test(l)) return true;
+    if (ifExprFalseRe.test(l)) return true;
+    if (cotTrueRe.test(l)) return true;
+  }
+  return false;
+}
+
 function checkCiRunsAdoption(id: string): Check {
   return (_cfg, io) => {
     const yml = io.readText(CI_YML);
     if (yml === null) return [fail(id, `${CI_YML} 讀不到`)];
-    const n = yml.split('\n').filter((l) => l.trim() === CI_ADOPTION_LINE).length;
-    return n === 1 ? [] : [fail(id, `${CI_YML} 需要恰 1 行 \`${CI_ADOPTION_LINE}\`(找到 ${n})`)];
+    const lines = yml.split('\n');
+    // Filter 命中 line + check step envelope(Sprint 15 ①):disabled(if: false / expression false)或 non-blocking(continue-on-error: true)不算 valid
+    let validCount = 0;
+    let disabledCount = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      if (l.trim() !== CI_ADOPTION_LINE) continue;
+      // 取 run-key indent(leading spaces of the matched line、不含 tab 假設 GitHub Actions 慣用 space)
+      const indentMatch = /^(\s*)/.exec(l);
+      const runKeyIndent = indentMatch ? indentMatch[1] : '';
+      if (isStepDisabledOrNonBlocking(lines, i, runKeyIndent)) {
+        disabledCount++;
+      } else {
+        validCount++;
+      }
+    }
+    if (validCount === 1) return [];
+    const total = validCount + disabledCount;
+    if (disabledCount > 0) {
+      return [fail(id, `${CI_YML} 需要恰 1 行 valid \`${CI_ADOPTION_LINE}\`;找到 total=${total}(valid=${validCount}、其中 ${disabledCount} 被判 adoption gate disabled 或 non-blocking:if: false / if: ${'$'}{{ false }} / continue-on-error: true)`)];
+    }
+    return [fail(id, `${CI_YML} 需要恰 1 行 \`${CI_ADOPTION_LINE}\`(找到 ${total})`)];
   };
 }
 
