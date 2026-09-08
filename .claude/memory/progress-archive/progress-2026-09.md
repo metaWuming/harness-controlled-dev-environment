@@ -632,3 +632,25 @@ type: archive
 > 📊 成本:CC ~2h(Phase 0 + plan r1-r3 + Phase 1 + Step 4 r1-r2 delta + Step 5 adversarial + Phase 2 bookkeeping)/ 跨模型 review 6 rounds(plan r1-r3 = 3 + Step 4 r1-r2 delta = 2 + adversarial 1)/ P1 1 個(Step 4「的」字 delta)/ P2 0 / Step 5 獨立發現 4 個(F1-F4 全 KEEP/FROZEN by closure rule)。
 >
 > 📐 量測:主 session Opus 4.7 全程、Codex supervisor via Herdr pane w6:p4;baseline SHA `8c6d213152ee43f1bb59752f21d3a8616ff46d73`;來源分佈(既有/KEEP 4・漏改 consumer 0・baseline 後引入 1):既有 = F1/F2 catalog/runtime SSOT wording drift + fork PR 措辭差 pre-existing、F3/F4 MIGRATION.md GitFlow upgrade acceptance-evidence label 括號簡短版語意精度既有邊界(all KEEP/FROZEN);baseline 後 = Step 4 P1「的」字 delta。
+---
+
+
+📅 2026-09-07 ⑫ — **A3 remaining-8 extinction audit + collection closure(bookkeeping-only、21/21 terminal)**
+
+> **緣起 & scope**:Sprint 13 wording chain closure 完工;Owner 2026-09-07 拍板 Sprint 14 = A3 remaining-8 extinction audit、目標關閉 A3 collection(21/21 全 terminal disposition)。8 條 target ④/⑤/⑯/⑰/⑱/⑲/⑳/㉑;frozen base `a671ab170f32789dbedecca65137fec1d8733fda`(GitHub live main、Sprint 13 pull request 編號 79 squash);local origin/main 保持 stale 2307a44(Owner 明列)。Phase 1 code = none(bookkeeping-only)。
+>
+> **改動**:3 檔 bookkeeping-only(worktree wt-sprint14-a3-extinction):`progress.md` 加 Sprint 14 ⑫ entry;`TODOS.md` 8 條 strikethrough + disposition markers + A3 集合 header 更新 21/21 closed + Sprint 14 交付段;`progress-archive/progress-2026-09.md` archive Sprint ⑩ block(doc-size 補救、Sprint 12 pattern;含 archive-move relative link fix)。**Object acquisition**:atomic quarantine(pre-fetch guard + candidate refs/temp/sprint14-candidate + `validate_and_promote` 函式 + inline auto fallback via /tmp audit clone bundle + shell control-flow guards);primary_status=0、無 fallback 觸發、origin/main 保持 stale(無 fetch 副作用)。
+>
+> **審查**:Explore r1 audit 讀 233858f stale tree(supervisor 明列 stale evidence provenance 撤)→ `/tmp/harness-s14-audit` clean clone re-audit at a671ab;Codex plan r1-r8 iterated:7 次 revision、r8 APPROVE(evidence provenance + cardinality 21 vs 20 + ⑱ CLOSED-AS-DEDUPLICATED new category + object acquisition atomic quarantine 多輪 shell control-flow tightening);Step 4.5 CSO_NOT_REQUIRED;Step 4.6 無 UI;Step 5 adversarial 不派(0 code、closure rule 承接 Sprint 13、supervisor 明列)。
+>
+> **驗證**:worktree wt-sprint14-a3-extinction 內 check:doc-size / check:bookkeeping HEAD / check:doc-refs / check:claims --base=a671ab 全綠;Object acquisition assertions 全 PASS(before/after origin OID = 2307a44 unchanged、candidate = a671ab frozen、worktree HEAD = a671ab、每 mutation `||` guard 通過);runtime / catalog / schema / workflow 全 zero-diff、禁區守住。
+>
+> **⭐ 教訓 + 決策 & closure rule**:①**A3 collection extinction 21/21 terminal**(11 delivered + 2 WONTFIX ⑥⑪ + Sprint 14 4 CLOSED-AS-DELIVERED ⑤⑯⑳㉑ + 1 CLOSED-AS-DEDUPLICATED ⑱ + 3 WONTFIX ④⑰⑲)、collection closed;②新 terminal category **CLOSED-AS-DEDUPLICATED**(⑱ = A3 duplicate/cross-reference marker、canonical D-② SIGTERM race remains pending in P3、no repair/delivery claim、避免 backlog re-creation);③**Object acquisition atomic quarantine**(supervisor r1-r8 iterate 7 次 revision):pre-fetch guard + candidate slot + validate_and_promote reusable function + inline auto fallback + failure-path ordering(origin/main drift first)+ mutation `||` guards + fallback status refresh + shell control-flow guard;④**Evidence provenance 必用 /tmp clean clone at frozen**(不依賴 shared repo tree、避免 CodeGraph stale bias、supervisor 明列 r1 → r2 P1);⑤**Closure rule 承接 Sprint 13**:no new Sprint 15 from low-risk wording findings。
+>
+> **⏭️ 下一棒候選**(hint 非 truth、起手 git 核實):A3 已 closed;Sprint 15+:A2 defer 集合(17 條 conf ≤ 6、部分已在 A3 catalog 交付)/ P2 / P3 defer 剩餘 backlog(P3 D-② SIGTERM race canonical remains pending);卡外部:無;shared main 233858f + CLAUDE.md M 全程 lock、1 支 stash 保留、無 remote 動作。
+>
+> **check:claims 逐條處置**(base=`a671ab`、Phase 2 時序 4 實測):本 sprint diff 全 bookkeeping;D9 anti-overclaim 全程守;實測 60 added lines / 0 hits。
+>
+> 📊 成本:CC ~3h(Phase 0 Explore + /tmp re-audit + plan r1-r8 iterated + Step 3 atomic quarantine + Phase 2 bookkeeping)/ 跨模型 review plan r1-r8 = 7 次 revision + r8 APPROVE / Step 5 獨立發現 0(no code、no adversarial round)。
+>
+> 📐 量測:主 session Opus 4.7 全程、Codex supervisor via Herdr pane w6:p4;baseline SHA `a671ab170f32789dbedecca65137fec1d8733fda`;來源分佈(既有/KEEP 8・漏改 consumer 0・baseline 後引入 0):既有 = A3 remaining-8 全 documentation/schema-cosmetic/delivered-status/cross-reference marker、all terminal by evidence-verified disposition。
