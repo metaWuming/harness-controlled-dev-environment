@@ -153,6 +153,48 @@ enforce_admins.enabled=true / required_pull_request_reviews)。要讓這條 gate
       會掃整個檔:出廠的 `PROJECT_DESTRUCTIVE_OK` / `PROJECT-PROD` 字面(含註解裡的)一個都不能留
 - [ ] 之後所有 wipe / cleanup 類腳本都 require 這個 guard
 
+### 5.1 declared allowlist + max-rows 宣稱(Sprint 20 C2)
+
+L1–L4 是 accident interlock(NODE_ENV / DATABASE_URL 含 prod / FLAG_ENV / --confirm token)。
+Sprint 20 C2 加 L5 + L6:
+
+- **L5 declared allowlist mismatch alarm**:DATABASE_URL 的 hostname(選:dbname)不在
+  adopter 宣告的 allowlist 就 abort
+- **L6 declared max-rows bound**:呼叫方要求時,`--apply` 必帶 `--max-rows=<N>` 且 N ≤ 上限
+
+⚠️ **誠實定位**:這是 declaration-level alarm、**不是** production security boundary。
+
+Catches:
+- DATABASE_URL 顯示的 hostname / dbname 打錯或誤連 → guard abort
+- `--max-rows` 忘記帶、非正整數、超上限 → guard abort
+
+Does NOT catch(明列限制):
+- DNS / CNAME rewrite(URL hostname 顯示 allowlist、實際連 prod)
+- Managed DB proxy identity spoof
+- adopter caller 的 SQL bug(誤刪錯 table、誤大 WHERE clause)
+- adopter caller 未 enforce 實際 affected count ≤ maxRows(guard 只驗 CLI flag、不查 DB 真實 affected count)
+
+真 runtime enforcement 需未來 sprint runtime seam(actual DB fingerprint / SQL 攔截)。
+
+**Runbook**:
+
+- [ ] 打開 `scripts/destructive-guard.config.ts`。出廠 `EXPECTED_TARGET_IDENTITY = null`、
+      L5 fail-closed(所有 destructive 腳本進 L5 都 abort、有意的預設)
+- [ ] 改成 adopter 的 allowlist,例:
+      ```ts
+      export const EXPECTED_TARGET_IDENTITY: ExpectedTargetIdentity = {
+        allowedHosts: ['localhost', 'staging.myshop.local'],
+        allowedDbNames: ['myshop_staging'],  // optional、省略即不驗 dbname
+      };
+      ```
+      hostname 比對前 guard 會 lowercase-normalize、adopter 填的大小寫不重要;dbname exact match
+- [ ] 想在特定腳本啟用 L6 上限:呼叫 `requireDestructiveConfirmation(scriptName, opts, expectedMaxRowsBound)`
+      第三參數傳你允許的最大 rows(例 `1000`);呼叫方之後跑 `myapp:wipe --apply
+      --max-rows=500`;guard 驗 CLI flag 不驗 DB 實查、caller 責任 enforce 實際 affected count
+- [ ] 不用 L6 上限就不傳第三參數,行為與 Sprint 20 前一致
+- [ ] 認清 threat model:L5 只擋宣稱層的 hostname/dbname 打錯,擋不到 DNS / CNAME rewrite、
+      managed proxy spoof、SQL bug 或 caller 未 enforce affected count
+
 ## 6. CI
 
 - [ ] `.github/workflows/ci.yml`:分支清單對齊你的策略;
