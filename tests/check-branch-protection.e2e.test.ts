@@ -121,7 +121,9 @@ describe('check-branch-protection e2e — CLI adapter wiring + fake gh + status 
   it('case 8:正對照 LF wiring → exit 0', () => {
     const r = run({ ghToken: 'x', githubRepository: 'ownerx/repox' });
     expect(r.code).toBe(0);
-    expect(r.stderr).toBe('');
+    // stderr 只驗無失敗 diagnostic;CI 首次跑 `npx tsx` 會印 npm-warn 為 non-fail 純資訊、不擋
+    expect(r.stderr).not.toMatch(/BRANCH_PROTECTION_CHECK\s+—\s+FAIL/);
+    expect(r.stderr).not.toMatch(/\[fail\]/);
   });
   it('case 8b:CRLF header normalization → exit 0', () => {
     const r = run({ fakeGhMode: 'ok-crlf', ghToken: 'x', githubRepository: 'ownerx/repox' });
