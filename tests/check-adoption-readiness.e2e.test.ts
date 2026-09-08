@@ -379,7 +379,7 @@ describe('check:adoption e2e', () => {
   });
 
   it('① 正對照:nested with 含字面 continue-on-error: true 不誤傷(indent 較深、非 direct key)', () => {
-    // 改造:target step 用 uses: + with: 而非 run:(仍保留 run: line 讓 filter 命中);with 內含 continue-on-error 字面
+    // 改造:target step 保留 direct run、另加 nested with mapping(with 內含 continue-on-error 字面)
     const f = adoptedWithStepMod((s) => s.replace('        run: npm run check:adoption\n', '        run: npm run check:adoption\n        with:\n          continue-on-error: "true"\n'));
     const r = run([`--root=${makeRepo(f)}`]);
     expect(r.code, r.out + r.err).toBe(0);
@@ -392,17 +392,20 @@ describe('check:adoption e2e', () => {
     expect(r.code, r.out + r.err).toBe(0);
   });
 
-  it('① 負對照(Sprint 15 Step 4 P1 修):real target 刪、另一 step 用 run: | scalar 內含精確字面 `run: npm run check:adoption` → exit 2 + A7', () => {
-    // 真 Adoption Readiness Check step 完全移除;另一 step (Source-term scan) 改用 run: |,scalar 內含精確字面
-    // scalar 內容縮排 10 spaces、非 direct key(itemIndent 6 + 2 = 8),direct-key check 應 skip 該行、validCount=0、A7 fail
+  it('① 負對照(Sprint 15 Step 4 P1 修、mutation-sensitive):real target 刪、另一 step 用 run: | scalar 內含 exact `run: npm run check:adoption` 字面 → exit 2 + A7', () => {
+    // Scalar content line 本身 trim 後 exactly === CI_ADOPTION_LINE(無 comment prefix)、否則 pre-fix filter 也命中 0
+    // 真 Adoption Readiness Check step 完全移除;另一 step (Source-term scan) 改用 run: |,scalar 內含 exact 字面
+    // Scalar 內容行縮排 10 spaces、非 direct key(itemIndent 6 + 2 = 8),direct-key check 應 skip 該行、validCount=0、A7 fail
+    // 反向探針(手動 evidence):暫時 revert 65a3b0d 的 checkCiRunsAdoption(移除 direct-key guard、只 l.trim() === CI_ADOPTION_LINE)
+    // → 本 test 轉紅(舊程式 filter 命中 scalar 內容行、validCount=1、A7 pass、exit 0 = false-green);restore c249b5c → 全綠(exit 2 + A7)
     const f = adoptedFiles();
     let yml = f['.github/workflows/ci.yml']!;
     // 刪真 target step
     yml = yml.replace('      - name: Adoption Readiness Check\n        run: npm run check:adoption\n', '');
-    // 改造 Source-term scan 為 run: | + scalar 內含 CI_ADOPTION_LINE 精確字面
+    // 改造 Source-term scan 為 run: | + scalar 內含 CI_ADOPTION_LINE exact 字面(無 comment prefix)
     yml = yml.replace(
       '        run: npm run check:no-source-terms\n',
-      '        run: |\n          npm run check:no-source-terms\n          # legacy note: run: npm run check:adoption\n'
+      '        run: |\n          npm run check:no-source-terms\n          run: npm run check:adoption\n'
     );
     f['.github/workflows/ci.yml'] = yml;
     const r = run([`--root=${makeRepo(f)}`]);
