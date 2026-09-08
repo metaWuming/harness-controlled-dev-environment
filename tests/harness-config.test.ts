@@ -3,6 +3,7 @@
 // 契約:顯式靜態宣告、fail-closed、無 fallback、無正規化。每條負對照對應
 // scripts/lib/harness-config.ts 檔頭列的一條規則;改壞 loader 任何一條都要有人紅。
 
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -274,7 +275,6 @@ describe('loadHarnessConfig — 檔案層', () => {
     }
 
     it('git check-ref-format 對照 regression:validator 與 git 判定一致(3 neg + 4 pos)', () => {
-      const { execFileSync } = require('node:child_process');
       const gitAccepts = (name: string): boolean => {
         try {
           execFileSync('git', ['check-ref-format', '--branch', name], { stdio: 'pipe' });
