@@ -79,9 +79,9 @@ type: note
 
 > **緣起 & scope**:Sprint 15 A2 collection 17/17 closed;Owner 2026-09-08 拍板 Sprint 16 = repo remaining-backlog convergence audit / repo-done decision(不做單條或單一 collection 修補 sprint)。硬收斂規則(supervisor):只 current frozen tree deterministic reproduce + behavior false-green/false-red / active operational contradiction / security-trust regression / required CI blocker 才 ACTIONABLE。frozen base `734719153c7eda63f4fc39f83bc33a3198595b46`(PR #81 live merge tip)。
 >
-> **改動**:2-3 檔 bookkeeping-only(worktree wt-sprint16-repo-convergence):`TODOS.md` 4 處(delivery-refs 集合加交付 PR #66 段 + A1.1 集合 header/內容 strikethrough + 交付段 + P3 D-② SIGTERM item 加 strikethrough + terminal marker + `## ✅ Repo-done for current evidence / active backlog exhausted(Sprint 16)` 章節含 External evidence watchlist 子段);`progress.md` 加 Sprint 14 ⑭ entry;archive Sprint ⑫ if doc-size 超標。Object acquisition:Sprint 14 r8 anchor + Sprint 15 local bundle pattern(local bundle from `/tmp/harness-s16-audit` + validate_and_promote);primary_status=0、fallback 未觸發、before/after origin OID = 2307a44 unchanged、shared main 233858f + CLAUDE.md M / stash / 19 total worktrees / remote 全 0 line 動。
+> **改動**:3 檔 bookkeeping-only(worktree wt-sprint16-repo-convergence、Sprint ⑫ 已 archive):`TODOS.md` 4 處(delivery-refs 集合加交付 PR #66 段 + A1.1 集合 header/內容 strikethrough + 交付段 + P3 D-② SIGTERM item 加 strikethrough + terminal marker + `## ✅ Repo-done for current evidence / active backlog exhausted(Sprint 16)` 章節含 External evidence watchlist 子段);`progress.md` 加 Sprint 16 ⑭ entry。Object acquisition:Sprint 14 r8 anchor + Sprint 15 local bundle pattern(local bundle from `/tmp/harness-s16-audit` + validate_and_promote);primary_status=0、fallback 未觸發、before/after origin OID = 2307a44 unchanged、shared main 233858f + CLAUDE.md M / stash / 19 個既有 worktrees 全保留、另有本 sprint worktree(cleanup 後回 19)/ remote 全 0 line 動。
 >
-> **審查**:plan review r1-r6(5 revisions、r6 APPROVE + GO Step 3);Explore audit(a4d628e2、151814 subagent tokens、409243 ms);Codex Step 4 commit-object bookkeeping-only(iterate 若需);Step 4.5 CSO_NOT_REQUIRED(Owner 明列);Step 4.6 無 UI;Step 5 adversarial 不派(0 code、Owner 明列除非 audit facts 有爭議);frozen full-range final review 待送。
+> **審查**:plan review r1-r6(5 revisions、r6 APPROVE + GO Step 3);Explore audit(a4d628e2、151814 subagent tokens、409243 ms);Codex Step 4 commit-object bookkeeping-only 依流程執行;Step 4.5 CSO_NOT_REQUIRED(Owner 明列);Step 4.6 無 UI;Step 5 adversarial 不派(0 code、Owner 明列除非 audit facts 有爭議);bookkeeping frozen full-range review 依流程執行。
 >
 > **驗證**:worktree wt-sprint16-repo-convergence 內 check:doc-size / check:doc-refs / check:bookkeeping HEAD / check:claims --base=7347191 / git diff --check 全綠。
 >
@@ -89,9 +89,9 @@ type: note
 >
 > **⏭️ 下一棒候選**(hint 非 truth):**無主動 sprint**;唯一具名觸發 = P3 D-② SIGTERM 的新 Linux CI deterministic failing regression 才 reopen Phase 1;不泛稱 external event。shared main 233858f + CLAUDE.md M 全程 lock、1 支 stash 保留、無 remote 動作。
 >
-> **check:claims 逐條處置**(base=`7347191`、實測):5 hits(**進 delta commit 拆出中性 disposition 記錄** — 見下段 Sprint 16 Step 6 delivery notes;5 hits 皆為 supervisor 明列拍板之具名 reopen 條件 = P3 D-② SIGTERM 的新 Linux CI deterministic failing regression、單一具名 canonical、SSOT 有指涉);D9 anti-overclaim 全程守。
+> **check:claims 逐條處置**(base=`7347191`、實測):72 added / 6 hits;分布 progress 2(:88 教訓 & repo-done 段 + :90 下一棒候選)+ TODOS 4(:161 watchlist reopen condition + :167 watchlist Sprint 17 具名觸發 + :175 P3 D-② marker + :177 P3 current disposition 補);皆 supervisor 明列拍板之具名 reopen 條件(P3 D-② SIGTERM 的新 Linux CI deterministic failing regression、單一具名 canonical、SSOT 有指涉)= **全 KEEP**;D9 anti-overclaim 全程守。
 >
-> 📊 成本:CC ~3h(Phase 0 Explore audit + plan r1-r6 iterated + Step 3 atomic quarantine + Phase 2 bookkeeping)/ 跨模型 implementation review N rounds(plan 6 + Step 4 iterate;final review 依實際輪數、不回寫)/ Step 5 獨立發現 0(no code、no adversarial)。
+> 📊 成本:CC ~3h(Phase 0 Explore audit + plan r1-r6 iterated + Step 3 atomic quarantine + Phase 2 bookkeeping)/ 跨模型 implementation review plan 6 rounds;bookkeeping frozen full-range review 依流程執行(escape hatch、不回寫尚未完成 verdict)/ Step 5 獨立發現 0(no code、no adversarial)。
 >
 > 📐 量測:主 session Opus 4.7 全程、Codex supervisor via Herdr pane w6:p4;baseline SHA `734719153c7eda63f4fc39f83bc33a3198595b46`;來源分佈(既有 backlog 全 terminal 分類):6 CLOSED-AS-DELIVERED(A1.1 spun-out S1-S4 + delivery-refs DR-① DR-②)、1 CLOSED-AS-DEDUPLICATED(A1.1 S5)、5 WONTFIX(A1.1 G-1..G-5)、2 INSUFFICIENT-EVIDENCE disposition groups(A1.1 non-enumerated 13 + canonical P3 D-② 1)。
 
