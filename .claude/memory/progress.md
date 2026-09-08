@@ -91,7 +91,7 @@ type: note
 >
 > **check:claims 逐條處置**(base=`4877792`、實測):396 added lines / 0 hits、無需處置;D9 anti-overclaim 全程守、code 修法 wording 未新增絕對化宣稱。
 >
-> 📊 成本:CC ~6h(Phase 0 Explore + /tmp re-audit + plan r1-r5 iterated + Step 3 atomic quarantine + Phase 1 3 behavior fixes(①②④)+ 1 docstring(⑦)+ Step 4 commit-object 3 verdicts + Step 4.5 CSO 評估 + Step 5 adversarial 2 round + supervisor classification + Phase 2 bookkeeping)/ 跨模型 review components:plan 5 + Step 4 commit-object 3 + Step 5 adversarial 2 + frozen final review 3(若下輪 APPROVE)= 13/ Step 5 獨立發現 9(supervisor 分類 3 FIX + 6 KEEP)。
+> 📊 成本:CC ~6h(Phase 0 Explore + /tmp re-audit + plan r1-r5 iterated + Step 3 atomic quarantine + Phase 1 3 behavior fixes(①②④)+ 1 docstring(⑦)+ Step 4 commit-object 3 verdicts + Step 4.5 CSO 評估 + Step 5 adversarial 2 round + supervisor classification + Phase 2 bookkeeping)/ 跨模型 implementation review 10 rounds(plan 5 + Step 4 commit-object 3 + Step 5 adversarial 2)/ Step 5 獨立發現 9(supervisor 分類 3 FIX + 6 KEEP)。
 >
 > 📐 量測:主 session Opus 4.7 全程、Codex supervisor via Herdr pane w6:p4;baseline SHA `4877792998f46d179547b1436b1e53b9af2f2d7c`;來源分佈(既有 3 ACTIONABLE + 6 delivered pre-Sprint 15 + 7 KEEP + 1 INSUFFICIENT-EVIDENCE = 17):既有 ACTIONABLE = ①(shape checker false-green)+ ②(grammar vs git 契約)+ ④(shape check 空洞 semantic);既有 delivered = ⑪-⑯ PR #44;既有 KEEP = ③⑤⑥⑦⑧⑨⑩;INSUFFICIENT-EVIDENCE = ⑰(r1 defer 文字散失、原始 review artifact 未進 tracked)。
 
