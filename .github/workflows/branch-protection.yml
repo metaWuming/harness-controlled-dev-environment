@@ -1,0 +1,38 @@
+# .github/workflows/branch-protection.yml — Sprint 19 C1 trusted workflow
+#
+# Trust boundary(承 plan r11 P1 深化修法):
+#   - Independent workflow file、絕不與 ci.yml 共 job
+#   - schedule-only trigger(絕不 pull_request / pull_request_target / push / workflow_dispatch、避 ref control 攻擊面)
+#   - Explicit checkout ref: main(絕不用 default ref 或 PR-controlled ref)
+#   - Secret BRANCH_PROTECTION_TOKEN 完全不 leak 至 PR CI
+#   - Fork PR / Dependabot PR / 同 repo PR 皆不觸發此 workflow
+
+name: Branch Protection Check
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # daily UTC 00:00
+
+permissions:
+  contents: read
+
+jobs:
+  branch-protection-check:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_TOKEN }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Branch Protection Check
+        run: npx tsx scripts/check-branch-protection.ts

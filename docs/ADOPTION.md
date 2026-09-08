@@ -69,6 +69,37 @@ type: guide
       `check:adoption` A6.codex.overlay-fill 會擋。precedence 契約在 `AGENTS.md`
       本身(`@CLAUDE.md` line 後、兩 H2 前),不必自己記
 
+## 2.6 Branch Protection 機器驗證 secret setup(Sprint 19 C1)
+
+若你的專案宣告了保護分支(`harness.config.json` `protectedBranches`),CI 每日會自動跑
+`.github/workflows/branch-protection.yml` 用 GitHub API 驗證這些分支的 branch protection
+設定符合 CTRL-GOV-005 的 A-D 契約(required_status_checks / contexts 非空 /
+enforce_admins.enabled=true / required_pull_request_reviews)。要讓這條 gate 生效、
+**必須設定 secret**(否則會 exit 2 fail-closed):
+
+- [ ] 到 https://github.com/settings/personal-access-tokens/new 建 **fine-grained PAT**
+- [ ] Resource owner:選目標 repo owner
+- [ ] Repository access:Only select repositories → 選目標 repo
+- [ ] Permissions → Repository permissions:
+      **Administration: Read** + **Contents: Read**(這兩個就夠、其他不要開)
+- [ ] Copy PAT token value
+- [ ] 目標 repo settings → Secrets and variables → Actions → New repository secret
+      name = `BRANCH_PROTECTION_TOKEN`、value = 剛才 copy 的 PAT
+- [ ] 確認 workflow 有跑:GitHub Actions tab 找 "Branch Protection Check" workflow、
+      看第一次 schedule run 或手動改 cron 觸發
+
+**Trust boundary(承 plan r11):**
+- 此 workflow 是**獨立 file**(不與 ci.yml 共 job)、**schedule-only** 觸發、絕不 pull_request
+- Secret `BRANCH_PROTECTION_TOKEN` **完全不 leak 至 PR CI**(secret 只在此 workflow 的 job 內、
+  ci.yml 完全不接觸此 secret)
+- **Fork PR / Dependabot PR / 同 repo PR 皆不觸發**此 workflow(schedule-only)、
+  secret 完全隔離、無 exfiltration risk
+- Fork PR 若被 GitHub 政策 blocked secret delivery → CLI 走 5a fail-closed exit 2、diagnostic
+  明列 fork context;這是 by-design、非 bug
+
+**想立刻驗新 protectedBranches**:改 harness.config.json 加分支 → merge → 等 daily schedule
+或臨時改 cron。**不要**用 workflow_dispatch(plan r10 明列 out-of-scope、避 ref control 攻擊面)。
+
 ## 3. 安全敏感域路徑表(Step 4.5 安全關的前置)
 
 - [ ] `scripts/cso-trigger.config.ts`:把你專案的安全敏感路徑填進五域

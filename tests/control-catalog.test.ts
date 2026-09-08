@@ -58,10 +58,14 @@ describe('committed catalog(scripts/control-catalog.json)', () => {
   it('可載入;ciSetupSteps 意圖集合釘住(改 JSON 要同步改這裡)', () => {
     expect(cat.ciSetupSteps).toEqual(['Checkout', 'Setup Node 22', 'Install dependencies', 'Fetch delivery refs (for TODOS Markers Check)']);
   });
-  it('每個 class 至少一條;ID 全部唯一;hard-automated 全部有 ciStep', () => {
+  it('每個 class 至少一條;ID 全部唯一;hard-automated 且 CI 觸發者(push/pull_request)有 ciStep、schedule 觸發者無 ciStep(Sprint 19 C1)', () => {
     for (const c of CONTROL_CLASSES) expect(cat.controls.some((x) => x.class === c), c).toBe(true);
     expect(new Set(cat.controls.map((c) => c.id)).size).toBe(cat.controls.length);
-    for (const c of cat.controls.filter((x) => x.class === 'hard-automated')) expect(c.ciStep, c.id).not.toBeNull();
+    for (const c of cat.controls.filter((x) => x.class === 'hard-automated')) {
+      const onCi = c.triggers.some((t) => t === 'push' || t === 'pull_request');
+      if (onCi) expect(c.ciStep, c.id).not.toBeNull();
+      else expect(c.ciStep, c.id).toBeNull(); // schedule / manual 觸發:承 loader「非 CI 觸發者不可有 ciStep」
+    }
   });
   it('I6:destructive guard 標為 soft-automated 且 notes 寫明 accident interlock', () => {
     const g = cat.controls.find((c) => c.id === 'CTRL-GUARD-001')!;
