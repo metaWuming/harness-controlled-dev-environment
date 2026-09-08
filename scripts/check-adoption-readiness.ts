@@ -349,9 +349,12 @@ export function isStepDisabledOrNonBlocking(lines: readonly string[], runLineIdx
   }
   // 在 window 內掃描 direct mapping key(indent === runKeyIndent.length + regex 從行首錨定 exact spaces)
   const directPrefix = runKeyIndent;
-  const ifFalseRe = new RegExp('^' + directPrefix.replace(/\s/g, '\\s') + 'if:\\s*false\\b');
-  const ifExprFalseRe = new RegExp('^' + directPrefix.replace(/\s/g, '\\s') + 'if:\\s*\\$\\{\\{\\s*false\\s*\\}\\}');
-  const cotTrueRe = new RegExp('^' + directPrefix.replace(/\s/g, '\\s') + 'continue-on-error:\\s*true\\b');
+  // Sprint 15 Step 5 F1 修:三個 canonical detector 加 trailing anchor(只允許 whitespace + optional YAML comment + EOL)
+  // 避免 `if: false || <expr>` / `continue-on-error: true && <expr>` 這種 legit conditional 被 prefix regex 誤判為 disabled/non-blocking
+  const tailAnchor = '\\s*(?:#.*)?$';
+  const ifFalseRe = new RegExp('^' + directPrefix.replace(/\s/g, '\\s') + 'if:\\s*false\\b' + tailAnchor);
+  const ifExprFalseRe = new RegExp('^' + directPrefix.replace(/\s/g, '\\s') + 'if:\\s*\\$\\{\\{\\s*false\\s*\\}\\}' + tailAnchor);
+  const cotTrueRe = new RegExp('^' + directPrefix.replace(/\s/g, '\\s') + 'continue-on-error:\\s*true\\b' + tailAnchor);
   for (let i = itemStart; i < itemEnd; i++) {
     const l = lines[i];
     if (/^\s*#/.test(l)) continue; // 註解 skip

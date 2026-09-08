@@ -348,7 +348,7 @@ describe('check:adoption e2e', () => {
     expect(r.code, r.out + r.err).toBe(0);
   });
 
-  it('① 正對照:相鄰 step 有 if: false 不污染 target(structural sibling isolation)', () => {
+  it('① 正對照:相鄰 step 有 continue-on-error: true 不污染 target(structural sibling isolation)', () => {
     const f = adoptedFiles();
     // 相鄰 step「Source-term scan」加 continue-on-error: true;target「Adoption Readiness Check」保持預設
     f['.github/workflows/ci.yml'] = f['.github/workflows/ci.yml']!.replace(
@@ -413,6 +413,33 @@ describe('check:adoption e2e', () => {
     expect(r.out).toContain('[fail] A7:');
   });
 
+  // Sprint 15 Step 5 F1 修:三個 canonical detector 加 trailing anchor(只允許 whitespace + optional YAML comment + EOL)
+  it('① 正對照(F1):step 加 if: false || <expr>(legit short-circuit conditional)不判 disabled', () => {
+    const f = adoptedWithStepMod((s) => s.replace('        run: npm run check:adoption\n', "        if: false || github.event_name == 'push'\n        run: npm run check:adoption\n"));
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(0);
+  });
+
+  it('① 正對照(F1):step 加 continue-on-error: true && false(legit short-circuit conditional)不判 non-blocking', () => {
+    const f = adoptedWithStepMod((s) => s.replace('        run: npm run check:adoption\n', '        continue-on-error: true && false\n        run: npm run check:adoption\n'));
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(0);
+  });
+
+  it('① 負對照(F1):step 加 if: false 附 trailing YAML comment 仍判 disabled(canonical + comment tail)', () => {
+    const f = adoptedWithStepMod((s) => s.replace('        run: npm run check:adoption\n', '        if: false  # legacy note、暫停\n        run: npm run check:adoption\n'));
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(2);
+    expect(r.out).toContain('[fail] A7:');
+  });
+
+  it('① 負對照(F1):step 加 continue-on-error: true 附 trailing YAML comment 仍判 non-blocking', () => {
+    const f = adoptedWithStepMod((s) => s.replace('        run: npm run check:adoption\n', '        continue-on-error: true  # legacy note\n        run: npm run check:adoption\n'));
+    const r = run([`--root=${makeRepo(f)}`]);
+    expect(r.code, r.out + r.err).toBe(2);
+    expect(r.out).toContain('[fail] A7:');
+  });
+
   // ─────────────────────────── Sprint 15 ④ 4.5 bullet lexical normalized repo-relative concrete path
   const adoptedWith45Bullet = (bullet: string) => {
     const f = adoptedFiles();
@@ -431,6 +458,7 @@ describe('check:adoption e2e', () => {
     ['a/../b(中間 dot-dot)', 'scripts/../scripts'],
     ['a//existing-dir(中間 empty segment)', 'scripts//lib'],
     ['/etc/passwd(absolute)', '/etc/passwd'],
+    ['backslash windows path', 'scripts\\lib'],
   ];
 
   for (const [label, bullet] of neg45Cases) {
