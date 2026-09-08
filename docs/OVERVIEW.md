@@ -188,14 +188,16 @@ CLAUDE.md 是 **canonical policy surface**：Part 1–3 的核心行為原則與
 
 v1 兩支 adapter（`scripts/lib/harness-config.ts` `KNOWN_ADAPTERS`）：
 
-| Adapter | Reference 檔 | 檢查合約（`scripts/check-adoption-readiness.ts` A6） |
+| Adapter | Reference 檔 | 檢查合約（`scripts/check-adoption-readiness.ts`） |
 |---|---|---|
 | `claude` | `CLAUDE.md`（canonical policy 本體） | A6.claude.file / link / sop / settings |
-| `codex` | `AGENTS.md`（thin adapter、獨立整行 `@CLAUDE.md` 匯入 canonical） | A6.codex.file / link |
+| `codex` | `AGENTS.md`（thin adapter、獨立整行 `@CLAUDE.md` 匯入 canonical） | A6.codex.file / link;A6.codex.overlay-fill / .parser（採用者 override 邊界）;T10（template shipped skeleton） |
 
 `AGENTS.md` 只寫「Codex 這一側必需、且無法由 canonical 繼承」的 minimal overlay；禁止複製 CLAUDE.md 規則（避免兩份 SSOT 漂移）。checker 對 A6.codex.link 的判定是「必須有恰為 `@CLAUDE.md` 這樣一整行的 import 語法」，散文提及不算。
 
 **採用者宣告**：`scripts/harness.config.json` `requiredAgentAdapters` 出廠為 `["claude", "codex"]`（對應模板同時交付 `CLAUDE.md` 與 `AGENTS.md`）。導入者依實際使用情況：兩個都用就保留、只用其中一個就改成 `["claude"]` 或 `["codex"]` 單宣告。runtime loader 只驗未知 adapter；不強制兩者並存。
+
+**Project-specific overlay override 邊界（Sprint 18 B2 引入）**：`AGENTS.md` 分成兩個 designated H2 section — `## Template-shared Codex defaults`（模板出貨、adopter 一般不動）與 `## Project-specific Codex overlay`（下游填、可留空或整段刪除）。**precedence 3 條 canonical 契約寫在 `AGENTS.md` 本身**（`@CLAUDE.md` line 後、兩 H2 前的 visible Markdown、single full contract anchor）。Template mode `check:adoption` T10 驗 shipped skeleton（heading / marker / body 除 marker/comment 外無 content）；adopted mode `check:adoption` A6.codex.overlay-fill 驗 designated section body 內無 `<!-- 填` 殘留、A6.codex.overlay.parser 驗 designated heading 不重複；section absent = explicit opt-out、pass。T10 與 A6.codex.overlay-* 皆 conditional on `codex` ∈ `requiredAgentAdapters`。
 
 ---
 
