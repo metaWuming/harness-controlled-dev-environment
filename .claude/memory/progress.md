@@ -91,7 +91,7 @@ type: note
 >
 > **check:claims 逐條處置**(base=`7347191`、實測):72 added / 6 hits;分布 progress 2(:88 教訓 & repo-done 段 + :90 下一棒候選)+ TODOS 4(:161 watchlist reopen condition + :167 watchlist Sprint 17 具名觸發 + :175 P3 D-② marker + :177 P3 current disposition 補);皆 supervisor 明列拍板之具名 reopen 條件(P3 D-② SIGTERM 的新 Linux CI deterministic failing regression、單一具名 canonical、SSOT 有指涉)= **全 KEEP**;D9 anti-overclaim 全程守。
 >
-> 📊 成本:CC ~3h(Phase 0 Explore audit + plan r1-r6 iterated + Step 3 atomic quarantine + Phase 2 bookkeeping)/ 跨模型 implementation review plan 6 rounds;bookkeeping frozen full-range review 依流程執行(escape hatch、不回寫尚未完成 verdict)/ Step 5 獨立發現 0(no code、no adversarial)。
+> 📊 成本:CC ~3h(Phase 0 Explore audit + plan r1-r6 iterated + Step 3 atomic quarantine + Phase 2 bookkeeping)/ 跨模型 plan review 6 rounds;bookkeeping frozen full-range review 依流程執行(escape hatch、不回寫尚未完成 verdict)/ Step 5 獨立發現 0(no code、no adversarial)。
 >
 > 📐 量測:主 session Opus 4.7 全程、Codex supervisor via Herdr pane w6:p4;baseline SHA `734719153c7eda63f4fc39f83bc33a3198595b46`;來源分佈(既有 backlog 全 terminal 分類):6 CLOSED-AS-DELIVERED(A1.1 spun-out S1-S4 + delivery-refs DR-① DR-②)、1 CLOSED-AS-DEDUPLICATED(A1.1 S5)、5 WONTFIX(A1.1 G-1..G-5)、2 INSUFFICIENT-EVIDENCE disposition groups(A1.1 non-enumerated 13 + canonical P3 D-② 1)。
 
