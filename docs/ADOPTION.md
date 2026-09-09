@@ -195,6 +195,45 @@ Does NOT catch(明列限制):
 - [ ] 認清 threat model:L5 只擋宣稱層的 hostname/dbname 打錯,擋不到 DNS / CNAME rewrite、
       managed proxy spoof、SQL bug 或 caller 未 enforce affected count
 
+### 5.2 Mutation Kill Smoke Check(Sprint 21 C3、CTRL-CI-016)
+
+CTRL-CI-013 只驗 mutation spec 的 `find` 樣本仍能對得上 source(**drift 守門**、不 apply mutation)。Sprint 21 C3 加獨立新 gate **CTRL-CI-016 Mutation Kill Smoke Check**:CI 對 pinned 6 條 smoke probe 真的 apply mutation via `mutate.ts` → 跑 pinned test → assert mutant killed。應 kill 但沒 kill → CI block(**accidental-regression signal**)。
+
+⚠️ **誠實邊界**(承 catalog CTRL-CI-016 notes + CI step comment、三處 SSOT):
+本 gate 是 **accidental-regression signal**、**不是** malicious-PR security boundary。
+
+**擋**:accidental mutation regression signal(dev 修 source 造成既有 mutation 不再被 kill、CI 抓)
+
+**不擋**(CI wiring PR-controllable):
+- Malicious PR 修 target test 讓 mutant 不 kill
+- Malicious PR 修 `scripts/mutation-smoke-manifest.json` / `scripts/run-mutation-smoke.ts` / CI step / package.json
+- Machine gate **不對抗** PR 修 wiring
+
+**唯一防線** = **required-check**(CTRL-GOV-005 branch protection + CTRL-CI-015 machine check)+ **protected-path human review**(scripts/ / tests/ / .github/workflows/ / mutation-smoke-manifest.json)。**非** CI machine gate 對抗 malicious PR。
+
+**運作機制**:
+- Runner `scripts/run-mutation-smoke.ts` 硬編碼 `SMOKE_PROBES` map:6 條 probe = { spec, index, expectedEntryFingerprint SHA-256, testSuite }
+- Fingerprint = SHA-256 of canonical JSON of `{file, find, replace, label}`(alphabetical key allowlist)
+- Manifest `scripts/mutation-smoke-manifest.json` 只列 probeIds(hard cardinality 6 + no duplicates + set-equality vs SMOKE_PROBES keys)
+- 7 步 algorithm:validate manifest → clean tree + startHEAD → verify entry fingerprints → pre-control → per-probe spawn mutate.ts(argv-safe、detached process group、SIGTERM 60s + SIGKILL 5s grace)→ post-control → verify tree + HEAD 不變
+- Exit code:0 = 全 killed / 1 = 任一 survived / 2 = indeterminate(schema / fingerprint / control / restore / timeout / infra)
+
+**Runbook**(adopter 無需動作、shipped 6 條 probe 對 template 自身 governance code 已生效):
+
+- [ ] 不需改任何 shipped 檔就可用;CI step 已配置 `timeout-minutes: 5`
+- [ ] 想加自己的 smoke probe:
+  1. 在 `scripts/run-mutation-smoke.ts` 的 `SMOKE_PROBES` map 加新 entry(spec + index + expectedEntryFingerprint + testSuite)
+  2. 用 `node -e "..."` 對 immutable spec entry 計算 canonical JSON SHA-256、pin 進 map
+  3. 在 `scripts/mutation-smoke-manifest.json` 的 `probeIds` 加對應 probeId(cardinality check 會擋、要同時改 SMOKE_PROBES 才過)
+  4. 加對應 unit test 驗 fingerprint verify pass
+- [ ] 認清 threat model:CI wiring PR-controllable、machine gate 不對抗 malicious PR
+
+### 5.3 三份 mutation evidence 分工(Sprint 21 引入)
+
+- **Drift**(CTRL-CI-013):CI 驗 spec find 樣本對 source(全 14 spec / 167 probes、不 apply)
+- **Kill Smoke**(CTRL-CI-016 = 本節):CI 對 pinned 6 條 smoke probe 真 apply mutation + assert killed
+- **Full manual**(Step 4.5):PR 高風險車道時、開發者對全 167 probes 手動跑 `mutate.ts`(HEAD-bound、完整 apply/test/restore/verify)
+
 ## 6. CI
 
 - [ ] `.github/workflows/ci.yml`:分支清單對齊你的策略;
