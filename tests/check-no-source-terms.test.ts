@@ -809,6 +809,96 @@ describe("check-no-source-terms — 端到端(真的跑 checker)", () => {
     expect(code).toBe(1);
   });
 
+  // ═════════════════════════════════════════════════════════════
+  // Word-boundary regression:shipped target-term pattern
+  // (target term = FRAG_ACTI = `"acti" + "va"`,見檔頭 L77)
+  //
+  // 緣起(第 4 次 Source-term scan wording 誤擋事件):shipped
+  // scripts/deny-terms.txt 內原純字面 target term 是產線公司名、無 word
+  // boundary、POSIX ERE grep -Ei 誤擋含該 substring 的 English 常用字
+  // (如「<term>tion」、「A<term>te」、「<term>tor」、「governance-<term>te」
+  // 等,「<term>」代 `"acti" + "va"`)。前 3 次事件是 self-PR # / Sprint 標號
+  // 誤擋、依教訓階梯第 3 次已在 check-no-source-terms 加 context-aware(CA)
+  // 判定;本次(第 4 次)不同 root cause,直接在 deny-terms.txt 對該 target
+  // term 加 word boundary、對齊既有 wu+ming pattern 慣例
+  // `(^|[^a-z])<wu+ming>`(角括號為 placeholder、wu+ming 為 fragmented
+  // 表示、避 test 檔 self-scan 撞 shipped wu+ming pattern)。
+  //
+  // 🔴 **testing contract**:regression 覆蓋 shipped denylist 的實際 pattern,
+  //    **必須讀 scripts/deny-terms.txt** 取當前 line、不 hard-code。若未來 shipped
+  //    誤改回無 boundary 或用其他弱化寫法、本測試立即抓紅(pin 邊界契約穩定)。
+  //
+  // 🔴 **avoid self-scan**:test source 內任何 `"act" + "iva"` 拼合成的 token
+  //    都會被 non-CA scan 抓到、造成 CI 假紅。所有本區出現處(comment / test
+  //    title / error string)用 fragmented reference,讓 source-term scan 掃
+  //    test 檔的字面 grep 不 match 完整 term。fixture data 沿用 marker
+  //    (= `"act" + "iva"` 拼合)concat。
+  // ═════════════════════════════════════════════════════════════
+
+  it("🔴 word-boundary regression:讀 shipped deny-terms.txt 的 target-term line、pin 為 word-boundary 契約", () => {
+    // Fragmented marker:test file 內任何完整 'act'+'iva' 拼合 token 都會撞 non-CA scan、
+    // 這裡刻意 concat 兩段、self-scan 找不到完整 token(這是本 test 專用 workaround、
+    // 對比 tests/check-todos-markers.test.ts 走 FULL_EXCLUDES 豁免)
+    const marker = "act" + "iva";
+    const expectedShippedLine = "(^|[^a-z])" + marker + "([^a-z]|$)";
+
+    // Read from shipped deny-terms.txt(non-negotiable:testing contract 就是 pin 這條)
+    const shippedPath = join(REPO_ROOT, "scripts", "deny-terms.txt");
+    const shippedLines = readFileSync(shippedPath, "utf-8")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0 && !l.startsWith("#"));
+    const shippedActivaLine = shippedLines.find((l) => l.includes(marker));
+
+    // Assert shipped 的 line 存在 + 精確等於 boundary contract。
+    // 若未來誤改回純字面(marker only)、或用 \b escape、或加其他形變,此 assert 立即紅。
+    expect(shippedActivaLine).toBeDefined();
+    expect(shippedActivaLine).toBe(expectedShippedLine);
+  });
+
+  it("🔴 word-boundary regression:讀 shipped line 跑 e2e、positive(公司名保護)+ negative(<term>tion 不誤擋)", () => {
+    const marker = "act" + "iva";
+    const shippedPath = join(REPO_ROOT, "scripts", "deny-terms.txt");
+    const shippedLines = readFileSync(shippedPath, "utf-8")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0 && !l.startsWith("#"));
+    const shippedActivaLine = shippedLines.find((l) => l.includes(marker));
+    if (!shippedActivaLine) throw new Error("shipped deny-terms.txt 找不到 target-term entry");
+
+    // Positive fixture:marker 作為 isolated token 出現(產線公司名保護不弱化)
+    // Fragmented data 也用 concat 避 self-scan
+    const positiveText = "customer of " + marker + " signed contract\n";
+
+    const posDir = makeRepo({
+      deny: [shippedActivaLine],
+      commits: [{ message: "feat: init (#1)", files: { "src/foo.md": "hello\n" } }],
+      workingTree: { "docs/note.md": positiveText },
+    });
+    const posResult = runChecker(posDir);
+    expect(posResult.out).toContain("含來源專案識別詞");
+    expect(posResult.code).toBe(1);
+
+    // Negative fixture:3 種 false-positive 情境(fragmented 避 self-scan):
+    //   (a) 動詞名詞化:{marker}tion  → e.g. "activation"
+    //   (b) 駝峰動詞:A{marker}te     → e.g. "Activate"
+    //   (c) hyphen 複合詞:sprint chore/governance-{marker}te-... → e.g. "governance-activate"
+    // 全 3 檔在 working tree、fix 生效則全 exit 0。
+    const negA = "Live governance " + marker + "tion deployed via gh api\n";
+    const negB = "the A" + marker + "te step in workflow\n";
+    const negC = "sprint chore/governance-" + marker + "te-20260909 finished\n";
+
+    const negDir = makeRepo({
+      deny: [shippedActivaLine],
+      commits: [{ message: "feat: init (#1)", files: { "src/foo.md": "hello\n" } }],
+      workingTree: { "docs/A.md": negA, "docs/B.md": negB, "docs/C.md": negC },
+    });
+    const negResult = runChecker(negDir);
+    // 若 hit「含來源專案識別詞」= regression、shipped 誤改回無 boundary
+    expect(negResult.out).not.toContain("含來源專案識別詞");
+    expect(negResult.code).toBe(0);
+  });
+
   it("🔴 round 1 P2-3 fix e2e:body 內 (井號+N) 引用不會被算入 allowedPrs", () => {
     // 建一個 commit 訊息 subject 沒 canonical squash marker、但 body 內寫
     // 括號尾綴 PR 號放在 commit body 而不是 subject;working tree 引用同一 PR

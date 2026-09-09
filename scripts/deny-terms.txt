@@ -5,7 +5,6 @@
 #
 # 【導入者注意】若你 fork 本模板後不需要這層防護,可刪除本檔 + CI 對應 step;
 # 若你也是從自家私有專案抽模板,把清單換成你家的識別詞。
-activa
 活性界面
 售票
 ecpay
@@ -18,6 +17,7 @@ OPENTIX
 TRADE-VAN
 tix\.
 (^|[^a-z])wuming
+(^|[^a-z])activa([^a-z]|$)
 take5 #[0-9]
 PR #[0-9]
 pull/[0-9]
