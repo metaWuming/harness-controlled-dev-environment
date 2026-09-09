@@ -73,14 +73,14 @@
   },
   {
     "file": "scripts/lib/destructive-guard.ts",
-    "find": "    const masked = dbUrl.replace(/(\\/\\/[^:/@]+:)[^@]+@/, '$1***@');",
-    "replace": "    const masked = dbUrl;",
-    "label": "P13 layer 2 password mask 移除(明文 leak)→ case 13 stderr 含 'secret' 轉紅"
+    "find": "    error(`   DB URL:${maskDbUrl(dbUrl)}`);",
+    "replace": "    error(`   DB URL:${dbUrl}`);",
+    "label": "P13 layer 2 password mask helper 移除(明文 leak)→ case 13 stderr 含 'secret' 轉紅"
   },
   {
     "file": "scripts/lib/destructive-guard.ts",
-    "find": "  } catch (e) {\n    // F4:e.message 可能含原始 DATABASE_URL(含 password)。與 layer 2 同套遮罩後再 echo,避免 leak\n    const detail = (e instanceof Error ? e.message : String(e)).replace(/(\\/\\/[^:/@]+:)[^@]+@/, '$1***@');\n    error(`❌ ${scriptName}:DATABASE_URL invalid URL",
-    "replace": "  } catch (e) {\n    // fail-open on invalid URL\n    return { isApply: false, maxRows: null };\n    const detail = (e instanceof Error ? e.message : String(e)).replace(/(\\/\\/[^:/@]+:)[^@]+@/, '$1***@');\n    error(`❌ ${scriptName}:DATABASE_URL invalid URL",
-    "label": "P14 invalid URL catch → silent return(fail-open on parse error)→ case 3e 轉紅"
+    "find": "  } catch {\n    // FIX-2 defense-in-depth:URL parse 失敗表示原輸入 malformed,e.message 及原輸入都\n    // 可能含 credential(現行 Node \"Invalid URL\" 不含 input,但未來版本可能改)。\n    // 不 echo 原輸入或 error message,直接印固定字串,pin case 3d/3e 的\n    // `toMatch(/invalid URL/)` 與 `not.toMatch(/secret/)` 合約。\n    error(`❌ ${scriptName}:DATABASE_URL invalid URL(內容已遮蔽,防 credential leak)`);\n    exitFn(1);\n    return { isApply: false, maxRows: null };\n  }",
+    "replace": "  } catch {\n    // fail-open on invalid URL\n    return { isApply: false, maxRows: null };\n  }",
+    "label": "P14 invalid URL catch → silent return(fail-open on parse error)→ case 3d/3e 轉紅"
   }
 ]

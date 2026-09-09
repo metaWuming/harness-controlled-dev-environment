@@ -44,6 +44,30 @@ import { EXPECTED_TARGET_IDENTITY, type ExpectedTargetIdentity } from '../destru
 const FLAG_ENV = 'PROJECT_DESTRUCTIVE_OK';
 const CONFIRM_TOKEN = 'PROJECT-PROD';
 
+/**
+ * FIX-2:將 DATABASE_URL 內的密碼安全遮罩,供 diagnostic stderr echo。
+ *
+ * **緣起**:原本用單一 regex `(\/\/[^:/@]+:)[^@]+@/` 對 password mask,對合法 URL
+ * (percent-encoded / colon-in-password)都能處理,但輸入含 raw `@` 時
+ * (e.g. `postgresql://user:secret@tail@prod-host/db`)regex `[^@]+` 只 match 到第一個
+ * `@`,`tail@prod-host` 的 `tail`(密碼真實尾段)仍會 leak 到 diagnostic。
+ *
+ * **修法**:改用 WHATWG URL parser。parser 對 raw `@` 的 spec 行為是把中間 `@`
+ * percent-encode 成 `%40` 併入 password field,遮 password 後 password 完全消失。
+ * URL parse 失敗時完全不 echo 原輸入(可能含 credential),回固定 fallback string。
+ *
+ * **語意**:保留 username 不遮(對齊既有 diagnostic 「user:***@host」慣例)。
+ */
+function maskDbUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.password) parsed.password = '***';
+    return parsed.toString();
+  } catch {
+    return '<unparseable URL — 完整內容已遮蔽,防 credential leak>';
+  }
+}
+
 export type DestructiveConfirmationResult = {
   isApply: boolean;
   /** Sprint 20 C2:layer 6 driven — 若 caller 傳 expectedMaxRowsBound、此為 CLI 帶入 --max-rows 值;
@@ -126,11 +150,9 @@ function _guardImpl(
   }
   if (/prod(uction)?/i.test(dbUrl)) {
     error(`❌ ${scriptName}:偵測到 DATABASE_URL 含 prod / production,abort`);
-    // mask password 段(cover password 含 colon 的 case,
-    // e.g. `postgresql://user:pa:ss@host/db` 若只用 `/:[^:@]+@/` 只 mask 最後 `:ss@`,
-    // 保留 `pa` 在 log 中 leak。改用「//user:」起頭到「@」前全部 mask)
-    const masked = dbUrl.replace(/(\/\/[^:/@]+:)[^@]+@/, '$1***@');
-    error(`   DB URL:${masked}`);
+    // FIX-2:用 WHATWG URL parser 遮 password(regex 對 raw `@` in password 會 leak
+    // 尾段,e.g. `secret@tail@prod-host` 只 mask 到第一個 `@`)
+    error(`   DB URL:${maskDbUrl(dbUrl)}`);
     exitFn(1);
     return { isApply: false, maxRows: null };
   }
@@ -186,10 +208,12 @@ function _guardImpl(
       return { isApply: false, maxRows: null };
     }
     target = { host: parsed.hostname, dbname };
-  } catch (e) {
-    // F4:e.message 可能含原始 DATABASE_URL(含 password)。與 layer 2 同套遮罩後再 echo,避免 leak
-    const detail = (e instanceof Error ? e.message : String(e)).replace(/(\/\/[^:/@]+:)[^@]+@/, '$1***@');
-    error(`❌ ${scriptName}:DATABASE_URL invalid URL — ${detail}`);
+  } catch {
+    // FIX-2 defense-in-depth:URL parse 失敗表示原輸入 malformed,e.message 及原輸入都
+    // 可能含 credential(現行 Node "Invalid URL" 不含 input,但未來版本可能改)。
+    // 不 echo 原輸入或 error message,直接印固定字串,pin case 3d/3e 的
+    // `toMatch(/invalid URL/)` 與 `not.toMatch(/secret/)` 合約。
+    error(`❌ ${scriptName}:DATABASE_URL invalid URL(內容已遮蔽,防 credential leak)`);
     exitFn(1);
     return { isApply: false, maxRows: null };
   }
