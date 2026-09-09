@@ -9,16 +9,23 @@
 //   - 本 gate 是 **accidental-regression signal**、非 **malicious-PR security boundary**
 //   - CI wiring(此檔 / manifest / test / workflow / package.json)都 PR-controllable
 //   - Machine gate **不對抗** PR wiring 修改
-//   - **三分層防線分析**(Step 4 Codex rerereview 校正、evidence-bounded、live remote probe 佐證):
-//     (1) **當前遠端 enforcement**:無 / 未部署 —— template mode
-//         `githubGovernanceRequired:false`、live probe main protected:false /
-//         rules=[] / rulesets=[]
-//     (2) **手動 SOP practices(非 GitHub-enforced、不能作 current protection 宣稱)**:
-//         (a) protected-path human review(scripts/ / tests/ / .github/workflows/ /
-//         mutation-smoke-manifest.json、SOP 紀律,非 GitHub protection rule)+
-//         (b) Owner 稽核 CTRL-GOV-005 / CTRL-CI-015 daily schedule drift
-//         (GitHub Actions tab manual review、非 active gate)
-//     (3) **per-PR A-D 契約 verification / malicious-PR defense**:需 PR-head verifier +
+//   - **durable evidence boundary**(Step 4 Codex 校正、live-probe-only、不由 config
+//     或某次 probe snapshot 靜態推論):
+//     (1) **遠端 enforcement 是 live GitHub state**:必須以 `gh api /repos/.../
+//         branches/main/protection` + `/rules/branches/main` + `/branches/main`
+//         的 live probe 現場確認;不能由 config 靜態推論、不能由某次 probe snapshot
+//         宣稱永久狀態(本 header 不宣稱目前已啟用或未部署)
+//     (2) **template config `githubGovernanceRequired:false`** 僅表示 adopter
+//         requirement default(本模板對下游 adopter 沒硬性要求):不能由此推論
+//         template repo 自身有或無 GitHub-side enforcement
+//     (3) **schedule A-D audit(CTRL-GOV-005 / CTRL-CI-015)**:僅在
+//         `BRANCH_PROTECTION_TOKEN` 已設 **且** schedule workflow 實際成功時才提供
+//         evidence;此 evidence **非** per-PR required check
+//     (4) **手動 SOP practices(不論 remote 部署與否都適用、本身非 GitHub-enforced)**:
+//         (a) protected-path human review(SOP 紀律,非 GitHub protection rule)+
+//         (b) Owner 稽核 GOV-005 / CI-015 daily schedule drift(Actions tab manual
+//         review、非 active gate)
+//     (5) **per-PR A-D verification / malicious-PR defense**:需 PR-head verifier +
 //         另議部署,out-of-scope、本 harness 尚未提供
 //   - ⚠️ 舊 wording「唯一防線 = required-check(GOV-005 + CI-015)」不成立:GOV-005 /
 //     CI-015 皆 schedule-only、不在 PR head 執行、不能作 required status check
