@@ -4,7 +4,6 @@
   "projectId": "__TEMPLATE__",
   "templatePackageName": "harness-controlled-dev-environment",
   "protectedBranches": [
-    "develop",
     "main"
   ],
   "deliveryBranches": [
