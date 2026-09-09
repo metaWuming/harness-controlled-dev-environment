@@ -220,16 +220,23 @@ CTRL-CI-013 只驗 mutation spec 的 `find` 樣本仍能對得上 source(**drift
 - Malicious PR 修 `scripts/mutation-smoke-manifest.json` / `scripts/run-mutation-smoke.ts` / CI step / package.json
 - Machine gate **不對抗** PR 修 wiring
 
-**三分層防線分析**(Step 4 Codex rerereview 校正、evidence-bounded、live remote probe 佐證;對齊 catalog CTRL-CI-016 notes + CI step comment 三處 SSOT):
+**durable evidence boundary**(Step 4 Codex 校正、live-probe-only、不由 config 或某次 probe snapshot 靜態推論;對齊 catalog CTRL-CI-016 notes + CI step comment 三處 SSOT):
 
-1. **當前部署的遠端 enforcement**:**無 / 未部署**
-   - 本 repo template mode `harness.config.json:githubGovernanceRequired:false`
-   - Live remote probe(main tip `d49af64...`):`protected: false` / classic protection absent / effective rules=[] / rulesets=[]
-   - 意義:目前 GitHub 端**沒有**任何 branch protection、rules 或 rulesets 在 enforce
-2. **手動 SOP practices(非 GitHub-enforced、不能作 current protection 宣稱)**:
+1. **遠端 enforcement 是 live GitHub state**:
+   - 必須以 live probe 現場確認:`gh api /repos/.../branches/main/protection`、`/rules/branches/main`、`/branches/main`(`.protected`)
+   - **不能由 config 靜態推論**、**不能由某一次 probe snapshot 宣稱永久狀態**
+   - 本文件**不宣稱**目前已啟用或未部署;讀者需自行執行 live probe 確認當下狀態
+2. **template config `harness.config.json:githubGovernanceRequired: false`** 僅表示 adopter requirement default:
+   - 本模板對下游 adopter 沒硬性要求(adopter 可依需要開啟)
+   - **不能由此推論** template repo 自身有或無 GitHub-side enforcement
+   - 部署由 Owner 個案決定、與 config flag 獨立
+3. **schedule A-D audit(CTRL-GOV-005 / CTRL-CI-015)**:
+   - 僅在 (a) `BRANCH_PROTECTION_TOKEN` 已設 **且** (b) daily schedule workflow 實際成功時才提供 evidence
+   - 此 evidence **非** per-PR required check(schedule-only workflow 不在 PR head 執行)
+4. **手動 SOP practices(不論 remote enforcement 是否部署都適用、本身非 GitHub-enforced)**:
    - (a) **protected-path human review**(scripts/ / tests/ / .github/workflows/ / mutation-smoke-manifest.json):SOP 紀律,非 GitHub protection rule;靠 reviewer 自律,無 machine 阻擋
    - (b) **Owner 稽核 CTRL-GOV-005 / CTRL-CI-015 daily schedule drift**:GitHub Actions tab manual review、非 active gate;schedule run 紅時需 Owner 主動看
-3. **per-PR A-D 契約 verification / malicious-PR defense**:需另設 **PR-head verifier**(在 push / pull_request event 觸發、checkout PR head、token / trust boundary 另議),為本次 optimization **out-of-scope**、需另議部署、本 harness 尚未提供
+5. **per-PR A-D 契約 verification / malicious-PR defense**:需另設 **PR-head verifier**(在 push / pull_request event 觸發、checkout PR head、token / trust boundary / adopter GitHub policy 另議),為本次 optimization **out-of-scope**、需另議部署、本 harness 尚未提供
 
 ⚠️ 舊 wording「唯一防線 = required-check(GOV-005 branch protection + CI-015 machine check)」實務上**不成立**:GOV-005 / CI-015 皆 schedule-only workflow(checkout `ref: main`、不觸 push / pull_request),**不在 PR head 執行**,不能作 branch protection required status check(加進 required checks 只會讓 PR 缺對應 check、卡 pending)。**非** CI machine gate 對抗 malicious PR。
 
