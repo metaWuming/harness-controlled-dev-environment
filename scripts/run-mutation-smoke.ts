@@ -9,8 +9,14 @@
 //   - 本 gate 是 **accidental-regression signal**、非 **malicious-PR security boundary**
 //   - CI wiring(此檔 / manifest / test / workflow / package.json)都 PR-controllable
 //   - Machine gate **不對抗** PR wiring 修改
-//   - 唯一防線 = **required-check**(CTRL-GOV-005 branch protection + CTRL-CI-015)+ **protected-path
-//     human review**(scripts/ / tests/ / .github/workflows/ / mutation-smoke-manifest.json)
+//   - **現況防線**(Step 4 Codex review 校正):(a) protected-path human review
+//     (scripts/ / tests/ / .github/workflows/ / mutation-smoke-manifest.json) +
+//     (b) Owner 稽核 CTRL-GOV-005 / CTRL-CI-015 daily schedule drift(schedule-only
+//     workflow 抓 branch protection A-D drift)
+//   - ⚠️ 舊 wording「唯一防線 = required-check(GOV-005 + CI-015)」不成立:GOV-005 /
+//     CI-015 皆 schedule-only、不在 PR head 執行、不能作 required status check;真
+//     per-PR malicious-PR defense 需另設 PR-head verifier(token / trust boundary
+//     另議)、out-of-scope、本 harness 尚未提供
 //
 // Algorithm(7 步、fail-closed):
 //   1. Read + validate manifest schema(cardinality/duplicate/set-equality)

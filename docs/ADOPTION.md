@@ -220,7 +220,11 @@ CTRL-CI-013 只驗 mutation spec 的 `find` 樣本仍能對得上 source(**drift
 - Malicious PR 修 `scripts/mutation-smoke-manifest.json` / `scripts/run-mutation-smoke.ts` / CI step / package.json
 - Machine gate **不對抗** PR 修 wiring
 
-**唯一防線** = **required-check**(CTRL-GOV-005 branch protection + CTRL-CI-015 machine check)+ **protected-path human review**(scripts/ / tests/ / .github/workflows/ / mutation-smoke-manifest.json)。**非** CI machine gate 對抗 malicious PR。
+**現況防線**(Step 4 Codex review 校正、對齊 catalog CTRL-CI-016 notes + CI step comment 三處 SSOT):
+- (a) **protected-path human review**(scripts/ / tests/ / .github/workflows/ / mutation-smoke-manifest.json)
+- (b) **Owner 稽核 daily schedule drift**(CTRL-GOV-005 / CTRL-CI-015 schedule-only workflow 抓 branch protection A-D drift、GitHub Actions tab 紅 run 由 Owner 稽核)
+
+⚠️ 舊 wording「唯一防線 = required-check(GOV-005 branch protection + CI-015 machine check)」實務上**不成立**:GOV-005 / CI-015 皆 schedule-only workflow(checkout `ref: main`、不觸 push / pull_request),**不在 PR head 執行**,不能作 branch protection required status check(加進 required checks 只會讓 PR 缺對應 check、卡 pending)。真 per-PR malicious-PR defense 或每 PR 重驗 A-D 契約需另設 **PR-head verifier**(token / trust boundary 另議),為本次 optimization **out-of-scope**、本 harness 尚未提供。**非** CI machine gate 對抗 malicious PR。
 
 **運作機制**:
 - Runner `scripts/run-mutation-smoke.ts` 硬編碼 `SMOKE_PROBES` map:6 條 probe = { spec, index, expectedEntryFingerprint SHA-256, testSuite }

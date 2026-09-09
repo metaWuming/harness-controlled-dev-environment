@@ -152,7 +152,10 @@ jobs:
         # ⚠️ 誠實邊界(三處 SSOT 對齊 CTRL-CI-016 catalog notes + docs/ADOPTION §5.2):本 gate 是
         # **accidental-regression signal**、非 malicious-PR security boundary。CI wiring(此 step /
         # runner / manifest / test / package.json)都 PR-controllable、machine gate 不對抗 PR 修改。
-        # 唯一防線 = required-check(CTRL-GOV-005 / CTRL-CI-015)+ protected-path human review。
+        # 現況防線(Step 4 Codex review 校正):(a) protected-path human review + (b) Owner 稽核
+        # CTRL-GOV-005 / CTRL-CI-015 daily schedule drift。舊 wording「唯一防線 = required-check
+        # (GOV-005 / CI-015)」不成立:兩者皆 schedule-only、不在 PR head、不能作 required status
+        # check;真 per-PR malicious-PR defense 需 PR-head verifier、out-of-scope、尚未提供。
         timeout-minutes: 5
         run: npm run mutation:smoke
 
