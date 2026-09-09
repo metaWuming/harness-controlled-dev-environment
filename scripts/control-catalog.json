@@ -889,7 +889,7 @@
         "scripts/mutations/branch-protection.json"
       ],
       "bypass": "admin override(組織治理層、非 CI-controlled)",
-      "notes": "Sprint 19 C1 升 record-only → schedule-based governance:trusted workflow + fine-grained PAT secret(BRANCH_PROTECTION_TOKEN、Repository Administration: read + Contents: read)、每日 UTC 00:00 抓 protected-branch drift;adopter setup runbook 見 docs/ADOPTION.md §2.6。**failureBehavior:block 語意**:scheduled run 內部 fail-closed(exit 2),該 workflow run 標紅;此**不是 per-PR merge gate**——要成 per-PR 阻擋,adopter 需在 GitHub Settings → Branches → Branch protection rule 把「Branch Protection Check」workflow 加入 required status checks(template mode `githubGovernanceRequired:false` 預設不部署;實際保護在 adopter repo 生效)。PR 立即反饋為承 trust boundary trade-off、由 daily schedule 抓 drift"
+      "notes": "Sprint 19 C1 升 record-only → schedule-based governance:trusted workflow + fine-grained PAT secret(BRANCH_PROTECTION_TOKEN、Repository Administration: read + Contents: read)、每日 UTC 00:00 抓 protected-branch drift;adopter setup runbook 見 docs/ADOPTION.md §2.6。**failureBehavior:block 語意**:scheduled run 內部 fail-closed(exit 2),該 workflow run 標紅、Owner 於 Actions tab 稽核;此**不是** per-PR merge gate。⚠️ **不能透過把此 schedule-only workflow 加進 branch protection required status checks 來成 per-PR gate**——workflow 只在 schedule 觸發且 checkout ref=main,不在 PR head SHA 上執行;加進 required checks 只會讓 PR 缺對應 check、卡 pending,並未驗證該 PR 本身。若要每 PR 重驗 A-D 契約,需另行設計 PR-head verifier(token / trust boundary 另議),為本次 optimization out-of-scope、本 harness 尚未提供,不擴 workflow / secret / policy。PR 立即反饋為承 trust boundary trade-off、由 daily schedule 抓 drift"
     },
     {
       "id": "CTRL-CI-014",
@@ -945,7 +945,7 @@
       "owner": "github",
       "failureBehavior": "block",
       "evidence": "CI check 狀態;stderr 明列失敗分支 + status diagnostic",
-      "degradation": "同 CTRL-GOV-005 degradation:auth/status/parse/assertion 任一失敗 → exit 2 fail-closed(該 scheduled run 標紅;不 block PR merge——見 GOV-005 notes 部署路徑)",
+      "degradation": "同 CTRL-GOV-005 degradation:auth/status/parse/assertion 任一失敗 → exit 2 fail-closed(該 scheduled run 標紅;不 block PR merge——schedule-only workflow,不在 PR head 執行,見 GOV-005 notes 完整說明)",
       "tested": [
         "unit",
         "e2e",
@@ -957,7 +957,7 @@
         "scripts/mutations/branch-protection.json"
       ],
       "bypass": "admin override(組織治理層)",
-      "notes": "CTRL-GOV-005 的機器化實作(schedule-based governance,同分類);fine-grained PAT secret setup runbook 見 docs/ADOPTION.md §2.6。**failureBehavior:block** 語意:scheduled run 內部 fail-closed → 該 run 標紅、GitHub Actions tab 可見;此本身**不是** per-PR merge gate、也不 block push。要成 per-PR gate 需 adopter 在 branch protection required checks 明確加入該 workflow"
+      "notes": "CTRL-GOV-005 的機器化實作(schedule-based governance,同分類);fine-grained PAT secret setup runbook 見 docs/ADOPTION.md §2.6。**failureBehavior:block** 語意:scheduled run 內部 fail-closed → 該 run 標紅、GitHub Actions tab 可見;此本身**不是** per-PR merge gate、也不 block push。⚠️ 同 GOV-005:不能透過把此 schedule-only workflow 加進 branch protection required status checks 來成 per-PR gate(workflow 不在 PR head 執行、加進 required checks 只會卡 pending);真 per-PR 驗 A-D 需另設 PR-head verifier,為 out-of-scope"
     },
     {
       "id": "CTRL-CI-016",
@@ -994,7 +994,7 @@
         "tests/run-mutation-smoke.test.ts"
       ],
       "bypass": "admin override(組織治理層);PR 可移 CI step / 改 package script / 改 runner SMOKE_PROBES / 改 manifest / 改 target test(protected-path human review 責任)",
-      "notes": "⚠️ 誠實邊界(三處 SSOT 對齊 docs/ADOPTION.md §5.2 + CI step comment):本 gate 是 accidental-regression signal、非 malicious-PR security boundary。CI wiring(runner / manifest / test / workflow / package.json)都 PR-controllable、machine gate 不對抗 PR wiring 修改。唯一防線 = required-check(CTRL-GOV-005 branch protection + CTRL-CI-015 machine check;adopter 需部署 GitHub branch protection 並把該 workflow 加入 required checks 才生效,template mode `githubGovernanceRequired:false` 預設不部署)+ protected-path human review(scripts/ / tests/ / .github/workflows/ / mutation-smoke-manifest.json)。全量 167 mutation probes(14 spec 檔 total、smoke subset 6 spec)明確留人工(Step 4.5)、與本 gate 6 條 smoke subset 分工:drift = spec 對源(CTRL-CI-013,14 spec 全掃)/ smoke = 6 條 kill 驗(CI step、獨立 CI 真 spawn mutate + kill assertion)/ full = Step 4.5 人工。**tested/testRefs 澄清**:`unit + e2e` 分別為 injectable-deps 分支測試(unit)與 invocation-boundary spawnSync(e2e、FIX-1 regression);真 6-probe kill 證據**不在** vitest suite 內,由獨立 CI step 提供、不平行執行 mutation(避 fork race)"
+      "notes": "⚠️ 誠實邊界(三處 SSOT 對齊 docs/ADOPTION.md §5.2 + CI step comment):本 gate 是 accidental-regression signal、非 malicious-PR security boundary。CI wiring(runner / manifest / test / workflow / package.json)都 PR-controllable、machine gate 不對抗 PR wiring 修改。⚠️ 舊 wording「唯一防線 = required-check(GOV-005 branch protection + CI-015 machine check)」實務上不成立:GOV-005 / CI-015 皆 schedule-only workflow、不在 PR head 執行、不能作 branch protection required status check;真 per-PR malicious-PR 防線需另設 PR-head verifier(本次 optimization out-of-scope、本 harness 尚未提供)。現況實務靠:(a) protected-path human review(scripts/ / tests/ / .github/workflows/ / mutation-smoke-manifest.json)+ (b) Owner 稽核 GOV-005/CI-015 daily schedule 抓 branch protection drift。全量 167 mutation probes(14 spec 檔 total、smoke subset 6 spec)明確留人工(Step 4.5)、與本 gate 6 條 smoke subset 分工:drift = spec 對源(CTRL-CI-013,14 spec 全掃)/ smoke = 6 條 kill 驗(CI step、獨立 CI 真 spawn mutate + kill assertion)/ full = Step 4.5 人工。**tested/testRefs 澄清**:`unit + e2e` 分別為 injectable-deps 分支測試(unit)與 invocation-boundary spawnSync(e2e、FIX-1 regression);真 6-probe kill 證據**不在** vitest suite 內,由獨立 CI step 提供、不平行執行 mutation(避 fork race)"
     }
   ]
 }

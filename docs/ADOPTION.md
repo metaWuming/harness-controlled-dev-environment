@@ -100,12 +100,16 @@ enforce_admins.enabled=true / required_pull_request_reviews)。要讓這條 gate
 **想立刻驗新 protectedBranches**:改 harness.config.json 加分支 → merge → 等 daily schedule
 或臨時改 cron。**不要**用 workflow_dispatch(plan r10 明列 out-of-scope、避 ref control 攻擊面)。
 
-**⚠️ 這條 gate 的**強制力**分兩層(Phase 2 澄清、對齊 catalog CTRL-GOV-005 / CTRL-CI-015 分類 periodic-governance)**:
+**⚠️ 這條 gate 的**強制力語意**(Phase 2 澄清 + Step 4 Codex review 校正、對齊 catalog CTRL-GOV-005 / CTRL-CI-015 分類 `periodic-governance`)**:
 
-1. **Scheduled run 內部** fail-closed:workflow 內任一 protectedBranches 驗 A-D 失敗 → CLI exit 2 → 該 workflow run 標紅、GitHub Actions tab 可見
-2. **Per-PR merge 阻擋**:上述紅**不會**自動 block PR merge——workflow 沒被 push / pull_request 觸發,PR gate 不知道它紅。要成 per-PR gate,adopter 需去 GitHub Settings → Branches → Branch protection rule → 把「Branch Protection Check」workflow 加入 **Require status checks to pass**(這步是 adopter 責任、template mode `harness.config.json:githubGovernanceRequired:false` 預設不部署)
+1. **Scheduled run 內部** fail-closed:workflow 內任一 protectedBranches 驗 A-D 失敗 → CLI exit 2 → 該 workflow run 標紅、GitHub Actions tab 可見、Owner 稽核
+2. **Per-PR merge 阻擋**:上述紅**不會**自動 block PR merge——workflow schedule-only(不觸 push / pull_request、checkout ref=main),PR gate 不知道它紅
 
-換句話說:catalog 的 `failureBehavior: block` 指的是 CLI/workflow 本身 fail-closed,**不是**開箱即 per-PR merge gate。想要後者,兩步都要:(a) secret 設好讓 workflow 能跑;(b) 把 workflow 加進 branch protection required checks。
+⚠️ **不要嘗試把 `branch-protection.yml` 加進 branch protection required status checks 來成 per-PR gate**:此 workflow 只在 schedule 觸發、checkout `ref: main`,**不會**在 PR head SHA 上執行。加進 required status checks 只會讓 PR 缺對應 check、卡 pending,並未驗證該 PR。
+
+想要**每 PR 重驗** protected branches 的 A-D 契約:需另行設計 **PR-head verifier**(在 push / pull_request event 觸發、checkout PR head、token / trust boundary 另議)。此為本次 optimization **out-of-scope**、本 harness 尚未提供;不擴 workflow / secret / policy。
+
+換句話說:catalog 的 `failureBehavior: block` 指的是 CLI/workflow 本身 fail-closed(scheduled run 內部 exit 2),**不是** per-PR merge gate。現況實務:daily schedule 抓 drift + Owner 稽核 Actions tab 紅 run + protected-path human review。
 
 ## 3. 安全敏感域路徑表(Step 4.5 安全關的前置)
 

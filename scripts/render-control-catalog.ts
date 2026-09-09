@@ -31,7 +31,7 @@ export const CLASS_DESCRIPTIONS: Record<ControlClass, string> = {
   'soft-automated': '機器執行但在本機、可被繞過(`--no-verify`、未安裝、不 import)。是縱深,不是邊界。',
   'manual-mandatory': 'SOP 明文要求、由人(agent / Owner)執行;機器只驗其產物或不驗。',
   advisory: '刻意不擋;產出待處置清單或建議,命中不代表錯。',
-  'periodic-governance': '週 / 日 / 依需求 schedule 觸發的治理節奏(cron / workflow schedule);沒有 per-change 強制力——schedule 失敗只使該 run 紅、不 block PR merge。要成 per-PR gate,adopter 需在 branch protection 把該 workflow 加入 required checks。',
+  'periodic-governance': '週 / 日 / 依需求 schedule 觸發的治理節奏(cron / workflow schedule);沒有 per-change 強制力——schedule 失敗只使該 run 紅、Owner 於 Actions tab 稽核,不 block PR merge。⚠️ schedule-only workflow **不能**直接作 branch protection required status check(不在 PR head 執行、加進 required checks 只會卡 pending);真 per-PR 驗證需另設 PR-head verifier、屬 out-of-scope。',
 };
 
 function cell(v: string | null): string {
