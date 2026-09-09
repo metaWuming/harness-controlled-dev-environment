@@ -30,7 +30,9 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # Phase 2:對齊 package.json engines.node (>=22.13.0);原本寫死 '20' 造成
+          # 排程 run 每次出 engine warning。與 ci.yml 的 '22' 對齊。
+          node-version: '22'
           cache: 'npm'
       - name: Install dependencies
         run: npm ci

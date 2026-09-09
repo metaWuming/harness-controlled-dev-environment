@@ -369,12 +369,13 @@ describe('case 20:trusted workflow structural lock(scoped job block + cross-file
     expect(jobBlockClean).not.toMatch(/github\.ref\b/);
   });
 
-  it('scoped:job block 內 bootstrap setup-node@v4 + node-version 20 + npm ci', () => {
+  it('scoped:job block 內 bootstrap setup-node@v4 + node-version 22(對齊 engines.node)+ npm ci', () => {
+    // Phase 2:node-version 從 '20' 改為 '22' 對齊 package.json engines.node (>=22.13.0)。
     const yml = readFileSync(bpYmlPath, 'utf-8');
     const job = findJobBlock(yml, 'branch-protection-check')!;
     const jobBlockClean = stripComments(job.block);
     expect(jobBlockClean).toMatch(/uses:\s*actions\/setup-node@v4/);
-    expect(jobBlockClean).toMatch(/node-version:\s*['"]20['"]/);
+    expect(jobBlockClean).toMatch(/node-version:\s*['"]22['"]/);
     expect(jobBlockClean).toMatch(/run:\s*npm ci/);
   });
 

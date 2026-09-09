@@ -27,11 +27,11 @@ export const CATALOG_DOC_PATH = 'docs/CONTROL-CATALOG.md';
 
 /** 五個強度分級的定義(渲染進文件;這裡是唯一敘述處)。 */
 export const CLASS_DESCRIPTIONS: Record<ControlClass, string> = {
-  'hard-automated': 'CI 上自動執行、紅了就擋 merge(前提:GitHub branch protection 要求 CI pass,見 CTRL-GOV-005)。bypass 只有 admin override。',
+  'hard-automated': 'CI 上 push / pull_request 觸發、失敗直接擋該 PR / push merge(前提:GitHub branch protection 要求該 CI step pass,見 CTRL-GOV-005 部署狀態)。bypass 只有 admin override。',
   'soft-automated': '機器執行但在本機、可被繞過(`--no-verify`、未安裝、不 import)。是縱深,不是邊界。',
   'manual-mandatory': 'SOP 明文要求、由人(agent / Owner)執行;機器只驗其產物或不驗。',
   advisory: '刻意不擋;產出待處置清單或建議,命中不代表錯。',
-  'periodic-governance': '週 / 季 / 依需求執行的治理節奏;沒有 per-change 強制力。',
+  'periodic-governance': '週 / 日 / 依需求 schedule 觸發的治理節奏(cron / workflow schedule);沒有 per-change 強制力——schedule 失敗只使該 run 紅、不 block PR merge。要成 per-PR gate,adopter 需在 branch protection 把該 workflow 加入 required checks。',
 };
 
 function cell(v: string | null): string {
