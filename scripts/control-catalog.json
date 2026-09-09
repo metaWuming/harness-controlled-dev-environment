@@ -958,6 +958,43 @@
       ],
       "bypass": "admin override(組織治理層)",
       "notes": "CTRL-GOV-005 的機器化實作;fine-grained PAT secret setup runbook 見 docs/ADOPTION.md §3"
+    },
+    {
+      "id": "CTRL-CI-016",
+      "name": "Mutation Kill Smoke Check",
+      "legacyGate": null,
+      "class": "hard-automated",
+      "triggers": [
+        "push",
+        "pull_request"
+      ],
+      "implementation": [
+        ".github/workflows/ci.yml",
+        "scripts/run-mutation-smoke.ts",
+        "scripts/mutation-smoke-manifest.json",
+        "scripts/mutate.ts",
+        "scripts/mutations/branch-protection.json",
+        "scripts/mutations/destructive-guard.json",
+        "scripts/mutations/protectedbranches-drift.json",
+        "scripts/mutations/mutation-spec-drift.json",
+        "scripts/mutations/mutation-spec-discovery.json",
+        "scripts/mutations/baseline-governance.json"
+      ],
+      "locator": "CI step「Mutation Kill Smoke Check」;對 pinned 6 條 smoke probe(runner 內硬編碼 SMOKE_PROBES map:每 spec index 0 + expectedEntryFingerprint SHA-256 of canonical JSON of {file, find, replace, label} + hardcoded testSuite paths)、CI 自動 apply mutation via mutate.ts CLI + 跑 pinned test file + assert mutant killed。7 步 algorithm:read+validate manifest schema($schema pin + cardinality/duplicate/set-equality)→ clean tree + startHEAD → verify entry fingerprints → pre-control unique testSuite green → per-probe spawn mutate.ts argv-safe(shell:false + detached process group + SIGTERM 60s + SIGKILL 5s grace)→ post-control 再跑 unique testSuite → verify tree + HEAD 不變",
+      "ciStep": "Mutation Kill Smoke Check",
+      "owner": "github",
+      "failureBehavior": "block",
+      "evidence": "CI check 狀態;runner stderr per-probe summary(probeId + exit code + duration);本機 npm run mutation:smoke",
+      "degradation": "manifest schema violation(cardinality / duplicate / set-equality / unknown probeId / bad regex)→ exit 2;fingerprint mismatch(spec[index] entry 任一欄位改變)→ exit 2;pre-control 或 post-control 紅 → exit 2;mutate.ts indeterminate 或 timeout → exit 2;tree dirty 或 HEAD 改變 → exit 2",
+      "tested": [
+        "unit",
+        "e2e"
+      ],
+      "testRefs": [
+        "tests/run-mutation-smoke.test.ts"
+      ],
+      "bypass": "admin override(組織治理層);PR 可移 CI step / 改 package script / 改 runner SMOKE_PROBES / 改 manifest / 改 target test(protected-path human review 責任)",
+      "notes": "⚠️ 誠實邊界(三處 SSOT 對齊 docs/ADOPTION.md §5.2 + CI step comment):本 gate 是 accidental-regression signal、非 malicious-PR security boundary。CI wiring(runner / manifest / test / workflow / package.json)都 PR-controllable、machine gate 不對抗 PR wiring 修改。唯一防線 = required-check(CTRL-GOV-005 branch protection + CTRL-CI-015 machine check)+ protected-path human review(scripts/ / tests/ / .github/workflows/ / mutation-smoke-manifest.json)。全量 167 mutation probes 明確留人工(Step 4.5)、與本 gate 6 條 smoke subset 分工:drift = spec 對源 / smoke = 6 條 kill 驗 / full = Step 4.5 人工"
     }
   ]
 }
