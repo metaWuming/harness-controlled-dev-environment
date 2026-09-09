@@ -106,10 +106,20 @@ Prefer a step-by-step walkthrough with the exact prompt to paste into your codin
 agent? See [`docs/QUICKSTART.md`](docs/QUICKSTART.md) (written in Traditional Chinese,
 like the rest of the harness docs — see the language note below).
 
+### What's new in latest sprints (2026-09)
+
+Recent sprint evolution — evidence that the harness keeps ripening on itself:
+
+- **Live governance activation** — remote branch protection on `main` deployed via `gh api PUT` and verified by live GET probes: required status check `ci`, `enforce_admins: true`, `allow_force_pushes: false`, `allow_deletions: false`, `required_conversation_resolution: true`, `required_pull_request_reviews.required_approving_review_count: 0` (single-owner). Full A-D contract in `scripts/lib/branch-protection.ts` passes against the actual GET response. First real deployment since the CTRL-GOV-005 introduction milestone.
+- **Main-only alignment** — shipped `protectedBranches` in `scripts/harness.config.json` corrected from `["develop", "main"]` to `["main"]` (remote `develop` never existed; avoids stale claim).
+- **Durable evidence boundary (CI-016 SSOT)** — the CTRL-CI-016 wording in catalog / ADOPTION §5.2 / runner header / CI comment was rewritten from "current remote enforcement: none / not deployed" (a stale point-in-time probe promoted to a permanent assertion) to a 5-tier evidence boundary. Core rule: **remote enforcement is live GitHub state and must be verified by live `gh api` probes; it cannot be inferred from config flags or a past probe snapshot.**
+- **Fail-closed regression fixes** — FIX-1 (`run-mutation-smoke` symlink `isMain` fail-open), FIX-2 (destructive-guard password mask leak on raw `@`), FIX-3 (`safe-migrate` argv typo silently ignored) — all delivered with regression tests + mutation-killer alignment.
+- **Catalog class semantics** — CTRL-GOV-005 / CTRL-CI-015 reclassified from `hard-automated` to `periodic-governance`: schedule-only workflows cannot be per-PR required checks (adding them to required checks would only stall PRs on missing checks).
+
 ### Design principles
 
 - **Dogfooding** — this template eats its own gates: its CI runs gitleaks over full
-  history, runs its own self-check scripts, runs 456 tests, plus a de-identification
+  history, runs its own self-check scripts, runs 1200+ tests, plus a de-identification
   scan that keeps source-project terms out of the template forever. Ten backfill
   sprints (batches 1–10) have walked the 7-step SOP end-to-end on the template
   itself; TODOS P3 backlog is currently cleared to zero — proof the harness's own
@@ -241,10 +251,20 @@ Harness 元件分兩個方向(Fowler / Böckeler 框架):
 4. 用 Next.js+Prisma?照 [`stack/nextjs-prisma/README.md`](stack/nextjs-prisma/README.md)
    疊加 L2 層
 
+### 最新 sprint 的更新(2026-09)
+
+近期 sprint 累積的演進——harness 對自己持續蒸餾的證據:
+
+- **Live governance activation**:main branch 遠端 protection 已透過 `gh api PUT` 部署、live GET probe 驗證:required status check `ci`、`enforce_admins: true`、`allow_force_pushes: false`、`allow_deletions: false`、`required_conversation_resolution: true`、`required_pull_request_reviews.required_approving_review_count: 0`(single-owner)。`scripts/lib/branch-protection.ts` A-D 契約對實際 GET response 全過。**CTRL-GOV-005 引入以來、第一次遠端實際部署**。
+- **Main-only 對齊**:shipped `scripts/harness.config.json` `protectedBranches` 由 `["develop", "main"]` 校正為 `["main"]`(remote 從未有 develop 分支、避 stale claim)。
+- **Durable evidence boundary(CI-016 SSOT)**:CTRL-CI-016 wording 在 catalog / ADOPTION §5.2 / runner header / CI comment 由「當前部署的遠端 enforcement:無 / 未部署」(把 point-in-time probe snapshot 推論為永久斷言)改為 5 分層 evidence boundary。核心規則:**遠端 enforcement 是 live GitHub state、必須以 live `gh api` probe 現場確認、不能由 config flag 或某次 probe snapshot 靜態推論。**
+- **Fail-closed regression fixes**:FIX-1(`run-mutation-smoke` symlink `isMain` fail-open)、FIX-2(destructive-guard 密碼含 raw `@` mask leak)、FIX-3(`safe-migrate` argv typo silently ignore)—— 皆含 regression 測試 + mutation-killer 對齊。
+- **Catalog class 語意**:CTRL-GOV-005 / CTRL-CI-015 分類由 `hard-automated` 校正為 `periodic-governance`:schedule-only workflow 無法作 per-PR required check(加進 required checks 只會讓 PR 缺對應 check 卡 pending)。
+
 ### 設計原則
 
 - **Dogfooding**:模板自己吃自己的 gate——CI 跑 gitleaks 全史、跑自檢腳本、
-  跑 456 個測試,還多一道去識別化掃描(確保來源專案詞彙永遠進不了模板)。
+  跑 1200+ 個測試,還多一道去識別化掃描(確保來源專案詞彙永遠進不了模板)。
   10 次 backfill sprint(批 1-10)已在模板自身走過 7 步 SOP 全流程、TODOS P3
   backlog 現況清 0——證明本 harness 自己的工作管理閘門能被走完
 - **降級路徑明文化**:SOP 引用的外部工具(Codex CLI、gstack、gbrain)全部

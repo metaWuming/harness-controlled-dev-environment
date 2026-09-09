@@ -238,6 +238,15 @@ flowchart TD
 
 **Cross-model agreement ≠ correctness**（8 個月雙模型審查驗證）：兩個模型找到的問題**幾乎不重疊**。這是為什麼 SOP 要跑兩道獨立 review、且「某模型說沒問題」永遠不被當成證據。
 
+### 最新 sprint 的階梯示範（2026-09）
+
+近期 sprint 進一步走完幾階、供讀者對照這條階梯還在跑（詳見 README 「最新 sprint 的更新」段）：
+
+- **Live governance activation**（CTRL-GOV-005 引入以來、第一次真正部署遠端 branch protection 到 `main`）：`gh api PUT` 部署 + live GET probe 驗證、A-D 契約對實際 GET response 全過。**這是從「規格化契約」爬到「實際部署」的一階**。
+- **Durable evidence boundary（CI-016 SSOT）**：CTRL-CI-016 wording 由「當前部署的遠端 enforcement：無 / 未部署」改為 5 分層 evidence boundary（`遠端 enforcement 是 live GitHub state、必須以 live gh api probe 現場確認`）。**這階抓的是「把某次 probe snapshot 或 config flag 誤當永久斷言」的過度宣稱模式**——連續 4 輪 Codex review 才從 3 分層收斂到 5 分層。
+- **Fail-closed 三支 regression**：FIX-1（symlink `isMain` fail-open）、FIX-2（密碼含 raw `@` mask leak）、FIX-3（argv typo silently ignore）——皆屬「gate 靜默失效」的高風險錯誤模式、由 workplan 明列後補齊 regression + mutation-killer。
+- **Catalog class 語意校正**：CTRL-GOV-005 / CTRL-CI-015 從 `hard-automated` 校正為 `periodic-governance`——schedule-only workflow 無法作 per-PR required check（連續 3 輪 review 才收斂此 wording）。**這階抓的是「hard-automated 分類定義 vs 實際 trigger 語意」的隱性 gap**。
+
 ---
 
 ## 六、導入者流程（第一次接觸模板）
