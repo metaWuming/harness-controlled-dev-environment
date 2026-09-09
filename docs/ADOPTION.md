@@ -100,6 +100,17 @@ enforce_admins.enabled=true / required_pull_request_reviews)。要讓這條 gate
 **想立刻驗新 protectedBranches**:改 harness.config.json 加分支 → merge → 等 daily schedule
 或臨時改 cron。**不要**用 workflow_dispatch(plan r10 明列 out-of-scope、避 ref control 攻擊面)。
 
+**⚠️ 這條 gate 的**強制力語意**(Phase 2 澄清 + Step 4 Codex review 校正、對齊 catalog CTRL-GOV-005 / CTRL-CI-015 分類 `periodic-governance`)**:
+
+1. **Scheduled run 內部** fail-closed:workflow 內任一 protectedBranches 驗 A-D 失敗 → CLI exit 2 → 該 workflow run 標紅、GitHub Actions tab 可見、Owner 稽核
+2. **Per-PR merge 阻擋**:上述紅**不會**自動 block PR merge——workflow schedule-only(不觸 push / pull_request、checkout ref=main),PR gate 不知道它紅
+
+⚠️ **不要嘗試把 `branch-protection.yml` 加進 branch protection required status checks 來成 per-PR gate**:此 workflow 只在 schedule 觸發、checkout `ref: main`,**不會**在 PR head SHA 上執行。加進 required status checks 只會讓 PR 缺對應 check、卡 pending,並未驗證該 PR。
+
+想要**每 PR 重驗** protected branches 的 A-D 契約:需另行設計 **PR-head verifier**(在 push / pull_request event 觸發、checkout PR head、token / trust boundary 另議)。此為本次 optimization **out-of-scope**、本 harness 尚未提供;不擴 workflow / secret / policy。
+
+換句話說:catalog 的 `failureBehavior: block` 指的是 CLI/workflow 本身 fail-closed(scheduled run 內部 exit 2),**不是** per-PR merge gate。現況實務:daily schedule 抓 drift + Owner 稽核 Actions tab 紅 run + protected-path human review。
+
 ## 3. 安全敏感域路徑表(Step 4.5 安全關的前置)
 
 - [ ] `scripts/cso-trigger.config.ts`:把你專案的安全敏感路徑填進五域
@@ -209,7 +220,18 @@ CTRL-CI-013 只驗 mutation spec 的 `find` 樣本仍能對得上 source(**drift
 - Malicious PR 修 `scripts/mutation-smoke-manifest.json` / `scripts/run-mutation-smoke.ts` / CI step / package.json
 - Machine gate **不對抗** PR 修 wiring
 
-**唯一防線** = **required-check**(CTRL-GOV-005 branch protection + CTRL-CI-015 machine check)+ **protected-path human review**(scripts/ / tests/ / .github/workflows/ / mutation-smoke-manifest.json)。**非** CI machine gate 對抗 malicious PR。
+**三分層防線分析**(Step 4 Codex rerereview 校正、evidence-bounded、live remote probe 佐證;對齊 catalog CTRL-CI-016 notes + CI step comment 三處 SSOT):
+
+1. **當前部署的遠端 enforcement**:**無 / 未部署**
+   - 本 repo template mode `harness.config.json:githubGovernanceRequired:false`
+   - Live remote probe(main tip `d49af64...`):`protected: false` / classic protection absent / effective rules=[] / rulesets=[]
+   - 意義:目前 GitHub 端**沒有**任何 branch protection、rules 或 rulesets 在 enforce
+2. **手動 SOP practices(非 GitHub-enforced、不能作 current protection 宣稱)**:
+   - (a) **protected-path human review**(scripts/ / tests/ / .github/workflows/ / mutation-smoke-manifest.json):SOP 紀律,非 GitHub protection rule;靠 reviewer 自律,無 machine 阻擋
+   - (b) **Owner 稽核 CTRL-GOV-005 / CTRL-CI-015 daily schedule drift**:GitHub Actions tab manual review、非 active gate;schedule run 紅時需 Owner 主動看
+3. **per-PR A-D 契約 verification / malicious-PR defense**:需另設 **PR-head verifier**(在 push / pull_request event 觸發、checkout PR head、token / trust boundary 另議),為本次 optimization **out-of-scope**、需另議部署、本 harness 尚未提供
+
+⚠️ 舊 wording「唯一防線 = required-check(GOV-005 branch protection + CI-015 machine check)」實務上**不成立**:GOV-005 / CI-015 皆 schedule-only workflow(checkout `ref: main`、不觸 push / pull_request),**不在 PR head 執行**,不能作 branch protection required status check(加進 required checks 只會讓 PR 缺對應 check、卡 pending)。**非** CI machine gate 對抗 malicious PR。
 
 **運作機制**:
 - Runner `scripts/run-mutation-smoke.ts` 硬編碼 `SMOKE_PROBES` map:6 條 probe = { spec, index, expectedEntryFingerprint SHA-256, testSuite }
@@ -247,7 +269,7 @@ CTRL-CI-013 只驗 mutation spec 的 `find` 樣本仍能對得上 source(**drift
       再對 `deliveryBranches` 每個 b 接 ` || github.ref == 'refs/heads/<b>'`。**`deliveryBranches` 是允許的 `origin/HEAD` 目標白名單**(delivery evidence 語意);出廠 template `deliveryBranches` = `["main"]`,出廠三處 CI condition 顯式列 `main`、另保留 dynamic default branch;**若要新增 `develop` 或其他非 default delivery branch**,依 [`docs/MIGRATION.md`](MIGRATION.md) `[Unreleased]` 附錄 A.1「換交付線 runbook」同步修改 `deliveryBranches`、三處 `if:` conditions 與相關 branch policy(不宣稱只改 `deliveryBranches` 即可完成換線)
 - [ ] `Baseline Governance Check` step(pull_request only)要保留:同 repo PR 的 `--head` 所帶分支名,若存在於 merge-base 那側 `harness.config.json` 的 `protectedBranches`,腳本明文 SKIPPED;fork PR 不帶 `--head`。⚠️ 這個豁免只在所有
       `protectedBranches` 都真的開了 branch protection / ruleset(必須經 PR、不得直接 push)時成立
-      —— GOV-005 branch-protection advisory 屬組織治理層,由 Owner/admin 稽核。
+      —— GOV-005 branch-protection(catalog 分類 `periodic-governance`、schedule-only、非 per-PR gate)屬組織治理層,由 Owner/admin 稽核。
 - [ ] **CTRL-CI-014「Protected Branches Drift Check」**(A3 defer ⑩ 交付):對 PR
       內 `harness.config.json` 的 `protectedBranches` 集合擴大(加分支)fail-closed
       exit 2。**無 PR-controlled marker / opt-out**;合法擴大需 Owner/admin 組織治理

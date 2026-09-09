@@ -566,6 +566,21 @@ describe('Sprint 20 C2 — layer 5-6 declaration allowlist mismatch alarm', () =
     expect(err).toContain('prod'); // layer 2 fired
     expect(err).not.toContain('secret'); // password masked
   });
+
+  it('case 13b FIX-2:password 含 raw @ 密碼尾段不 leak(regex 遺漏、URL parser 修好)', () => {
+    // Fixture(Harness-optimization-workplan-2026-09-09 FIX-2 精確重現):
+    //   URL='postgresql://user:secret@tail@prod-host/db',password 頭段='secret'、尾段='tail'
+    // 修前(單 regex `(\/\/[^:/@]+:)[^@]+@/`):`[^@]+` 只 match 到第一個 @ → mask
+    //   成 `//user:***@tail@prod-host/db`,`tail`(密碼真實尾段)leak 到 stderr。
+    // 修後(WHATWG URL parser):parser 把中間 @ percent-encode 併入 password field,
+    //   遮 password 後 pass 完全消失。
+    const opts = baseOk({ env: { DATABASE_URL: 'postgresql://user:secret@tail@prod-host/db' } });
+    expect(() => requireDestructiveConfirmationWithConfig('test', DECLARED_CONFIG, opts)).toThrow();
+    const err = opts.errorFn.mock.calls.map((c) => c[0]).join('\n');
+    expect(err).toContain('prod'); // layer 2 fired
+    expect(err).not.toContain('secret'); // password 頭段仍要遮
+    expect(err).not.toContain('tail'); // FIX-2 關鍵:password 尾段也要遮
+  });
 });
 
 // ─────────────────────────────────────── Sprint 20 C2:case 11 real-module wrapper e2e

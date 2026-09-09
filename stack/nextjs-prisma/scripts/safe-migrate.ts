@@ -174,8 +174,25 @@ const KNOWN_FLAGS = ['--yes', '--dry-run', '--verbose'] as const;
 
 export function parseArgs(argv: string[]): CliOptions {
   // argv[0] 是 'status' / 'dev' / 'prod'(由 npm script 帶入)
-  const positional = argv.filter((a) => !a.startsWith('--'));
-  const flags = argv.filter((a) => a.startsWith('--'));
+  // FIX-3:三分類 argv,並補 badDash 拒絕(單 `-` 開頭 typo 如 `-dry-run` 原本被當
+  // positional 忽略,parseArgs 回 dryRun:false → wrapper 誤走 real deploy)。
+  const flags: string[] = [];
+  const positional: string[] = [];
+  const badDash: string[] = [];
+  for (const a of argv) {
+    if (a.startsWith('--')) flags.push(a);
+    else if (a.startsWith('-') && a.length > 1) badDash.push(a);
+    else positional.push(a);
+  }
+
+  // FIX-3:單 `-` 開頭參數(e.g. `-dry-run` typo)不接受 —— 原本會被 positional
+  // filter 抓進來後 silently ignore,讓 `--dry-run` 意圖失效。
+  if (badDash.length > 0) {
+    throw new Error(
+      `未知 flag(單 - 開頭,誤打?):${badDash.join(', ')}\n` +
+        `支援的 flag(雙 --): ${KNOWN_FLAGS.join(', ')}`,
+    );
+  }
 
   // Codex review P1:fail closed on unknown flags(避免 `--dryrun` typo 被
   // silently ignore 後 wrapper 還是跑 migrate deploy)
@@ -194,6 +211,15 @@ export function parseArgs(argv: string[]): CliOptions {
   const first = positional[0];
 
   if (first === 'status') {
+    // FIX-3:status 必須 exactly 2 個 positional(status + dev|prod),多餘 positional
+    // 原本 silently ignore(e.g. `status dev extra` → command=status mode=dev)
+    if (positional.length !== 2) {
+      throw new Error(
+        positional.length > 2
+          ? `多餘 positional 參數 ${JSON.stringify(positional.slice(2))} —— 用法: status [dev|prod]`
+          : '用法: status [dev|prod]',
+      );
+    }
     command = 'status';
     const second = positional[1];
     if (second !== 'dev' && second !== 'prod') {
@@ -201,6 +227,14 @@ export function parseArgs(argv: string[]): CliOptions {
     }
     mode = second;
   } else if (first === 'dev' || first === 'prod') {
+    // FIX-3:migrate 必須 exactly 1 個 positional(dev|prod),多餘 positional 原本
+    // silently ignore(e.g. `prod garbage --yes` → mode=prod、garbage 被吃掉)
+    if (positional.length !== 1) {
+      throw new Error(
+        `多餘 positional 參數 ${JSON.stringify(positional.slice(1))} —— ` +
+          `${first} migrate 只接 1 個 command,flag 用 --(${KNOWN_FLAGS.join(', ')})`,
+      );
+    }
     command = 'migrate';
     mode = first;
   } else {

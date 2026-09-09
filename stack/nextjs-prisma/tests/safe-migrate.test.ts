@@ -225,6 +225,43 @@ describe('parseArgs', () => {
   it('throws on unknown command', () => {
     expect(() => parseArgs(['rollback'])).toThrow(/未知命令/);
   });
+
+  // FIX-3 regression(Harness-optimization-workplan-2026-09-09):
+  //   原 parseArgs 用 `argv.filter(!startsWith('--'))` 抓 positional、
+  //   `argv.filter(startsWith('--'))` 抓 flags —— 單 `-` 開頭的 typo(e.g. `-dry-run`)
+  //   被當 positional 抓進來後 silently ignore,回 `dryRun:false`。若 wrapper 誤以為在
+  //   dry-run 就繼續往 deploy 走,真 DB 就被動了。多餘 positional 也同理 silently ignore。
+  //   修法:分三類(flag / positional / badDash),badDash 直接 throw;每種 command 驗
+  //   positional cardinality。
+
+  it('FIX-3:parseArgs([prod, --yes, -dry-run]) throws 而非把 -dry-run 當 positional 忽略', () => {
+    expect(() => parseArgs(['prod', '--yes', '-dry-run'])).toThrow(/單 - 開頭|dry-run/);
+  });
+
+  it('FIX-3:單 - 開頭 typo(-yes / -v)全部 throw', () => {
+    expect(() => parseArgs(['prod', '-yes'])).toThrow(/單 - 開頭/);
+    expect(() => parseArgs(['dev', '-v'])).toThrow(/單 - 開頭/);
+  });
+
+  it('FIX-3:migrate 多餘 positional(prod garbage)throws 而非 silently ignore', () => {
+    expect(() => parseArgs(['prod', 'garbage'])).toThrow(/多餘 positional/);
+    expect(() => parseArgs(['dev', 'extra', 'more'])).toThrow(/多餘 positional/);
+  });
+
+  it('FIX-3:status 多餘 positional(status dev extra)throws 而非 silently ignore', () => {
+    expect(() => parseArgs(['status', 'dev', 'extra'])).toThrow(/多餘 positional|status/);
+  });
+
+  it('FIX-3:合法用法(status dev / prod --yes --dry-run)仍 pass', () => {
+    // regression-guard:修法不能誤傷合法 CLI
+    expect(parseArgs(['status', 'dev'])).toMatchObject({ command: 'status', mode: 'dev' });
+    expect(parseArgs(['prod', '--yes', '--dry-run'])).toMatchObject({
+      command: 'migrate', mode: 'prod', yes: true, dryRun: true,
+    });
+    expect(parseArgs(['dev', '--verbose'])).toMatchObject({
+      command: 'migrate', mode: 'dev', verbose: true,
+    });
+  });
 });
 
 describe('interpretMigrateStatus(Codex round 2 P2)', () => {
