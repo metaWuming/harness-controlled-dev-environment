@@ -1,0 +1,11 @@
+{
+  "$schema": "smoke-manifest v1",
+  "probeIds": [
+    "branch-protection-P1",
+    "destructive-guard-P1",
+    "protectedbranches-drift-P1",
+    "mutation-spec-drift-P1",
+    "mutation-spec-discovery-P1",
+    "baseline-governance-P1"
+  ]
+}

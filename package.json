@@ -27,6 +27,7 @@
     "check:catalog": "tsx scripts/check-control-catalog.ts",
     "check:baseline-governance": "tsx scripts/check-baseline-governance.ts",
     "check:mutation-specs": "tsx scripts/check-mutation-specs.ts",
+    "mutation:smoke": "tsx scripts/run-mutation-smoke.ts",
     "mutate": "tsx scripts/mutate.ts"
   },
   "devDependencies": {
