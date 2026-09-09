@@ -9,14 +9,19 @@
 //   - 本 gate 是 **accidental-regression signal**、非 **malicious-PR security boundary**
 //   - CI wiring(此檔 / manifest / test / workflow / package.json)都 PR-controllable
 //   - Machine gate **不對抗** PR wiring 修改
-//   - **現況防線**(Step 4 Codex review 校正):(a) protected-path human review
-//     (scripts/ / tests/ / .github/workflows/ / mutation-smoke-manifest.json) +
-//     (b) Owner 稽核 CTRL-GOV-005 / CTRL-CI-015 daily schedule drift(schedule-only
-//     workflow 抓 branch protection A-D drift)
+//   - **三分層防線分析**(Step 4 Codex rerereview 校正、evidence-bounded、live remote probe 佐證):
+//     (1) **當前遠端 enforcement**:無 / 未部署 —— template mode
+//         `githubGovernanceRequired:false`、live probe main protected:false /
+//         rules=[] / rulesets=[]
+//     (2) **手動 SOP practices(非 GitHub-enforced、不能作 current protection 宣稱)**:
+//         (a) protected-path human review(scripts/ / tests/ / .github/workflows/ /
+//         mutation-smoke-manifest.json、SOP 紀律,非 GitHub protection rule)+
+//         (b) Owner 稽核 CTRL-GOV-005 / CTRL-CI-015 daily schedule drift
+//         (GitHub Actions tab manual review、非 active gate)
+//     (3) **per-PR A-D 契約 verification / malicious-PR defense**:需 PR-head verifier +
+//         另議部署,out-of-scope、本 harness 尚未提供
 //   - ⚠️ 舊 wording「唯一防線 = required-check(GOV-005 + CI-015)」不成立:GOV-005 /
-//     CI-015 皆 schedule-only、不在 PR head 執行、不能作 required status check;真
-//     per-PR malicious-PR defense 需另設 PR-head verifier(token / trust boundary
-//     另議)、out-of-scope、本 harness 尚未提供
+//     CI-015 皆 schedule-only、不在 PR head 執行、不能作 required status check
 //
 // Algorithm(7 步、fail-closed):
 //   1. Read + validate manifest schema(cardinality/duplicate/set-equality)
