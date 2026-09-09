@@ -75,6 +75,16 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-09-09 ⑳ — **governance sprint:CI-016 SSOT durable evidence boundary(range f3291648..d56cbe4)**
+
+> **改動 d56cbe4**:5 檔 wording 對齊 durable evidence boundary(scripts/control-catalog.json CTRL-CI-016 notes / docs/ADOPTION.md §5.2 / scripts/run-mutation-smoke.ts header / .github/workflows/ci.yml smoke step comment / docs/CONTROL-CATALOG.md rendered)。改法將 remote-state stale assertion 拆為 evidence boundary:遠端 enforcement 需 gh api live probe 現場確認;template config `githubGovernanceRequired:false` 表達 adopter requirement default 語意;schedule A-D audit 以 `BRANCH_PROTECTION_TOKEN` + schedule workflow 成功為前提;per-PR verifier 屬 out-of-scope。
+> **Step 4 flow P2 finding**:supervisor 於 detached review clone 發現 check:claims 命中需在 progress.md 留人工處置史;本 entry(⑳-b commit)即該留史。
+> **check:claims 逐條處置**(pre-merge、PR body 對齊同兩項 disposition、兩處貼、不轉抄):
+> - `scripts/control-catalog.json:997` KEEP — CI-016 notes 內被標示為「不成立」的舊防線措辭之校正引文,非 current enforcement 斷言。
+> - `docs/CONTROL-CATALOG.md:52` KEEP — catalog:render 產物、對應 catalog.json 同引文、非新斷言。
+> **claims 工具語意**:命中為待人工處置 flow signal、非 product / CI failure(tool 命中時 exit code 非 0 為預期行為);PR body 對照本 entry 貼同兩項 disposition。
+> **驗證**:typecheck / lint 綠;catalog:render 34 controls 35414 bytes;check:catalog CATALOG_OK;check:doc-refs 854 refs 0 fail;check:mutation-specs 14 spec 167 probes drift zero-diff;vitest focused 3 files 100 passed 0 skip。
+
 📅 2026-09-09 ⑲ — **Sprint 21 C3 milestone:CTRL-CI-016 Mutation Kill Smoke Check(CI 加獨立 gate、對 pinned 6 條 smoke probe 真 apply mutation via mutate.ts + assert killed、accidental-regression signal 非 malicious-PR security boundary、三份 mutation evidence 分工)**
 
 > **緣起 & scope**:Sprint 20 C2 delivery(PR #86 squash tip)後、Owner staged roadmap 最後 milestone C3;Owner 一句話 objective 起手「CTRL-CI-013 mutation-spec drift 升 hard-automated」→ Codex Phase 0 evidence intake 發現 CTRL-CI-013 早已 hard-automated(PR #47 引入)、objective 已由現況完成 → Owner AskUserQuestion 重拍板方案 A「mutation-kill smoke subset 進 CI」= 真升級 machine-verifiable 一步。Scope:pinned 6 條 smoke probe(每 spec index 0、fingerprint 對 immutable f51483d1 SHA-256 verify)+ 新 runner `scripts/run-mutation-smoke.ts`(硬編碼 SMOKE_PROBES map + 7 步 algorithm)+ 極簡 manifest `scripts/mutation-smoke-manifest.json`(cardinality 6 / no duplicates / set-equality / $schema pin)+ CI step 新 CTRL-CI-016(一對一 ciStep + timeout-minutes: 5)+ ADOPTION §5.2/§5.3 runbook。Frozen base `f51483d18a4f4cba6da4682ef75a8cd05448466e`(Sprint 20 squash tip via local bundle atomic quarantine `refs/temp/sprint21-base`;shared main 233858f + CLAUDE.md M + stash + 18 agent-* worktree + stale local origin/main 2307a44 全 preserved 不動)。
