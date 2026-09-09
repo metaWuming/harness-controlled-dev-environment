@@ -30,7 +30,7 @@ import { spawnSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
+import { detectInvocation, reportIfNotMain } from "./lib/invoked-as-main";
 
 // ─────────────────────────────────────────────────────────────
 // SMOKE_PROBES 硬編碼(承 Sprint 21 plan r6、fingerprint verified against
@@ -555,13 +555,14 @@ function formatSummary(out: RunnerOutput): string {
 // CLI entry point
 // ─────────────────────────────────────────────────────────────
 
-function isMain(): boolean {
-  const invoked = process.argv[1] ?? "";
-  const here = fileURLToPath(import.meta.url);
-  return path.resolve(invoked) === path.resolve(here);
-}
+// ESM main 判定改用 scripts/lib/invoked-as-main.ts 共用 lib(P2#3 defer ①② 後續遷移):
+// 兩端 realpath、indeterminate 由 caller 顯式 exit(2)、被當 import 用時完全靜默。
+// macOS `/tmp` → `/private/tmp` 這種 symlink 目錄呼叫下,原本 path.resolve 對稱檢查
+// 會判定 false → smoke runner silent exit 0(fail-open),已由 helper 兩端 realpath 修正。
+const outcome = detectInvocation(import.meta.url, process.argv[1]);
+const isMain = reportIfNotMain(outcome, "run-mutation-smoke");
 
-if (isMain()) {
+if (isMain) {
   const cwd = process.cwd();
   const manifestPath = path.join(cwd, "scripts", "mutation-smoke-manifest.json");
   runMutationSmoke({ manifestPath, cwd }).then((out) => {
@@ -571,4 +572,6 @@ if (isMain()) {
     process.stderr.write(`smoke runner crashed: ${e instanceof Error ? e.stack : String(e)}\n`);
     process.exit(2);
   });
+} else if (outcome.kind === "indeterminate") {
+  process.exit(2);
 }

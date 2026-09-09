@@ -5,7 +5,8 @@
 // E2E:實跑 runner 對 immutable 6 條 smoke probe(全綠 path)
 
 import { describe, expect, it } from "vitest";
-import { writeFileSync, mkdtempSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import {
@@ -421,4 +422,47 @@ describe("SMOKE_PROBES map", () => {
       }
     }
   });
+});
+
+// ─────────────────────────────────────────────────────────────
+// FIX-1 regression:isMain 判定經 symlink 路徑不得 silent exit 0
+//
+// 緣起(Harness-optimization-workplan-2026-09-09 FIX-1):
+//   原 isMain() 用 `path.resolve(argv[1]) === path.resolve(fileURLToPath(import.meta.url))`
+//   對稱檢查。macOS `/tmp` → `/private/tmp`(或任何 symlink 目錄別名)呼叫時:
+//     argv[1]  = /tmp/repo/scripts/run-mutation-smoke.ts
+//     self URL = file:///private/tmp/repo/scripts/run-mutation-smoke.ts(tsx canonicalize)
+//     path.resolve 兩端不等 → isMain=false → runner 未啟動 → silent exit 0(fail-open)
+//   已改用 scripts/lib/invoked-as-main.ts 共用 helper(兩端 realpath + fail-closed
+//   indeterminate exit 2),此 regression 從 subprocess 走一次 symlink 路徑,pin 行為。
+//
+// 為何用 spawnSync 而非 in-process 呼叫:
+//   1. isMain 判定依 process.argv[1] 與 import.meta.url,只能在 subprocess 生效
+//   2. 遵循 workplan FIX-1 驗收「不在平行 Vitest suite 內對受測真 repo 跑 smoke mutation」
+//      —— cwd 指向 empty dir(無 manifest),spawnSync 完全不會啟動 mutate。
+// ─────────────────────────────────────────────────────────────
+
+describe("FIX-1 regression:main 判定經 symlink 呼叫時不得 silent exit 0", () => {
+  it("以 symlink 呼叫(empty cwd)→ exit 2 + 有診斷,非 exit 0", () => {
+    // canonical repo root(macOS tmpdir 也是 symlink,一律走 realpath 取 canonical)
+    const canonicalRepo = realpathSync(REPO_ROOT);
+    // 一個獨立 scratch:內含 empty-cwd(無 manifest)+ repo symlink
+    const scratchDir = realpathSync(mkdtempSync(path.join(tmpdir(), "fix1-symlink-")));
+    const emptyCwd = path.join(scratchDir, "empty-cwd");
+    mkdirSync(emptyCwd);
+    const repoSymlink = path.join(scratchDir, "repo-link");
+    symlinkSync(canonicalRepo, repoSymlink);
+    const scriptViaSymlink = path.join(repoSymlink, "scripts", "run-mutation-smoke.ts");
+    const tsx = path.join(canonicalRepo, "node_modules", ".bin", "tsx");
+    const r = spawnSync(tsx, [scriptViaSymlink], {
+      cwd: emptyCwd,
+      encoding: "utf8",
+      timeout: 30_000,
+    });
+    // 修前:isMain 判定 false → runner 不啟動 → exit 0(silent)
+    // 修後:helper 兩端 realpath → main → runner 啟動 → 空 cwd 無 manifest → exit 2
+    expect(r.status).toBe(2);
+    // 診斷須明列(避免只是巧合 exit 2 而抓不到 root cause)
+    expect(r.stderr).toMatch(/manifest read\/parse|ENOENT.*mutation-smoke-manifest/);
+  }, 60_000);
 });
