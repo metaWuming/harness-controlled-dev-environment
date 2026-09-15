@@ -12,7 +12,7 @@
 //    子程序用本地 `tsx` binary 跑(離線、對齊 package.json 的 `check:claims`)。
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { linkSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { linkSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -329,8 +329,16 @@ describe('🔴 端到端:拋棄式 repo 真跑腳本', () => {
   const scriptPath = join(repoRoot, 'scripts/check-claims.ts');
 
   /** 建立一個兩個 commit 的 repo,回傳 [dir, 第一個 commit 的 SHA]。第二個 commit 讓 base
-   * 成為 proper ancestor,並提供非祖先側枝測試所需的父節點。 */
-  function makeRepo(baseContent: string): [string, string] {
+   * 成為 proper ancestor,並提供非祖先側枝測試所需的父節點。
+   *
+   * Issue #93 (Group B):optional harnessConfig 加寫 fixture harness.config.json,
+   * 讓「預設 base」測試可以宣告 deliveryBranches 讓 helper 讀。其他測試傳
+   * --base=<sha> 顯式覆蓋,不需 config 檔。
+   */
+  function makeRepo(
+    baseContent: string,
+    opts: { deliveryBranches?: readonly string[] } = {},
+  ): [string, string] {
     const dir = mkdtempSync(join(tmpdir(), 'check-claims-'));
     created.push(dir);
     // 初始分支給中性名稱,default-base 測試才能自由建 develop／main 而不撞到 git init 的
@@ -341,6 +349,26 @@ describe('🔴 端到端:拋棄式 repo 真跑腳本', () => {
     execFileSync('git', ['-C', dir, 'symbolic-ref', 'HEAD', 'refs/heads/fixture-head'], {
       env: GIT_ENV,
     });
+    // Issue #93 (Group B):optional harness.config.json fixture,讓「預設 base」
+    // 測試可以宣告 deliveryBranches 讓 helper 讀。
+    if (opts.deliveryBranches) {
+      mkdirSync(join(dir, 'scripts'), { recursive: true });
+      const cfg = {
+        schemaVersion: 2,
+        mode: 'template',
+        projectId: '__TEMPLATE__',
+        templatePackageName: 'harness-controlled-dev-environment',
+        protectedBranches: [...opts.deliveryBranches],
+        deliveryBranches: [...opts.deliveryBranches],
+        requiredAgentAdapters: ['claude', 'codex'],
+        githubGovernanceRequired: false,
+        mergeStrategy: 'squash',
+      };
+      writeFileSync(
+        join(dir, 'scripts/harness.config.json'),
+        JSON.stringify(cfg, null, 2) + '\n',
+      );
+    }
     writeFileSync(join(dir, 'f.ts'), baseContent);
     execFileSync('git', ['-C', dir, 'add', '-A'], { env: GIT_ENV });
     execFileSync('git', ['-C', dir, 'commit', '-q', '-m', 'base'], { env: GIT_ENV });
@@ -456,10 +484,11 @@ describe('🔴 端到端:拋棄式 repo 真跑腳本', () => {
     expect(r.stdout).not.toContain('只有這一把鑰匙');
   });
 
-  it('🔴 預設 base:develop 與 main 都在時取 develop(對齊 check-cso-trigger)', () => {
-    // 這一刀刻意把來源的 resolveDefaultBase 改成 develop→main;所有其他 E2E 都顯式傳
-    // --base,這條專門守「不傳時的預設解析」,否則優先序被誤改也全綠。
-    const [dir, base] = makeRepo('// 起點\n');
+  // Issue #93 (Group B):以下兩個 test 驗新 helper `resolveDefaultBase(REPO_ROOT)`
+  // 對宣告的 deliveryBranches 有優先順序。舊行為(硬編 develop 優先)已被
+  // 「讀 harness.config.json.deliveryBranches[0]」取代。
+  it('🔴 預設 base:deliveryBranches=[develop, main] 時取 develop', () => {
+    const [dir, base] = makeRepo('// 起點\n', { deliveryBranches: ['develop', 'main'] });
     const g = (...a: string[]) =>
       execFileSync('git', ['-C', dir, ...a], { env: GIT_ENV, encoding: 'utf-8' });
     g('branch', 'develop', base);
@@ -470,11 +499,11 @@ describe('🔴 端到端:拋棄式 repo 真跑腳本', () => {
     expect(r.stdout + r.stderr, `status=${r.status}`).toMatch(/base=develop/);
   });
 
-  it('🔴 預設 base:只有 main 時退回 main', () => {
-    const [dir, base] = makeRepo('// 起點\n');
+  it('🔴 預設 base:deliveryBranches=[main] 時取 main', () => {
+    const [dir, base] = makeRepo('// 起點\n', { deliveryBranches: ['main'] });
     const g = (...a: string[]) =>
       execFileSync('git', ['-C', dir, ...a], { env: GIT_ENV, encoding: 'utf-8' });
-    g('branch', 'main', base); // 只建 main、不建 develop
+    g('branch', 'main', base); // 只建 main
     const r = spawnSync(tsxBin, [scriptPath], { cwd: dir, encoding: 'utf-8', env: GIT_ENV });
     expect(r.status, `stdout=${r.stdout} stderr=${r.stderr}`).toBe(0);
     expect(r.stdout + r.stderr, `status=${r.status}`).toMatch(/base=main/);

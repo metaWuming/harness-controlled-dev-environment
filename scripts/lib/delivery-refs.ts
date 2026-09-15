@@ -131,3 +131,35 @@ export function formatRejections(rejections: readonly Rejection[]): string {
     ...lines,
   ].join('\n');
 }
+
+/**
+ * Issue #93 (Group B):依 harness.config.json 的 deliveryBranches[0] 為首,建
+ * candidate list(`b`, `origin/b` 對每個 b),用 `git rev-parse` 找第一個 resolvable
+ * ref 作為 default base。都 resolve 不到 → return `deliveryBranches[0]` fallback
+ * (caller 通常拿去傳給後續 git 命令,fail-closed 語意由 caller 處理)。
+ *
+ * 過往兩支 script 硬編 `[develop, origin/develop, main, origin/main]`,對
+ * main-only 專案(如 Team W)有 dead reference、semantic misleading。
+ * 抽 shared helper 對稱 SOP-tune v2 的 governance-paths pattern:讓兩處 script
+ * 共用同一份 mode-aware 邏輯,不再各自維護硬編 list。
+ */
+export function resolveDefaultBase(repoRoot: string): string {
+  const { deliveryBranches } = loadHarnessConfig(repoRoot);
+  const candidates: string[] = [];
+  for (const b of deliveryBranches) {
+    candidates.push(b, `origin/${b}`);
+  }
+  for (const ref of candidates) {
+    try {
+      execFileSync('git', ['rev-parse', '--verify', '--quiet', ref], {
+        cwd: repoRoot,
+        stdio: 'pipe',
+      });
+      return ref;
+    } catch {
+      // try next
+    }
+  }
+  // 都 resolve 不到 → return deliveryBranches[0](caller fail-closed 處理)
+  return deliveryBranches[0];
+}
