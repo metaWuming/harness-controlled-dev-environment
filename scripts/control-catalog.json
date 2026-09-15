@@ -995,6 +995,35 @@
       ],
       "bypass": "admin override(組織治理層);PR 可移 CI step / 改 package script / 改 runner SMOKE_PROBES / 改 manifest / 改 target test(protected-path human review 責任)",
       "notes": "⚠️ 誠實邊界(三處 SSOT 對齊 docs/ADOPTION.md §5.2 + CI step comment):本 gate 是 accidental-regression signal、非 malicious-PR security boundary。CI wiring(runner / manifest / test / workflow / package.json)都 PR-controllable、machine gate 不對抗 PR wiring 修改。⚠️ 舊 wording「唯一防線 = required-check(GOV-005 branch protection + CI-015 machine check)」實務上不成立:GOV-005 / CI-015 皆 schedule-only workflow、不在 PR head 執行、不能作 branch protection required status check;真 per-PR malicious-PR 防線需另設 PR-head verifier(本次 optimization out-of-scope、本 harness 尚未提供)。**durable evidence boundary(Step 4 Codex 校正、live-probe-only、不由 config 或某次 probe snapshot 靜態推論)**:(1) **遠端 enforcement 是 live GitHub state**:必須以 `gh api /repos/.../branches/main/protection` + `/rules/branches/main` + `/branches/main` 的 live probe 現場確認;不能由 config 靜態推論、不能由某一次 probe snapshot 宣稱永久狀態(本文件不宣稱目前已啟用或未部署);(2) **template config `githubGovernanceRequired:false`** 僅表示 adopter requirement default(本模板對下游 adopter 沒硬性要求),**不能由此推論** template repo 自身有或無 GitHub-side enforcement(部署由 Owner 個案決定、與 config flag 獨立);(3) **schedule A-D audit(CTRL-GOV-005 / CTRL-CI-015)**:僅在 (a) `BRANCH_PROTECTION_TOKEN` 已設 且 (b) daily schedule workflow 實際成功時才提供 evidence;此 evidence **非** per-PR required check;(4) **手動 SOP practices(不論 remote enforcement 是否部署都適用、本身非 GitHub-enforced)**:(a) protected-path human review(scripts/ / tests/ / .github/workflows/ / mutation-smoke-manifest.json、SOP 紀律,非 GitHub protection rule)+ (b) Owner 稽核 GOV-005/CI-015 daily schedule drift(GitHub Actions tab manual review、非 active gate);(5) **per-PR A-D 契約 verification / malicious-PR defense**:需另設 PR-head verifier + 另議部署(token / trust boundary / adopter GitHub policy),out-of-scope、本 harness 尚未提供。全量 167 mutation probes(14 spec 檔 total、smoke subset 6 spec)明確留人工(Step 4.5)、與本 gate 6 條 smoke subset 分工:drift = spec 對源(CTRL-CI-013,14 spec 全掃)/ smoke = 6 條 kill 驗(CI step、獨立 CI 真 spawn mutate + kill assertion)/ full = Step 4.5 人工。**tested/testRefs 澄清**:`unit + e2e` 分別為 injectable-deps 分支測試(unit)與 invocation-boundary spawnSync(e2e、FIX-1 regression);真 6-probe kill 證據**不在** vitest suite 內,由獨立 CI step 提供、不平行執行 mutation(避 fork race)"
+    },
+    {
+      "id": "CTRL-CI-018",
+      "name": "Step 4 Codex 跨模型 review 憑證守門",
+      "legacyGate": null,
+      "class": "hard-automated",
+      "triggers": [
+        "pull_request"
+      ],
+      "implementation": [
+        ".github/workflows/ci.yml",
+        "scripts/check-progress-codex-review.ts",
+        "scripts/lib/invoked-as-main.ts"
+      ],
+      "locator": "CI step「Step 4 Codex Review Evidence Check」;只在 pull_request event 跑;base..HEAD 動 .claude/memory/progress.md → 最上方 entry 必須含 /Codex\\s+round\\s+\\d+/i 或「跨模型 review N rounds」+ 收斂 marker(no actionable findings / zero findings / 0 findings / 0 P1 / 收斂 / final round 0),或明講行首「docs-only sprint」/「無 code 改動」marker,或每個 commit 訊息含 [trivial] marker 且 diff 不含 super-sensitive 檔;都不含 → exit 2 阻擋",
+      "ciStep": "Step 4 Codex Review Evidence Check",
+      "owner": "github",
+      "failureBehavior": "block",
+      "evidence": "CI check 狀態;本機 npm run check:progress-codex -- --base=<主線> 印 matched pattern 與 entry preview",
+      "degradation": "無;base 讀不到 / progress.md 讀不到 / 找不到 entry / entry 缺 Codex round 且未標 docs-only / base 非 HEAD 真祖先 / git 命令失敗 → exit 2 fail-closed",
+      "tested": [
+        "unit",
+        "e2e"
+      ],
+      "testRefs": [
+        "tests/check-progress-codex-review.test.ts"
+      ],
+      "bypass": "admin override;entry 內以行首 marker 明講「docs-only sprint」或「無 code 改動」(SOP 適用範圍 docs-only 例外,受 DOCS_ALLOW_EXACT 白名單約束);**每個** commit 訊息都含 [trivial] marker **且** diff 不含 super-sensitive 檔(CLAUDE.md §4.5 禁區 + governance SSOT:scripts/git-hooks/**、scripts/mutate.ts、scripts/check-cso-trigger.ts、scripts/cso-trigger.config.ts、scripts/control-catalog.json、scripts/harness.config.json、docs/CONTROL-CATALOG.md、.github/workflows/**、src/**/auth/**、CLAUDE.md、.claude/sop/**、.claude/settings*、.env*、prisma/schema.prisma)——SOP trivial 修改例外通道(typo / 單行 rename / 純格式),responsibility 在 Owner / Reviewer 核實",
+      "notes": "根因:AI 反覆跳過 Step 4 跨模型 review 的重複錯誤(下游 fork 實測 M4.5-A / M4.5-B 連續兩棒跳過)。人工提醒失效 → 機器化守門。**v1 誠實邊界**:(1) 純字串比對,抓不到「entry 假裝有 Codex round」的 human 惡意情境。(2) README.md 無條件在 DOCS_ALLOW_EXACT — 修 README 但含 env/token/部署指示不會被判為完整 SOP(需內容分析,v1 不做)。(3) CONVERGENCE_RE 對「尚未完全收斂」/「final round: N findings remain」等仍有邊界(自然文字比對本質限制)。(4) entry-identity 用 body-level 比對,改 typo 過關。SOP-tune sprint(下游 fork port 到母 repo)Codex 5 rounds + Step 5 fresh adversarial 1 round,連續三輪 fix 冒新 P1 觸發方向錯訊號 → 縮 scope 為「防明顯規避」、非 malicious-PR defense、v1 邊界明列;下游 fork 若對安全邊界有更嚴要求,可 fork 出 v2 版本或加補充守門"
     }
   ]
 }

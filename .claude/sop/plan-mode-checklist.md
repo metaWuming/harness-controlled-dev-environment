@@ -148,6 +148,17 @@ Step 6/7 收尾照走。
 - [ ] 對本地 diff 跑對手模型 review 一輪(**不需先 push**)
       〔預設:Codex CLI `/codex review`;無 Codex 降級:Claude Code 內建 `/code-review high`——
       失去跨模型多樣性,但仍是獨立 fresh-context 審查〕
+- [ ] **Codex model 選擇**:gstack 預設 model 隨 gstack 版本更新可能改變(訂閱 rolling default)。
+      **導入者可透過 env var `GSTACK_CODEX_MODEL=<model>` 明確指定**(建議設在 `~/.zshrc` 或
+      shell profile,不進 repo);想省成本可挑輕量 model、想加深度可挑重量 model。
+      ⚠️ **effort 目前 gstack review-mode 硬寫 `high`**——無 `GSTACK_CODEX_EFFORT` env var,
+      想要 `medium` 只能改 skill 檔(會被下次 `/gstack-upgrade` 覆蓋)或等上游支援。
+      現階段接受 `high`(單一 review 輪成本略高、迭代次數會降)。
+- [ ] **憑證機器化守門**(CTRL-CI-018,見 CONTROL-CATALOG.md):CI「Step 4 Codex Review
+      Evidence Check」對本 PR 的 progress entry 掃 Codex round + 收斂 marker
+      (`no actionable findings` / `zero findings` / `0 findings` / `0 P1` / `收斂` /
+      `final round 0` 之類),缺就 exit 2。堵住「跳過 Step 4 跨模型 review」的復發路徑
+      (下游 fork 實測連續兩棒跳過的重複錯誤)。v1 邊界誠實揭露見 CTRL-CI-018 notes。
 - [ ] **`/codex review` 撞 exit 124(gstack skill 330s wrapper 撞牆)的 fallback**——**撞牆不等於不審**:
       retry 一次(可能真 API stall,gstack 上游建議)→ 再撞改跑 `/codex challenge <focus>`
       (600s wrapper,同一份 diff 換長 timeout)→ 再撞才切 Herdr codex pane(無 timeout)。
@@ -231,9 +242,29 @@ Step 6/7 收尾照走。
       任何關卡——排除障礙前不得進 Step 5。
       唯一例外:**模板 repo 本身**(路徑表刻意出廠為空、填表屬導入步驟)——
       以人工自問代替判定,並在 entry 記明「模板 repo、表空為設計」+ 人工判定結果
-- [ ] `CSO_REQUIRED` → 跑一輪專責安全審
-      〔預設:gstack `/cso`;無 gstack 降級:Claude Code 內建 `security-review` skill〕,
-      findings 分類同 Step 5(`[CRITICAL]` 必修),fix commit 標 `修復: <feature> 安全審 findings — <finding>`
+- [ ] `CSO_REQUIRED` → 跑一輪專責安全審(以下條目皆為 CSO_REQUIRED 之子條;
+      CSO_NOT_REQUIRED 直接跳到下方 `CSO_NOT_REQUIRED` 條目)
+      〔預設:gstack `/cso --diff --base <主線> --budget 600`(gstack 1.87.0.0 起支援;
+      `--diff --base <主線>` 只掃本 sprint 變更面、不重掃整 repo;`--budget 600` 卡
+      10 分鐘 wall-clock 上限。`<主線>` 依 `CLAUDE.md` §4.6 protected / delivery
+      branch 慣例:多數 `main`,GitFlow 為 `develop`);無 gstack 降級:Claude Code
+      內建 `security-review` skill〕
+  - 🔴 **findings 決策 gate**——只在**真實取捨**時停下問 Owner:
+    - **明顯 P1 + 單一修法路徑**(如 missing input validation、hardcoded secret、
+      typo 造成 auth bypass):**直接修 + 標 fix commit**,不用 pause。
+    - **真實取捨**才問 Owner(用 `.claude/sop/decision-request-template.md`):
+      (a) finding 有 A / B 兩條完全不同修法路徑;或
+      (b) 修法動 sprint scope 外的檔或機能;或
+      (c) 對機能影響大,可否 defer 到後續 sprint;或
+      (d) Owner 已明講要看的類別(如金流、法務相關)。
+    - Owner 說修 → fix commit 標 `修復: <feature> 安全審 findings — <finding>`
+    - Owner 說 defer → 暫記 plan file / scratchpad,Step 5 寫進 progress entry
+    - 全部 findings 處理完(修或明確 defer)才進下一條(mutation 探針)
+
+    ⚠️ 這條 gate 與「STOP point 達成 → 直接推進」**不衝突**:上面 (a)(b)(c)(d) 都是
+    真實取捨、符合 `CLAUDE.md` 原則 1 判準;明顯 P1 直接修不 pause。
+    ⚠️ **CSO 不會自動改分支**——`--comprehensive` 只是把 patch + 證據封裝進
+    `RepairBundle`,仍要 Claude / Owner 手動 apply。
 - [ ] `CSO_REQUIRED` = 本 sprint 進**高風險車道**(見頂部風險車道對照表),另加兩件事:
   - **破壞性 mutation 探針**:對每個命中域的新增/修改機制跑**至少一條**探針,預設
     `npm run mutate -- --file <檔> --find '<原樣>' --replace '<改壞>' --label '<命中域:哪條不變量>'`
@@ -266,11 +297,11 @@ Step 6/7 收尾照走。
       (progress entry Step 5 才寫、此刻寫會破 Step 5「最後一個 commit」的 partial-lifecycle
       grep;Step 5 集中把這裡的 REQUIRED/NOT + 命中域 + 理由寫進 entry),進 Step 5
 - [ ] 本 sprint 新增了安全敏感模組 → 同步把路徑加進 `scripts/cso-trigger.config.ts` 路徑表
-- [ ] 執行中浮現真實取捨(例:安全審 finding 修法對機能影響大、要 Owner 決策)→ 用
+- [ ] 執行中另有其他真實取捨(不屬 findings 決策 gate 已涵蓋的)→ 用
       `.claude/sop/decision-request-template.md`(接線規則見 Step 3 同名條目)
 
-**STOP point**:安全審 critical findings 全修;高風險車道的 mutation 探針全部
-exit 0(被抓)——才進 Step 5。
+**STOP point**:安全審 critical findings **全處理**(Owner 說修的已修、說 defer
+的已記進 plan file);高風險車道的 mutation 探針全部 exit 0(被抓)——才進 Step 5。
 
 ## Step 4.6:條件式視覺關(diff 碰 UI 才觸發) 🎚️ `medium`
 
