@@ -51,6 +51,14 @@
 
 import { spawnSync } from "node:child_process";
 import { detectInvocation, reportIfNotMain } from "./lib/invoked-as-main";
+import {
+  HANDOFFS_PREFIX,
+  PROGRESS_ARCHIVE_PREFIX,
+  PROGRESS_FILE,
+  README_FILE,
+  TODOS_BOOKKEEPING_FILES,
+  TRIVIAL_FORBIDDEN_PATTERNS,
+} from "./lib/governance-paths";
 
 /**
  * 安全跑 git 子命令(R3 P2-2 shell injection 修)。
@@ -78,8 +86,19 @@ const CLAUDE_REVIEW_RE = /Claude\s+(?:\/)?code[\s-]?review\s+round\s+\d+/i;
 // entry 照模板寫時無「Codex round N」字樣、但確實有跑跨模型 review。加此 alt
 // pattern 對齊 SSOT。仍需搭配收斂 marker 才能通過 judgeEntry。
 const CROSSMODEL_ROUNDS_RE = /跨模型\s*review\s+\d+\s*rounds?/i;
-// 降級 marker:entry 明講「無 Codex」/ 「降級 Claude」/ 「Codex CLI 未安裝」
-const DEGRADATION_MARKER_RE = /(?:無|沒)\s*Codex|降級[^\n]*Claude|Codex(?:\s+CLI)?\s*(?:未安裝|不可用|not\s+available)/i;
+// 降級 marker:entry 明講「無 Codex」/ 「降級 Claude」/ 「Codex CLI 未安裝」。
+// SOP-tune v2 (h):加行首 anchor(對稱 DOCS_ONLY_MARKER_RE 的姿態),排除否定
+// 敘述誤中——「本輪並非無 Codex」/「討論並非降級 Claude」不會命中。
+// `m` flag 讓 `^` 對每行生效(entry 是多行 markdown)。
+// 「降級 Claude」branch 中間允許少量標點(半形 + CJK 全形 + 頓號 + 破折號家族),
+// SOP 明文允許 fallback,常見寫法「降級:Claude」/「降級到 Claude」/「降級—Claude」
+// 都要命中。破折號家族用 Unicode escape 明確標:
+//   ， = CJK 全形逗號、： = CJK 全形冒號、； = CJK 全形分號、
+//   、 = 頓號、－ = CJK 全形連字號、— = Em dash、
+//   – = En dash、― = 水平線、`-` = ASCII 連字號(放字元集尾避 range)。
+// 完整字元集限白名單 + `{0,10}?` 非貪婪 + 行首 anchor 擋否定敘述(行首若是「不」
+// 不在 anchor `[>\-*\s]*` 內、整個 pattern fail)。
+const DEGRADATION_MARKER_RE = /^[>\-*\s]*(?:(?:無|沒)\s*Codex|降級[,;:，：；、－—–―\s到至-]{0,10}?Claude|Codex(?:\s+CLI)?\s*(?:未安裝|不可用|not\s+available))/im;
 // 收斂 marker:擇一即可
 // R2 P2-1 修:「收斂」前若有否定詞則不算命中。
 // R3 P1-2 修:數字前綴 lookbehind——避免 `10 findings` 被 `0 findings` 誤中、
@@ -93,7 +112,8 @@ const CONVERGENCE_RE = /no\s+actionable\s+findings?|zero\s+findings?|(?<!\d)0\s+
 // 前有「本 sprint 為」故不命中)。
 const DOCS_ONLY_MARKER_RE = /^[>\-*\s]*docs-only\s+sprint/im;
 const NO_CODE_MARKER_RE = /^[>\-*\s]*無\s*code\s*改動/im;
-const PROGRESS_PATH = ".claude/memory/progress.md";
+// PROGRESS_PATH 保留為 local alias 免大量改 consumer 名字;SSOT 在 governance-paths.ts。
+const PROGRESS_PATH = PROGRESS_FILE;
 
 export type CheckResult =
   | { kind: "ok"; reason: "no-progress-change" | "docs-only" | "has-codex-round" | "has-claude-review-degradation"; matched?: string }
@@ -308,11 +328,42 @@ export function getChangedFiles(base: string, cwd: string): string[] | null {
  * R5 P2-1:加 `--no-merges` 排除 GitHub `pull_request` 產生的合成 merge commit
  * (checkout 預設是 refs/pull/N/merge,無 [trivial] 的合成 commit 會讓 every()
  * 固定為 false、誤擋合法 trivial PR)。
+ *
+ * SOP-tune v2 (f):三態 discriminated union 分離 git-error 與 no-non-merge 語意。
+ * 舊 API 兩種情況都回空 `string[]`,呼叫端無法分辨:
+ *   - git 執行失敗 → 應 fail-closed exit 2 with detail
+ *   - 有 merge commits 但無 non-merge commit → 走 trivial=false 通道(no override)
+ * 新版明確標示,呼叫端各自處理。
+ */
+export type CommitMessagesResult =
+  | { kind: "ok"; messages: string[] }
+  | { kind: "error"; detail: string }
+  | { kind: "no-non-merge" };
+
+export function getCommitMessagesResult(base: string, cwd: string): CommitMessagesResult {
+  const r = gitRun(cwd, ["log", `${base}..HEAD`, "--no-merges", "--format=%B%x00"]);
+  if (!r.ok) {
+    return { kind: "error", detail: `git log ${base}..HEAD --no-merges failed` };
+  }
+  const messages = r.stdout.split("\0").map((m) => m.trim()).filter((m) => m.length > 0);
+  if (messages.length === 0) {
+    return { kind: "no-non-merge" };
+  }
+  return { kind: "ok", messages };
+}
+
+/**
+ * 舊 API 保留(向後相容 tests + 對 error 與 no-non-merge 無 diagnosability
+ * 需求的呼叫端):兩種都回空陣列。實務新呼叫請用 getCommitMessagesResult。
+ *
+ * @deprecated SOP-tune v2:新呼叫請用 getCommitMessagesResult 拿三態 discriminated
+ * union。此 shim 對 git-error 與 no-non-merge 靜默 fallback 為空陣列,呼叫端無法
+ * 區分,是 (f) 修法要 close 的舊 collision。若你在寫新 checker,別 import 這支——
+ * 會重蹈覆轍。舊 test 保留期間仍可用。
  */
 export function getCommitMessages(base: string, cwd: string): string[] {
-  const r = gitRun(cwd, ["log", `${base}..HEAD`, "--no-merges", "--format=%B%x00"]);
-  if (!r.ok) return [];
-  return r.stdout.split("\0").map((m) => m.trim()).filter((m) => m.length > 0);
+  const result = getCommitMessagesResult(base, cwd);
+  return result.kind === "ok" ? result.messages : [];
 }
 
 /**
@@ -330,40 +381,8 @@ export function hasTrivialMarker(messages: string[]): boolean {
   return allCommitsHaveTrivialMarker(messages);
 }
 
-/**
- * Trivial marker override 的 super-sensitive path 拒絕清單(R4 P1-1 修、
- * R5 P1-1 補完 CLAUDE.md §4.5 明文禁區)。
- *
- * SOP 明講「碰 auth/CI/守門的單行修不算 trivial 例外」;CLAUDE.md §4.5「禁區清單」
- * 明列 `src/git/**`、`src/approval/**`、`scripts/check-cso-trigger.ts`、
- * `scripts/cso-trigger.config.ts`、`scripts/lib/destructive-guard.ts`、
- * `scripts/git-hooks/**`、`src/state.ts` 為動前必問的邊界。以此為機器化下限。
- */
-const TRIVIAL_FORBIDDEN_PATTERNS: RegExp[] = [
-  // SOP / auth / CI / 守門(既有)
-  /^scripts\/git-hooks\//,
-  /^scripts\/mutate\.ts$/,
-  /^scripts\/lib\/destructive-guard/,
-  /^\.github\/workflows\//,
-  /^src\/.*\/auth/i,
-  /^src\/.*security/i,
-  /^prisma\/schema\.prisma$/,
-  /(?:^|\/)\.env(?:\..*)?$/,
-  /^\.claude\/settings/,
-  /^CLAUDE\.md$/,
-  /^\.claude\/sop\//,
-  // R5 P1-1:CLAUDE.md §4.5 禁區清單明文
-  /^src\/git\//,
-  /^src\/approval\//,
-  /^src\/state\.ts$/,
-  /^scripts\/check-cso-trigger\.ts$/,
-  /^scripts\/cso-trigger\.config\.ts$/,
-  // Step 5 INF (k) 修:governance SSOT 檔案(對稱 check-baseline-governance 對
-  // harness.config.json 的定位)
-  /^scripts\/control-catalog\.json$/,
-  /^docs\/CONTROL-CATALOG\.md$/,
-  /^scripts\/harness\.config\.json$/,
-];
+// TRIVIAL_FORBIDDEN_PATTERNS 抽到 scripts/lib/governance-paths.ts(SOP-tune v2 (d))
+// — 未來新守門碼共用同一份 SSOT。
 
 export function isTrivialForbidden(files: string[]): boolean {
   return files.some((f) => TRIVIAL_FORBIDDEN_PATTERNS.some((p) => p.test(f)));
@@ -389,33 +408,25 @@ export function isProperAncestor(base: string, cwd: string): boolean {
  * 只有 exact match(或 archive glob)的檔才算 docs-only;任何未列出的檔都當非 docs。
  * 對齊 SOP「判不準 = 當非文件」原則。
  *
- * 白名單(exact):
- *   - `README.md`(project readme,純散文)
- *   - `.claude/memory/progress.md`
- *   - `TODOS.md` / `BACKLOG.md` / `TODOS-done.md`(root)
- *   - `.claude/memory/TODOS.md` / `.claude/memory/BACKLOG.md` / `.claude/memory/TODOS-done.md`
+ * 白名單(exact):README.md + progress.md + TODOS/BACKLOG/TODOS-done(root + `.claude/memory/`)
+ * 白名單(prefix):`.claude/memory/progress-archive/`(不進子目錄、非 README.md) + `_handoffs/`
  *
- * 白名單(prefix):
- *   - `.claude/memory/progress-archive/` 下的 `.md`(不進子目錄、basename 非 README.md)
- *   - `_handoffs/` 下的任何 `.md`(交接檔目錄,純散文)
+ * SOP-tune v2 (d):路徑組件從 `scripts/lib/governance-paths.ts` import,消除
+ * sibling checker 的 pairwise drift。集合語意方向不同(見 lib 內表格),此處組合
+ * 對應「docs = 允許 docs-only sprint 動」的角色。
  *
  * 誠實邊界:此 allowlist 是**下限**——每個 repo 可能有其他純散文檔(design docs、
  * ADRs、blog posts 等),此 checker 不涵蓋。SOP 對「意圖判斷」是上限。
  */
-const DOCS_ALLOW_EXACT: ReadonlySet<string> = new Set([
-  "README.md",
-  ".claude/memory/progress.md",
-  "TODOS.md",
-  ".claude/memory/TODOS.md",
-  "BACKLOG.md",
-  ".claude/memory/BACKLOG.md",
-  "TODOS-done.md",
-  ".claude/memory/TODOS-done.md",
+const DOCS_ALLOW_EXACT: ReadonlySet<string> = new Set<string>([
+  README_FILE,
+  PROGRESS_FILE,
+  ...TODOS_BOOKKEEPING_FILES,
 ]);
 
 const DOCS_ALLOW_PREFIXES: readonly string[] = [
-  ".claude/memory/progress-archive/",
-  "_handoffs/",
+  PROGRESS_ARCHIVE_PREFIX,
+  HANDOFFS_PREFIX,
 ];
 
 export function isDocsFile(file: string): boolean {
@@ -425,7 +436,8 @@ export function isDocsFile(file: string): boolean {
     const rest = file.slice(prefix.length);
     if (rest.length === 0) return false;
     // progress-archive 不進子目錄
-    if (prefix === ".claude/memory/progress-archive/" && rest.includes("/")) return false;
+    // SOP-tune v2 F1 修:用 imported constant 而非 hardcoded literal,對稱 (d) SSOT 目標
+    if (prefix === PROGRESS_ARCHIVE_PREFIX && rest.includes("/")) return false;
     if (!rest.endsWith(".md")) return false;
     // 歸檔慣例文件 README.md 屬 governance,不算 docs
     if (rest.endsWith("README.md")) return false;
@@ -459,22 +471,33 @@ export function readBaseProgressContent(base: string, cwd: string): string | nul
  * 未知參數 fail-closed。
  */
 export function parseArgs(argv: string[]): { base: string | null; root: string | null; ok: boolean; error?: string } {
+  // SOP-tune v2 (c):空字串 value fail-closed(對稱既有「未知參數 / 缺 value」姿態)。
+  // 過往 `--base=""` / `--root=""` / `--base ""` / `--root ""` 靜默 degrade
+  // (--base fallback origin/main、--root fallback process.cwd());CI wiring 用
+  // `--base "${{ github.event.pull_request.base.sha }}"` 若 GitHub context 給空字串
+  // 會走進 fallback。改為明確 fail-closed,把 CI edge case 攤在陽光下。
   let base: string | null = null;
   let root: string | null = null;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a.startsWith("--base=")) {
-      base = a.slice("--base=".length);
+      const value = a.slice("--base=".length);
+      if (value === "") return { base, root, ok: false, error: "--base 空 value(--base= 後為空字串)" };
+      base = value;
     } else if (a === "--base") {
       const next = argv[i + 1];
       if (next === undefined) return { base, root, ok: false, error: "--base 缺 value" };
+      if (next === "") return { base, root, ok: false, error: "--base 空 value(--base 空白後為空字串)" };
       base = next;
       i++;
     } else if (a.startsWith("--root=")) {
-      root = a.slice("--root=".length);
+      const value = a.slice("--root=".length);
+      if (value === "") return { base, root, ok: false, error: "--root 空 value(--root= 後為空字串)" };
+      root = value;
     } else if (a === "--root") {
       const next = argv[i + 1];
       if (next === undefined) return { base, root, ok: false, error: "--root 缺 value" };
+      if (next === "") return { base, root, ok: false, error: "--root 空 value(--root 空白後為空字串)" };
       root = next;
       i++;
     } else {
@@ -545,7 +568,14 @@ async function main(): Promise<number> {
   }
   const hasProgress = files.includes(PROGRESS_PATH);
   const diffIsDocs = isDocsOnlyDiff(files);
-  const commitMessages = getCommitMessages(base, cwd);
+  // SOP-tune v2 (f):三態分離,git-error 明確 fail-closed with detail;
+  // no-non-merge 走 trivial=false 通道(pre-existing 語意)。
+  const commitResult = getCommitMessagesResult(base, cwd);
+  if (commitResult.kind === "error") {
+    console.error(`✗ ${commitResult.detail} → fail-closed(無法判定 trivial marker)`);
+    return 2;
+  }
+  const commitMessages = commitResult.kind === "ok" ? commitResult.messages : [];
   // R4 P1-1:trivial override 收窄:每個 commit 都要含 [trivial],且 diff 不含
   // super-sensitive 檔
   const allTrivial = allCommitsHaveTrivialMarker(commitMessages);

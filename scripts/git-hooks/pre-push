@@ -420,4 +420,20 @@ if [ "$triggered" = "1" ]; then
   echo "→ 已確認,繼續 push" >&2
 fi
 
+# ── 3. Codex env 守門(SOP-tune v2 (g))──────────────────────────────────
+# 若導入者跑 Codex 跨模型 review,SOP checklist 建議設 GSTACK_CODEX_MODEL 指定
+# model。未設 → gstack 預設 gpt-6-astra(貴)。過往靠人記,現在機器化守門在 push
+# 前擋一次。
+# Opt-out:SKIP_CODEX_ENV_CHECK=1(或 push --no-verify 整個 hook 都跳)。
+# 向後相容:舊 checkout 沒 check:codex-env script 不擋。
+if [ "${SKIP_CODEX_ENV_CHECK:-0}" != "1" ]; then
+  if grep -q '"check:codex-env"' package.json 2>/dev/null; then
+    if ! npm run --silent check:codex-env >&2; then
+      echo "" >&2
+      echo "→ 若確定要跳過(例:CI 環境自帶 env),設 SKIP_CODEX_ENV_CHECK=1 或用 --no-verify" >&2
+      exit 1
+    fi
+  fi
+fi
+
 exit 0

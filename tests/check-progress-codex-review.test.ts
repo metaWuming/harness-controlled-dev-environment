@@ -16,6 +16,7 @@ import {
   extractAllEntryBodies,
   extractLatestEntryBody,
   extractLatestEntryHeading,
+  getCommitMessagesResult,
   hasTrivialMarker,
   isDocsFile,
   isDocsOnlyDiff,
@@ -232,6 +233,47 @@ describe("judgeEntry — Claude 降級路徑(P1-1)", () => {
     expect(r.kind).toBe("fail");
     if (r.kind === "fail") expect(r.reason).toBe("missing-codex-round");
   });
+
+  // SOP-tune v2 (h):DEGRADATION_MARKER_RE 加行首 anchor + CJK 標點 + 破折號家族
+  it("SOP-tune v2 (h):否定敘述「本輪並非無 Codex 環境」不觸發降級通道", () => {
+    const r = judgeEntry("本輪並非無 Codex 環境;Claude /code-review round 1: no actionable findings");
+    expect(r.kind).toBe("fail");
+    if (r.kind === "fail") {
+      expect(["missing-codex-round", "claude-review-without-degradation-marker"]).toContain(r.reason);
+    }
+  });
+
+  it("SOP-tune v2 (h):行首 markdown quote prefix 允許", () => {
+    const r = judgeEntry("> 無 Codex 環境\n> Claude /code-review round 1: no actionable findings");
+    expect(r.kind).toBe("ok");
+    if (r.kind === "ok") expect(r.reason).toBe("has-claude-review-degradation");
+  });
+
+  it("SOP-tune v2 (h) CJK 冒號:「降級：Claude」→ ok", () => {
+    const r = judgeEntry("降級：Claude /code-review round 1: no actionable findings");
+    expect(r.kind).toBe("ok");
+  });
+
+  it("SOP-tune v2 (h) CJK 全形逗號:「降級，Claude」→ ok", () => {
+    const r = judgeEntry("降級，Claude /code-review round 1: no actionable findings");
+    expect(r.kind).toBe("ok");
+  });
+
+  it("SOP-tune v2 (h) Em dash:「降級—Claude」→ ok", () => {
+    const r = judgeEntry("降級—Claude /code-review round 1: no actionable findings");
+    expect(r.kind).toBe("ok");
+  });
+
+  it("SOP-tune v2 (h) ASCII 連字號:「降級-Claude」→ ok", () => {
+    const r = judgeEntry("降級-Claude /code-review round 1: no actionable findings");
+    expect(r.kind).toBe("ok");
+  });
+
+  it("SOP-tune v2 (h):句中「不涉及降級」+ 稍後「Claude」不誤命中", () => {
+    const r = judgeEntry("本次不涉及降級, 而是 Claude /code-review round 1: no actionable findings");
+    expect(r.kind).toBe("fail");
+    if (r.kind === "fail") expect(r.reason).toBe("claude-review-without-degradation-marker");
+  });
 });
 
 describe("judgeEntry — docs-only marker(P1-3 行首 anchor)", () => {
@@ -346,6 +388,31 @@ describe("parseArgs", () => {
     const r = parseArgs(["--unknown"]);
     expect(r.ok).toBe(false);
     expect(r.error).toContain("未知參數");
+  });
+
+  // SOP-tune v2 (c):空字串 fail-closed(--base / --root × = form / space form)
+  it("SOP-tune v2 (c): --base= 空字串 → fail-closed", () => {
+    const r = parseArgs(["--base="]);
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain("--base 空 value");
+  });
+
+  it("SOP-tune v2 (c): --root= 空字串 → fail-closed", () => {
+    const r = parseArgs(["--root="]);
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain("--root 空 value");
+  });
+
+  it("SOP-tune v2 (c): --base 空白後空字串 → fail-closed", () => {
+    const r = parseArgs(["--base", ""]);
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain("--base 空 value");
+  });
+
+  it("SOP-tune v2 (c): --root 空白後空字串 → fail-closed", () => {
+    const r = parseArgs(["--root", ""]);
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain("--root 空 value");
   });
 });
 
@@ -522,6 +589,62 @@ describe("hasTrivialMarker(向後相容)", () => {
   it("與 allCommitsHaveTrivialMarker 一致", () => {
     expect(hasTrivialMarker(["fix [trivial]"])).toBe(true);
     expect(hasTrivialMarker(["fix"])).toBe(false);
+  });
+});
+
+// SOP-tune v2 (f):getCommitMessagesResult 三態
+describe("getCommitMessagesResult (SOP-tune v2 (f) 三態)", () => {
+  it("cwd 非 git repo(無 .git)→ error 帶 detail", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "getcommitmsgs-noreport-"));
+    try {
+      const r = getCommitMessagesResult("HEAD~1", tmpDir);
+      expect(r.kind).toBe("error");
+      if (r.kind === "error") expect(r.detail).toContain("failed");
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("有 commit 且非 merge → ok 帶 messages", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "getcommitmsgs-ok-"));
+    try {
+      execFileSync("git", ["init", "-q", "-b", "main", tmpDir], { stdio: "ignore" });
+      execFileSync("git", ["-C", tmpDir, "config", "user.email", "t@t.com"], { stdio: "ignore" });
+      execFileSync("git", ["-C", tmpDir, "config", "user.name", "t"], { stdio: "ignore" });
+      execFileSync("git", ["-C", tmpDir, "config", "commit.gpgsign", "false"], { stdio: "ignore" });
+      fs.writeFileSync(path.join(tmpDir, "a.txt"), "1");
+      execFileSync("git", ["-C", tmpDir, "add", "a.txt"], { stdio: "ignore" });
+      execFileSync("git", ["-C", tmpDir, "commit", "-m", "init"], { stdio: "ignore" });
+      const baseSha = execFileSync("git", ["-C", tmpDir, "rev-parse", "HEAD"], { encoding: "utf-8" }).trim();
+      fs.writeFileSync(path.join(tmpDir, "b.txt"), "2");
+      execFileSync("git", ["-C", tmpDir, "add", "b.txt"], { stdio: "ignore" });
+      execFileSync("git", ["-C", tmpDir, "commit", "-m", "second"], { stdio: "ignore" });
+      const r = getCommitMessagesResult(baseSha, tmpDir);
+      expect(r.kind).toBe("ok");
+      if (r.kind === "ok") {
+        expect(r.messages).toHaveLength(1);
+        expect(r.messages[0]).toContain("second");
+      }
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("base === HEAD(無 commit 差)→ no-non-merge", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "getcommitmsgs-empty-"));
+    try {
+      execFileSync("git", ["init", "-q", "-b", "main", tmpDir], { stdio: "ignore" });
+      execFileSync("git", ["-C", tmpDir, "config", "user.email", "t@t.com"], { stdio: "ignore" });
+      execFileSync("git", ["-C", tmpDir, "config", "user.name", "t"], { stdio: "ignore" });
+      execFileSync("git", ["-C", tmpDir, "config", "commit.gpgsign", "false"], { stdio: "ignore" });
+      fs.writeFileSync(path.join(tmpDir, "a.txt"), "1");
+      execFileSync("git", ["-C", tmpDir, "add", "a.txt"], { stdio: "ignore" });
+      execFileSync("git", ["-C", tmpDir, "commit", "-m", "init"], { stdio: "ignore" });
+      const r = getCommitMessagesResult("HEAD", tmpDir);
+      expect(r.kind).toBe("no-non-merge");
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });
 

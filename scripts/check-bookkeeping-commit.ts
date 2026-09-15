@@ -32,6 +32,11 @@
 
 import { spawnSync } from "node:child_process";
 import { detectInvocation, reportIfNotMain } from "./lib/invoked-as-main";
+import {
+  PROGRESS_ARCHIVE_PREFIX,
+  PROGRESS_FILE,
+  TODOS_BOOKKEEPING_FILES,
+} from "./lib/governance-paths";
 
 // ───────────────────────────────────────── 純函式(給測試直接呼叫)
 
@@ -58,17 +63,15 @@ import { detectInvocation, reportIfNotMain } from "./lib/invoked-as-main";
  *      LESSONS.md 同屬 governance。
  */
 
-const EXACT_ALLOW: ReadonlySet<string> = new Set([
-  ".claude/memory/progress.md",
-  "TODOS.md",
-  ".claude/memory/TODOS.md",
-  "BACKLOG.md",
-  ".claude/memory/BACKLOG.md",
-  "TODOS-done.md",
-  ".claude/memory/TODOS-done.md",
+// SOP-tune v2 (d):路徑組件從 lib import,消除 sibling checker pairwise drift。
+// bookkeeping 集合對應「delivery branch 上允許 bookkeeping commit」語意:
+// 排除 README.md(可能含 env/token/部署指示)、排除 _handoffs/(應併 sprint PR)。
+const EXACT_ALLOW: ReadonlySet<string> = new Set<string>([
+  PROGRESS_FILE,
+  ...TODOS_BOOKKEEPING_FILES,
 ]);
 
-const ARCHIVE_DIRS: readonly string[] = [".claude/memory/progress-archive/"];
+const ARCHIVE_DIRS: readonly string[] = [PROGRESS_ARCHIVE_PREFIX];
 
 export function isBookkeepingPath(file: string): boolean {
   if (EXACT_ALLOW.has(file)) return true;

@@ -24,6 +24,7 @@
     "check:bookkeeping": "tsx scripts/check-bookkeeping-commit.ts",
     "check:progress-codex": "tsx scripts/check-progress-codex-review.ts",
     "check:adoption": "tsx scripts/check-adoption-readiness.ts",
+    "check:codex-env": "tsx scripts/check-codex-env.ts",
     "catalog:render": "tsx scripts/render-control-catalog.ts --write",
     "check:catalog": "tsx scripts/check-control-catalog.ts",
     "check:baseline-governance": "tsx scripts/check-baseline-governance.ts",
