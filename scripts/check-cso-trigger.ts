@@ -18,7 +18,7 @@
 //     未導入)、用法錯誤,一律 exit 2。
 //
 // Usage:
-//   npx tsx scripts/check-cso-trigger.ts            # diff base 預設 develop → origin/develop → main → origin/main
+//   npx tsx scripts/check-cso-trigger.ts            # diff base 預設為 harness.config.json 的 deliveryBranches[0](local, origin/*)
 //   npx tsx scripts/check-cso-trigger.ts --base=origin/develop
 //
 // Exit codes:0 = CSO_NOT_REQUIRED / **2 = CSO_REQUIRED,含所有 fail-closed 情況**。
@@ -115,7 +115,27 @@ function main(): void {
     );
     process.exit(2);
   }
-  const base = baseArgValue ?? resolveDefaultBase(process.cwd());
+  // Issue #93 fresh review P1 + P2#3 修:讀 harness.config.json 走 git rev-parse
+  // 拿 repo root(而非 process.cwd() 可能是子目錄)+ try/catch 落 fail-closed exit 2
+  //(而非讓 loadHarnessConfig throw 冒到 Node 頂層變 exit 1、破契約)。
+  let base: string;
+  if (baseArgValue) {
+    base = baseArgValue;
+  } else {
+    try {
+      const repoRoot = execSync('git rev-parse --show-toplevel', {
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }).trim();
+      base = resolveDefaultBase(repoRoot);
+    } catch (e) {
+      console.error(
+        `❌ 無法解析預設 base(讀 harness.config.json 失敗或 git rev-parse 錯):${(e as Error).message}\n` +
+          `   (fail-closed,視同 CSO_REQUIRED;請顯式 --base=<ref> 或修正 scripts/harness.config.json)`,
+      );
+      process.exit(2);
+    }
+  }
 
   // 🔴 形狀檢查(必須在空表檢查之前,Codex R2 P2):不含空白 / 分號 / 管線 / `$` /
   //    反引號 / 引號 / glob 或 `=`,且**必須以英數起頭**(擋掉 `--flag` 形狀的 option

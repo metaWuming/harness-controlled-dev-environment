@@ -235,7 +235,28 @@ function main(): void {
     process.exit(0);
   }
   const baseArg = process.argv.find((a) => a.startsWith('--base='));
-  const base = baseArg ? baseArg.slice('--base='.length) : resolveDefaultBase(process.cwd());
+  // Issue #93 fresh review P1 + P2#3 修:讀 harness.config.json 走 git rev-parse
+  // 拿 repo root(而非 process.cwd() 可能是子目錄)+ try/catch 落 fail-closed exit 2
+  //(而非讓 loadHarnessConfig throw 冒到 Node 頂層變 exit 1、跟「有待處置清單」
+  // 語意撞衝)。
+  let base: string;
+  if (baseArg) {
+    base = baseArg.slice('--base='.length);
+  } else {
+    try {
+      const repoRoot = execSync('git rev-parse --show-toplevel', {
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }).trim();
+      base = resolveDefaultBase(repoRoot);
+    } catch (e) {
+      console.error(
+        `❌ 無法解析預設 base(讀 harness.config.json 失敗或 git rev-parse 錯):${(e as Error).message}\n` +
+          `   (fail-closed exit 2;請顯式 --base=<ref> 或修正 scripts/harness.config.json)`,
+      );
+      process.exit(2);
+    }
+  }
   // 形狀檢查:擋掉 option smuggling(首字不得是 `-`)與 shell 元字元。
   if (!/^[A-Za-z0-9_][\w./-]*$/.test(base)) {
     console.error(`❌ 非法 base ref:${base}(無法判定,請自己人工掃一遍)`);

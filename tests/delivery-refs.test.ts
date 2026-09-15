@@ -14,6 +14,7 @@ import {
   formatRejections,
   loadDeclaredDeliveryBranches,
   remoteBranchName,
+  resolveDefaultBase,
   resolveDeliveryRefs,
   resolveDeliveryRefsFromRepo,
   validateRef,
@@ -219,5 +220,77 @@ describe('config / formatRejections / 不讀 env', () => {
     git('branch', 'origin/main');
     const r = resolveDeliveryRefsFromRepo(dir);
     expect(r).toEqual({ ok: true, refs: [MAIN], rejections: [] });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// Issue #93 (Group B):resolveDefaultBase 覆蓋 throw / unresolvable / fallback
+
+describe('resolveDefaultBase (Issue #93)', () => {
+  const wrapDirs: string[] = [];
+  afterAll(() => wrapDirs.forEach((d) => rmSync(d, { recursive: true, force: true })));
+
+  function makeCfg(deliveryBranches: readonly string[]): string {
+    return JSON.stringify(
+      {
+        schemaVersion: 2,
+        mode: 'template',
+        projectId: '__TEMPLATE__',
+        templatePackageName: 'harness-controlled-dev-environment',
+        protectedBranches: [...deliveryBranches],
+        deliveryBranches: [...deliveryBranches],
+        requiredAgentAdapters: ['claude', 'codex'],
+        githubGovernanceRequired: false,
+        mergeStrategy: 'squash',
+      },
+      null,
+      2,
+    );
+  }
+
+  function makeRepo(cfgContent: string | null, branches: readonly string[]): string {
+    const wrap = mkdtempSync(path.join(tmpdir(), 'resolve-default-base-'));
+    wrapDirs.push(wrap);
+    const dir = path.join(wrap, 'repo');
+    mkdirSync(dir);
+    if (cfgContent !== null) {
+      mkdirSync(path.join(dir, 'scripts'), { recursive: true });
+      writeFileSync(path.join(dir, 'scripts/harness.config.json'), cfgContent + '\n');
+    }
+    const git = (...a: string[]) => execFileSync('git', a, { cwd: dir, stdio: 'ignore' });
+    git('init', '-q', '-b', 'fixture-init');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 't');
+    writeFileSync(path.join(dir, 'f.txt'), 'seed');
+    git('add', '-A');
+    git('commit', '-qm', 'init');
+    for (const b of branches) git('branch', b);
+    return dir;
+  }
+
+  it('都 resolve 得到 → 取 deliveryBranches[0](local ref 為首)', () => {
+    const dir = makeRepo(makeCfg(['develop', 'main']), ['develop', 'main']);
+    expect(resolveDefaultBase(dir)).toBe('develop');
+  });
+
+  it('deliveryBranches=[main] 只有 main → 取 main', () => {
+    const dir = makeRepo(makeCfg(['main']), ['main']);
+    expect(resolveDefaultBase(dir)).toBe('main');
+  });
+
+  it('config 缺檔 → throw(caller 需 try/catch fail-closed)', () => {
+    const dir = makeRepo(null, ['main']);
+    expect(() => resolveDefaultBase(dir)).toThrow();
+  });
+
+  it('config 壞 JSON → throw', () => {
+    const dir = makeRepo('{ not valid json', ['main']);
+    expect(() => resolveDefaultBase(dir)).toThrow();
+  });
+
+  it('所有 candidate 都 resolve 不到 → 返 deliveryBranches[0] fallback', () => {
+    // config 宣告的 branches 都不存在於 repo
+    const dir = makeRepo(makeCfg(['nonexistent-branch']), []);
+    expect(resolveDefaultBase(dir)).toBe('nonexistent-branch');
   });
 });

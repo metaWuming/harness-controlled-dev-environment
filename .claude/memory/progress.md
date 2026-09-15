@@ -75,6 +75,38 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-09-16 ㉔ — **issue #93:5 條 template 硬寫改 mode-aware(adopted 導入者升級不再重套 patch)**
+
+> **緣起**:Owner 2026-09-16 拍板做完 CLAUDE.md refactor(#97 pending)後動 #93。issue 明列 5 條 harness-owned tests/scripts 硬寫 template 出廠值(TEMPLATE_MODE / template / exit 2 / develop-first base),adopted 導入者(如 Team W)每次升級 harness 都要重套本地 patch。修法對稱 SOP-tune v2 governance-paths pattern:讓兩處 script 共用 mode-aware 邏輯。
+> **改動 3 commits + 1 fresh review fix commit = 4 commits, 9 檔 +170/-59**:
+>   - **Group A(cafdbba)**:3 條 tests 走 mode-aware
+>     - `tests/check-adoption-readiness.e2e.test.ts` E-self case → describe.skipIf 分 template / adopted;template 保留原 T3-T10 exception assert、adopted 分支 assert 首行 ADOPTED_MODE — READY
+>     - `tests/harness-config.test.ts` 本 repo mode case → toContain(['template','adopted']) + projectId 依 mode 判定
+>     - `tests/invoked-as-main.e2e.test.ts` 兩 consumer spec → CFG_MODE 分支的 expectedMainExit(check-cso-trigger [0,2] / check-adoption-readiness matcher 換 TEMPLATE_MODE↔ADOPTED_MODE)
+>   - **Group B(90ceaf9)**:2 條 scripts 讀 deliveryBranches[0]
+>     - `scripts/lib/delivery-refs.ts` 新 export `resolveDefaultBase(repoRoot)`:讀 `loadHarnessConfig(repoRoot).deliveryBranches[0]` 為首、對 local + origin/* 都試、都不到 → return deliveryBranches[0] fallback
+>     - `scripts/check-cso-trigger.ts` / `scripts/check-claims.ts` 刪 local resolveDefaultBase、import shared helper
+>     - `tests/check-claims.test.ts` 兩個「預設 base」e2e 改對新語意 assert、makeRepo 加 optional harnessConfig fixture
+>     - `check-cso-trigger.ts:21` + `check-claims.ts:37,231` usage 字串同步
+>   - **Group C(3c91141)**:`docs/ADOPTION.md:136` wording「預設 main/develop」→「與 protectedBranches 對齊」
+>   - **Fresh review 修(b3a...)**:P1/P2 fix
+>     - 兩支 script main() 加 try/catch 包 resolveDefaultBase 呼叫、catch 落 fail-closed exit 2(不讓 loadHarnessConfig throw 冒到 Node 頂層變 exit 1、破契約)
+>     - 兩支改用 `git rev-parse --show-toplevel` 拿 repo root(而非 process.cwd() 可能是子目錄)
+>     - `scripts/lib/delivery-refs.ts` helper docblock 加 disclaimer 明講「與 resolveDeliveryRefs* 哲學不同、非權威 base」
+>     - `tests/delivery-refs.test.ts` 加 5 條 unit tests(happy path / config missing / config 壞 / all unresolvable / fallback)
+> **審查**:
+> 無 Codex 環境(usage limit 撞頂、下週三恢復)→ 走 SOP 允許的降級 Claude /code-review 路徑。
+> Claude /code-review round 1(fresh adversarial-reviewer subagent、Sonnet)抓 2 P1 + 3 P2 + 2 INF → **P1 x2 修**(scripts try/catch fail-closed exit 2、破 exit-code 契約)+ **P2#3 修**(cwd 依賴 → git rev-parse --show-toplevel)+ **P2#4 修**(check-cso-trigger docstring stale)+ **P2#5 修**(helper unit tests 5 條)+ **INF#8 修**(helper disclaimer 語義區隔 vs delivery-refs 既有 API)→ **收斂於 0 P1 剩餘、no actionable findings**。Step 4.5 CSO 對本 sprint 動的檔案未觸敏感面(tests/scripts/docs);本 template repo CSO_REQUIRED 是 template 路徑表為空的既有狀態、非本刀觸發。Step 4.6 UI 未觸發(純後端 diff)。
+> **驗證**:typecheck / lint / vitest 37 files 1389 passed / 4 skipped(+5 新)/ check-catalog 35 controls / check-doc-refs 892 refs 0 fail / check-no-source-terms 三段全綠 / check-doc-size progress 14.2 KB / LESSONS 24.2 KB
+> **⭐ 教訓**(累積至 6 條;本 sprint 貢獻 ⑥):
+>   ⑥ **Port `loadHarnessConfig()` 到 CLI script 要 try/catch fail-closed exit 2** — helper 對 config 錯 / 缺會 throw,若 caller 沒 try/catch → Node 頂層變 exit 1(對 fail-closed=2 契約的 script 是 silent fail-open)、對「有待處置清單=exit 1」的 script 是語意衝撞。判準:任何 CLI script 用 loadHarnessConfig 都要 try/catch + 明確 fail-closed exit 2(對稱本 sprint P1 修法姿態)。
+> **⏭️ 下一棒候選**(hint 非 truth,起手 git 核實):
+>   - `scripts/lib/delivery-refs.ts` 未來若加更多讀 config 的 helper、都要對稱 try/catch 姿態(可考慮抽 `loadHarnessConfigOrFail(root, exitCode)` wrapper)
+>   - Team W 側追蹤:merge 後 Team W 升級 harness 時觀察本 sprint 修法是否真解 mode-aware pain(不再重套本地 patch)
+> 📊 成本:CC ~1h / 跨模型 review:Codex 撞 usage limit **降級 Claude fresh subagent 1 pass** / P1 2 修 / P2 3 修 + 2 INF(1 修 1 skip)/ 4 commits + 1 progress entry commit
+
+---
+
 📅 2026-09-16 ㉒ — **port SOP-tune v2 從下游 fork:checker 收窄 v1 defer 7 條 INF + check-codex-env + pre-push opt-in gate**
 
 > **緣起**:下游 fork(Team W)完成 SOP-tune v2 sprint(#39, squash SHA 23c2eb5)後 Owner 拍板 port 回母 repo,對稱 v1 upstream 姿態(SHA 1da107a)。下游 sprint 已完整 SOP:Codex 4 rounds + Step 5 fresh adversarial + Owner 拍板動禁區 + squash merged。本 port 精選 upstream 用得到的子集,排除 downstream-only 檔(progress.md / TODOS / archive / check-sprint-hygiene 相關)。
