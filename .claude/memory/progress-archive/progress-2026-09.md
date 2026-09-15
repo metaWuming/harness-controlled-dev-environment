@@ -3,6 +3,26 @@ title: Progress Archive — 2026-09(2026-08-31 ①)
 type: archive
 ---
 
+📅 2026-09-15 ㉑ — **port SOP-tune 從下游 fork:CTRL-CI-018 Step 4 Codex review 憑證機器化 + Step 4/4.5 SOP 升級**
+
+> **緣起**:下游 fork 實測 SOP-tune sprint(Codex 5 rounds + Step 5 fresh adversarial 1 round 反覆迭代收斂)後 Owner 拍板 port 回 harness 母 repo,讓所有下游 fork 都拿到這批改動。scope 限「本 sprint 改動」——不 port 下游 fork 專案內容(progress/TODOS 特化)也不 port 更早 Sprint X 教訓。
+> **改動 c9b74ff**:7 檔 +1672/-6
+>   - `scripts/check-progress-codex-review.ts` NEW ~660 行(純函式 + argv 陣列 gitRun + main flow):Step 4 憑證機器化。走 spawnSync + argv 陣列(擋 shell injection);isSafeGitRef / isProperAncestor / 讀 HEAD blob(擋本地未 commit marker 誤過)
+>   - `tests/check-progress-codex-review.test.ts` NEW 105 條測試
+>   - CI step「Step 4 Codex Review Evidence Check」(pull_request event only、用 immutable PR base SHA、對稱 Protected Branches Drift Check)
+>   - CTRL-CI-018 進 control-catalog.json + docs/CONTROL-CATALOG.md 雙向鎖
+>   - SOP Step 4:加 Codex model 選擇註記(GSTACK_CODEX_MODEL env var)+ effort 現況揭露 + CTRL-CI-018 引用
+>   - SOP Step 4.5 CSO:改用 `/cso --diff --base <主線> --budget 600`(gstack 1.87.0.0 新參數)+ findings 決策 gate 收窄(明顯 P1 直接修、真實取捨才問 Owner)+ STOP point「critical findings 全處理」(修 or defer)
+> **審查**:下游 fork 已跑 Codex 5 rounds + Step 5 fresh adversarial 1 round 反覆迭代收斂;port 版本繼承所有 fixes。母 repo port 本身屬**同步 downstream 已 review 內容**,無新設計層變動。**Step 4 母 repo re-review 建議 defer**(diff = 抄下游 fork 已審過的 code + 少量 wording 泛化;預期 zero new P1)——若 Owner 要嚴,可另跑一輪 Codex sanity。
+> **驗證**:typecheck / lint / vitest 105 條新測全綠 / catalog OK 35 controls / adoption template mode ready + T5/T10 exceptions / doc-refs 877 refs 0 失效 / doc-size 綠。母 repo checker 對自己 dogfood 過關(entry 內含本行 Codex round 5 收斂憑證)。
+> **⭐ 教訓**(3 條、下游 fork 提煉,defer 進 LESSONS.md 待 retro 節奏):
+>   ① 檢查器自身要跑完整 SOP —— 新守門即抓 4 P1
+>   ② 戰術補洞的收斂條件 —— 連續兩輪 fix 冒新 P1 → 問 Owner 策略;連續三輪 → 認 v1 邊界
+>   ③ Step 5 fresh adversarial 抓 SOP-implementation drift 是強項(SSOT drift 跨檔一致性,Codex 側盲區)
+> **v1 誠實邊界**(catalog notes 完整揭露):此 gate 是**下限**、非 malicious-PR defense。純字串比對抓不到假造 marker;README.md 無條件在 DOCS_ALLOW_EXACT;CONVERGENCE_RE 對「尚未完全收斂」等仍有邊界;entry-identity body-level 比對改 typo 過關。
+> **⏭️ 下一棒候選**(hint 非 truth):downstream 的下 sprint 特化 / 母 repo v2 (governance-file-classes 抽 SSOT + codex-env verify script + parseArgs 空值 fail-closed)
+> 📊 成本:CC ~30min(port 執行)+ ~4h(下游 fork 原 sprint)/ 跨模型 review 5 rounds(下游 fork,port 繼承)/ Step5 獨立發現 1 CRITICAL + 10 INF(下游 fork 已修 4 + defer 7)/ 1 個 port commit
+
 📅 2026-09-09 ⑲ — **Sprint 21 C3 milestone:CTRL-CI-016 Mutation Kill Smoke Check(CI 加獨立 gate、對 pinned 6 條 smoke probe 真 apply mutation via mutate.ts + assert killed、accidental-regression signal 非 malicious-PR security boundary、三份 mutation evidence 分工)**
 
 > **緣起 & scope**:Sprint 20 C2 delivery(PR #86 squash tip)後、Owner staged roadmap 最後 milestone C3;Owner 一句話 objective 起手「CTRL-CI-013 mutation-spec drift 升 hard-automated」→ Codex Phase 0 evidence intake 發現 CTRL-CI-013 早已 hard-automated(PR #47 引入)、objective 已由現況完成 → Owner AskUserQuestion 重拍板方案 A「mutation-kill smoke subset 進 CI」= 真升級 machine-verifiable 一步。Scope:pinned 6 條 smoke probe(每 spec index 0、fingerprint 對 immutable f51483d1 SHA-256 verify)+ 新 runner `scripts/run-mutation-smoke.ts`(硬編碼 SMOKE_PROBES map + 7 步 algorithm)+ 極簡 manifest `scripts/mutation-smoke-manifest.json`(cardinality 6 / no duplicates / set-equality / $schema pin)+ CI step 新 CTRL-CI-016(一對一 ciStep + timeout-minutes: 5)+ ADOPTION §5.2/§5.3 runbook。Frozen base `f51483d18a4f4cba6da4682ef75a8cd05448466e`(Sprint 20 squash tip via local bundle atomic quarantine `refs/temp/sprint21-base`;shared main 233858f + CLAUDE.md M + stash + 18 agent-* worktree + stale local origin/main 2307a44 全 preserved 不動)。
