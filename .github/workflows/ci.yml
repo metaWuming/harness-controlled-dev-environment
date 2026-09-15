@@ -254,6 +254,22 @@ jobs:
         # 交付證據只來自受驗 origin/HEAD(policy A「只 default_branch」的自然延伸;DELIVERY_REFS env 已移除)。
         run: npx tsx scripts/check-todos-markers.ts
 
+      - name: Step 4 Codex Review Evidence Check
+        # 阻止「跳過 Step 4 Codex 跨模型 review」的復發(SOP-tune sprint 導入)。
+        # 判準:base..HEAD 動了 .claude/memory/progress.md → 最上方 entry 必須含
+        # /Codex\s+round\s+\d+/i 或「跨模型 review N rounds」+ 收斂 marker;
+        # 或行首 `docs-only sprint` / `無 code 改動` marker(全 diff 都是 docs);
+        # 或每個 commit 訊息含 `[trivial]` marker 且 diff 不含 super-sensitive 檔。
+        # 純檔名 + 字串比對,fail-closed。v1 誠實邊界見 CTRL-CI-018 notes。
+        #
+        # 只在 PR event 跑(對稱 TODOS Markers Check;push 到 delivery branch 已是
+        # 合完的 squash commit,不需要重跑)。
+        #
+        # 用不可變的 PR base SHA(github.event.pull_request.base.sha)避免 main 前進時
+        # isProperAncestor 假紅的競態(對稱 Protected Branches Drift Check)。
+        if: github.event_name == 'pull_request'
+        run: npm run check:progress-codex -- --base "${{ github.event.pull_request.base.sha }}"
+
       - name: Source-term scan (de-identification gate)
         # 去識別化常駐 gate:本模板抽取自私有專案,掃「來源專案識別詞」殘留
         # (working tree + git history)。導入者不需要時可連同 scripts/deny-terms.txt 移除。
