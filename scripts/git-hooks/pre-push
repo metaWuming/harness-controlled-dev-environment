@@ -420,4 +420,21 @@ if [ "$triggered" = "1" ]; then
   echo "→ 已確認,繼續 push" >&2
 fi
 
+# ── 3. Codex env 守門(SOP-tune v2 (g),**opt-in**)─────────────────────
+# **本 gate 預設 disabled**——對稱 harness template 明文承諾「外部工具全 optional」
+# (docs/OVERVIEW.md「外部工具全 optional」段):不用 Codex / gstack 的 adopter
+# 跑 setup-hooks 後 push 不該被此 gate 擋。
+# **需要 `ENABLE_CODEX_ENV_CHECK=1` 明確 opt-in 才跑**——用 gstack + Codex 的
+# adopter 在自己的 `~/.zshrc` 一起 export `ENABLE_CODEX_ENV_CHECK=1` 就會啟用。
+# 向後相容:舊 checkout 沒 check:codex-env script 不擋。
+if [ "${ENABLE_CODEX_ENV_CHECK:-0}" = "1" ]; then
+  if grep -q '"check:codex-env"' package.json 2>/dev/null; then
+    if ! npm run --silent check:codex-env >&2; then
+      echo "" >&2
+      echo "→ 若確定要跳過此次 push(例:CI 環境自帶 env、或此 push 不涉及 Codex review),用 --no-verify" >&2
+      exit 1
+    fi
+  fi
+fi
+
 exit 0
