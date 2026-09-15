@@ -65,10 +65,18 @@ describe('parseHarnessConfig — 正對照', () => {
     const c = parseHarnessConfig(withField(VALID_TEMPLATE, { _comment: 'x' }));
     expect((c as unknown as Record<string, unknown>)._comment).toBeUndefined();
   });
-  it('本 repo 出廠的 scripts/harness.config.json 可載入且是 template', () => {
+  // Issue #93 (Group A #2):本 repo mode 依 harness.config.json.mode 分支,adopted
+  // 導入者升級 harness 時走 adopted 分支自然通過、不需重套本地 patch。
+  it('本 repo 出廠的 scripts/harness.config.json 可載入,mode 是 template 或 adopted', () => {
     const c = loadHarnessConfig(REPO);
-    expect(c.mode).toBe('template');
-    expect(c.projectId).toBe(TEMPLATE_PROJECT_ID);
+    expect(['template', 'adopted']).toContain(c.mode);
+    if (c.mode === 'template') {
+      expect(c.projectId).toBe(TEMPLATE_PROJECT_ID);
+    } else {
+      // adopted mode:projectId 必須是導入者自己的 id、不能是 template 佔位符
+      expect(c.projectId).not.toBe(TEMPLATE_PROJECT_ID);
+      expect(c.projectId.length).toBeGreaterThan(0);
+    }
   });
 });
 

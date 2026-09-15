@@ -14,10 +14,16 @@ import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { loadHarnessConfig } from "../scripts/lib/harness-config";
 
 const REPO = path.resolve(__dirname, "..");
 const TSX = path.join(REPO, "node_modules/.bin/tsx");
 const WRAPPER_DIR = path.join(REPO, "tests/fixtures/invoked-as-main-wrapper");
+
+// Issue #93 (Group A #3):兩 consumer(check-cso-trigger / check-adoption-readiness)
+// 依 harness.config.json.mode 走不同 exit / matcher。adopted 導入者升級 harness
+// 時走 adopted 分支自然通過、不需重套本地 patch。
+const CFG_MODE = loadHarnessConfig(REPO).mode;
 
 const tmpDirs: string[] = [];
 afterAll(() => {
@@ -157,19 +163,32 @@ const CONSUMERS: ConsumerSpec[] = [
     label: "check-cso-trigger",
     scriptName: "check-cso-trigger.ts",
     wrapperName: "check-cso-trigger-wrapper.mjs",
-    // 模板 repo cso 路徑表為空 → fail-closed exit 2(正常狀態、非 error)
-    expectedMainExit: 2,
+    // Issue #93 (Group A #3):template mode = 路徑表為空 → fail-closed exit 2
+    //   (正常狀態、非 error、stdout 印 CSO_REQUIRED)
+    // adopted mode = 路徑表由專案填,依 diff 判定 exit 0(未觸發)/ 2(觸發)
+    //   → 用 [0, 2] 陣列 + adopted 分支不 assert CSO_REQUIRED 字面
+    expectedMainExit: CFG_MODE === "template" ? 2 : [0, 2],
     expectedMainMatcher: (r) => {
-      expect(r.stdout).toContain("CSO_REQUIRED");
+      if (CFG_MODE === "template") {
+        expect(r.stdout).toContain("CSO_REQUIRED");
+      } else {
+        // adopted mode:stdout 依 diff 印 CSO_REQUIRED / CSO_NOT_REQUIRED 之一
+        expect(r.stdout).toMatch(/CSO_REQUIRED|CSO_NOT_REQUIRED/);
+      }
     },
   },
   {
     label: "check-adoption-readiness",
     scriptName: "check-adoption-readiness.ts",
     wrapperName: "check-adoption-readiness-wrapper.mjs",
+    // Issue #93 (Group A #3):template mode 首行 TEMPLATE_MODE、adopted mode 首行 ADOPTED_MODE
     expectedMainExit: 0,
     expectedMainMatcher: (r) => {
-      expect(r.stdout).toContain("TEMPLATE_MODE");
+      if (CFG_MODE === "template") {
+        expect(r.stdout).toContain("TEMPLATE_MODE");
+      } else {
+        expect(r.stdout).toContain("ADOPTED_MODE");
+      }
     },
   },
   {
