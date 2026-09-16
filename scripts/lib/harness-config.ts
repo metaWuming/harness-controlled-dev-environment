@@ -219,3 +219,26 @@ export function loadHarnessConfig(root: string): HarnessConfig {
   }
   return parseHarnessConfig(readFileSync(p, 'utf-8'));
 }
+
+/**
+ * CLI-edge wrapper:兌現檔頭 L11 契約「呼叫端 catch → exit 2」。
+ *
+ * 給**終端 CLI script** 用:catch loadHarnessConfig 的 throw、印錯訊息、`process.exit(2)`。
+ * **library 層**(需把 throw 轉成資料而非 exit)用 loadHarnessConfig + 自己 try/catch——
+ * 例:scripts/lib/delivery-refs.ts::loadDeclaredDeliveryBranches 轉 Rejection。
+ *
+ * 動機(progress ㉔ 教訓 ⑥):helper throw 冒到 Node 頂層變 exit 1,對 fail-closed=2
+ * 契約是 silent fail-open;對「exit 1 = 有待處置清單」的 script 是語意撞衝。
+ *
+ * @param root repo root(通常 `git rev-parse --show-toplevel`)
+ * @param msgPrefix 錯訊息前綴,default `讀 <HARNESS_CONFIG_PATH> 失敗`
+ */
+export function loadHarnessConfigOrFail(root: string, msgPrefix?: string): HarnessConfig {
+  try {
+    return loadHarnessConfig(root);
+  } catch (e) {
+    const prefix = msgPrefix ?? `讀 ${HARNESS_CONFIG_PATH} 失敗`;
+    console.error(`❌ ${prefix}:${(e as Error).message}`);
+    process.exit(2);
+  }
+}
