@@ -9,6 +9,8 @@
 //   - **fail-closed、無 fallback**:檔案不存在、JSON 壞掉、schemaVersion 未知、mode
 //     拼錯、欄位型別錯、未知欄位、陣列空 / 重複、分支名不合文法 —— 一律 throw。
 //     呼叫端 catch → exit 2(「無法判定」與「未就緒」同等對待)。
+//     **CLI script 應用 `loadHarnessConfigOrFail`(檔尾同檔 export)兌現此契約**;
+//     library 層(需把 throw 轉成資料 / throw-through 而非 exit)自寫 try/catch。
 //   - **不做正規化**:不 trim、不 lower-case、不去前綴。原值不合法就是不合法。
 //
 // 分支名字面文法(`assertLiteralBranchName`):config 裡的 protectedBranches /
