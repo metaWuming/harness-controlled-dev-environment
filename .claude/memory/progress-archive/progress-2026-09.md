@@ -3,6 +3,29 @@ title: Progress Archive — 2026-09(2026-08-31 ①)
 type: archive
 ---
 
+📅 2026-09-16 ㉒ — **port SOP-tune v2 從下游 fork:checker 收窄 v1 defer 7 條 INF + check-codex-env + pre-push opt-in gate**
+
+> **緣起**:下游 fork(Team W)完成 SOP-tune v2 sprint(#39, squash SHA 23c2eb5)後 Owner 拍板 port 回母 repo,對稱 v1 upstream 姿態(SHA 1da107a)。下游 sprint 已完整 SOP:Codex 4 rounds + Step 5 fresh adversarial + Owner 拍板動禁區 + squash merged。本 port 精選 upstream 用得到的子集,排除 downstream-only 檔(progress.md / TODOS / archive / check-sprint-hygiene 相關)。
+> **改動 12d7697 + 5873eb3 = 2 commits, 11 檔 +766/-71**:
+>   - `scripts/lib/governance-paths.ts` NEW ~90 行 (d):PROGRESS_FILE / README_FILE / TODOS_BOOKKEEPING_FILES / PROGRESS_ARCHIVE_PREFIX / HANDOFFS_PREFIX / TRIVIAL_FORBIDDEN_PATTERNS。**不含 LESSONS_FILE 與 hygiene 表格**(母 repo 無 hygiene consumer YAGNI)。TRIVIAL_FORBIDDEN 刪掉下游特化 `src/git/` / `src/approval/` / `src/state.ts`,保留通用 CSO gate 相關
+>   - `scripts/check-progress-codex-review.ts` (c)(f)(h)(d) 修 + Step 5 F1 SSOT drift 修 + F6 @deprecated:parseArgs 四種空字串形式 fail-closed;getCommitMessagesResult 三態 discriminated union { ok | error | no-non-merge } + main() 明確 fail-closed;DEGRADATION_MARKER_RE 加行首 anchor + Unicode escape 字元集(半形 `,;:` + CJK 全形 `，：；` + 頓號 `、` + 破折號家族 `－—–―` + ASCII `-`);isDocsFile 用 PROGRESS_ARCHIVE_PREFIX constant;TRIVIAL_FORBIDDEN_PATTERNS 移 lib import
+>   - `scripts/check-bookkeeping-commit.ts` import 改用 governance-paths 基礎組件
+>   - `scripts/check-codex-env.ts` NEW ~140 行 (g):驗 GSTACK_CODEX_MODEL 在允許清單 ['gpt-5.6-sol', 'gpt-6-astra'] + --allow-value 給 experimental + --env override 給測試 + 純函式 checkCodexEnv + parseArgs(env 外部注入好測)+ 對稱 invoked-as-main lib
+>   - `package.json`:check:codex-env npm script
+>   - `scripts/git-hooks/pre-push`:尾部加 opt-in gate,需 `ENABLE_CODEX_ENV_CHECK=1` 明確啟用(fresh review P1 修法,對稱 template「外部工具全 optional」政策,不擋不用 gstack 的 adopter)
+>   - `scripts/control-catalog.json` + `docs/CONTROL-CATALOG.md`:CTRL-CI-018 notes 重寫為 v2 邊界四條(含 v1 邊界 (4) DEGRADATION regex bullet-prefix false positive、pre-push opt-in 姿態明講)
+>   - `tests/lib/governance-paths.test.ts` NEW 20 case、`tests/check-codex-env.test.ts` NEW 18 case、`tests/check-progress-codex-review.test.ts` +13 case(空字串 4 + DEGRADATION regex 6 + getCommitMessagesResult 三態 3)。共 37 files 1384 passed / 3 skipped
+> **審查**:
+> 無 Codex 環境(usage limit 撞頂、下週三恢復)→ 走 SOP 允許的降級 Claude /code-review 路徑。
+> 理據:下游 sprint 已跑 Codex 4 rounds 收乾、port 僅精選移植。母 repo Claude /code-review round 1(fresh adversarial-reviewer subagent、Sonnet)對 port 品質做確認,抓 1 P1 + 4 P2 → **P1 修**(pre-push gate 反轉為 opt-in、對稱「外部工具全 optional」政策)+ **P2#3 修**(catalog notes 補 opt-in 姿態)+ P2#2/#4/#5 defer(escape hatch 已在 / regression risk 有限 / @deprecated 已標)→ **收斂於 0 P1 剩餘、no actionable findings**。Step 4.5 CSO 對 pre-push 動禁區觸發判定 → 母 repo pre-push 本身在既有 gitleaks 家族內、opt-in 反轉修法只加 3 行條件、無新機制、視作 auditor 涵蓋。Step 4.6 UI 未觸發。
+> **驗證**:typecheck / lint / vitest 37 files 1384 passed(+51 新)/ check-catalog 35 controls / check-no-source-terms 三段全綠 / catalog:render + check:catalog 雙向對應綠
+> **⭐ 教訓**(累積至 4 條;本 sprint 貢獻 ④):
+>   ④ **port 上游時「外部工具全 optional」政策違反是常見 finding** — 下游對「用 gstack」是 baseline、預設 enabled gate 自然;上游對 adopter 集合更寬,同 gate 預設 enabled 會 hard-fail 不用 gstack 的 adopter、違反 optional 承諾。判準:下游 sprint 修法涉及 gate/hook/env-check 時,port 上游要 flip default 為 opt-in(對稱 template 政策)。教訓 ② 應用於 port 情境。
+> **⏭️ 下一棒候選**(hint 非 truth,起手 git 核實):
+>   - 下游 fork 若有更多 SOP-tune 迭代 → 再 port 上游(對稱本 sprint 姿態)
+>   - v2 defer 收尾:governance-paths.ts LESSONS_FILE upstream 若未來有 hygiene consumer 加、DEFAULT_ALLOWED_MODELS 過期時更新
+> 📊 成本:CC ~1.5h / 跨模型 review:Codex 撞 usage limit **降級 Claude fresh subagent 1 pass**(引用下游 sprint 已跑 Codex 4 rounds 為完整 SOP evidence)/ P1 1 修 / P2 4 條(1 修 + 3 defer)/ 2 commits + 1 progress entry commit
+
 📅 2026-09-15 ㉑ — **port SOP-tune 從下游 fork:CTRL-CI-018 Step 4 Codex review 憑證機器化 + Step 4/4.5 SOP 升級**
 
 > **緣起**:下游 fork 實測 SOP-tune sprint(Codex 5 rounds + Step 5 fresh adversarial 1 round 反覆迭代收斂)後 Owner 拍板 port 回 harness 母 repo,讓所有下游 fork 都拿到這批改動。scope 限「本 sprint 改動」——不 port 下游 fork 專案內容(progress/TODOS 特化)也不 port 更早 Sprint X 教訓。

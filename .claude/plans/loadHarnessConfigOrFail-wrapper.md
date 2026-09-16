@@ -52,7 +52,7 @@ Phase 2 起手實際讀 code 才發現這兩 caller 是**間接**經 `delivery-r
 
 **check-claims.ts / check-cso-trigger.ts 為何 skip**:見 Context 段「為何 check-claims / check-cso-trigger 不遷」補記(間接 caller、兩因訊息 + follow-up hint 需擴 wrapper signature、不划算)。
 
-**驗證**:每 caller 遷移後跑 `npm test` + 對應 e2e。全 4 個遷完跑 `npm run typecheck && npm run lint && npm test`。
+**驗證**:每 caller 遷移後跑 `npm test` + 對應 e2e。2 個直接 caller 遷完跑 `npm run typecheck && npm run lint && npm test`。
 
 ### Phase 3 — 補 check-branch-protection e2e 缺口
 
@@ -74,7 +74,7 @@ Explore 抓到:`tests/check-branch-protection.e2e.test.ts:87` 走 fixture 寫 ha
 | D1 | wrapper 放 `scripts/lib/harness-config.ts` 尾部同檔 export | doc 承諾同檔、explore 建議、無 barrel export |
 | D2 | Signature = `loadHarnessConfigOrFail(root, msgPrefix?)`;exitCode 硬編 2 | 唯一契約值、無其他 caller;msgPrefix optional 保原有 UX wording |
 | D3 | Feature branch = `feature/load-harness-config-or-fail-wrapper` | 對稱 issue-93 branch 命名 |
-| D4 | 遷移範圍 = 4 個 CLI caller;library 層 2 個不動 | Library 語意刻意 throw-through / 轉資料、不 exit |
+| D4 | 遷移範圍 = 2 個直接 CLI caller(check-branch-protection / check-adoption-readiness);2 個間接 caller(check-claims / check-cso-trigger)+ library 層 2 個 permanently non-wrapper | Library 語意刻意 throw-through / 轉資料;間接 caller 兩因訊息 + follow-up hint 現 wrapper signature 不足覆蓋(見 Context 補記) |
 | D5 | 順手補 check-branch-protection e2e config-throw 案例 | Explore 抓到覆蓋缺口、遷移 wrapper 順手補 |
 | D6 | 這 sprint 不動 Team W | Team W 下次 harness upgrade 自動吃到,對稱 issue #93 姿態 |
 | D7 | Plan file 位置 = `.claude/plans/`(新建目錄) | 母 repo 無既有慣例、選最中性 |
@@ -104,4 +104,4 @@ Explore 抓到:`tests/check-branch-protection.e2e.test.ts:87` 走 fixture 寫 ha
 
 ## 預估成本
 
-CC ~1h / 4 phases / 5-7 commits(4 caller + wrapper + Phase 3 e2e + Phase 4 doc drop)/ 預期 review 1 round Claude fresh subagent
+CC ~1h / 4 phases / 5 commits(wrapper + 2 直接 caller + Phase 3 e2e + Phase 4 doc drop)+ Step 4/5 review 修法 commits / 預期 review 1-2 rounds Claude fresh subagent
