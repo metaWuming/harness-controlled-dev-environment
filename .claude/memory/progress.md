@@ -75,6 +75,38 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-09-16 ㉔ — **issue #93:5 條 template 硬寫改 mode-aware(adopted 導入者升級不再重套 patch)**
+
+> **緣起**:Owner 2026-09-16 拍板做完 CLAUDE.md refactor(#97 pending)後動 #93。issue 明列 5 條 harness-owned tests/scripts 硬寫 template 出廠值(TEMPLATE_MODE / template / exit 2 / develop-first base),adopted 導入者(如 Team W)每次升級 harness 都要重套本地 patch。修法對稱 SOP-tune v2 governance-paths pattern:讓兩處 script 共用 mode-aware 邏輯。
+> **改動 3 commits + 1 fresh review fix commit = 4 commits, 9 檔 +170/-59**:
+>   - **Group A(cafdbba)**:3 條 tests 走 mode-aware
+>     - `tests/check-adoption-readiness.e2e.test.ts` E-self case → describe.skipIf 分 template / adopted;template 保留原 T3-T10 exception assert、adopted 分支 assert 首行 ADOPTED_MODE — READY
+>     - `tests/harness-config.test.ts` 本 repo mode case → toContain(['template','adopted']) + projectId 依 mode 判定
+>     - `tests/invoked-as-main.e2e.test.ts` 兩 consumer spec → CFG_MODE 分支的 expectedMainExit(check-cso-trigger [0,2] / check-adoption-readiness matcher 換 TEMPLATE_MODE↔ADOPTED_MODE)
+>   - **Group B(90ceaf9)**:2 條 scripts 讀 deliveryBranches[0]
+>     - `scripts/lib/delivery-refs.ts` 新 export `resolveDefaultBase(repoRoot)`:讀 `loadHarnessConfig(repoRoot).deliveryBranches[0]` 為首、對 local + origin/* 都試、都不到 → return deliveryBranches[0] fallback
+>     - `scripts/check-cso-trigger.ts` / `scripts/check-claims.ts` 刪 local resolveDefaultBase、import shared helper
+>     - `tests/check-claims.test.ts` 兩個「預設 base」e2e 改對新語意 assert、makeRepo 加 optional harnessConfig fixture
+>     - `check-cso-trigger.ts:21` + `check-claims.ts:37,231` usage 字串同步
+>   - **Group C(3c91141)**:`docs/ADOPTION.md:136` wording「預設 main/develop」→「與 protectedBranches 對齊」
+>   - **Fresh review 修(b3a...)**:P1/P2 fix
+>     - 兩支 script main() 加 try/catch 包 resolveDefaultBase 呼叫、catch 落 fail-closed exit 2(不讓 loadHarnessConfig throw 冒到 Node 頂層變 exit 1、破契約)
+>     - 兩支改用 `git rev-parse --show-toplevel` 拿 repo root(而非 process.cwd() 可能是子目錄)
+>     - `scripts/lib/delivery-refs.ts` helper docblock 加 disclaimer 明講「與 resolveDeliveryRefs* 哲學不同、非權威 base」
+>     - `tests/delivery-refs.test.ts` 加 5 條 unit tests(happy path / config missing / config 壞 / all unresolvable / fallback)
+> **審查**:
+> 無 Codex 環境(usage limit 撞頂、下週三恢復)→ 走 SOP 允許的降級 Claude /code-review 路徑。
+> Claude /code-review round 1(fresh adversarial-reviewer subagent、Sonnet)抓 2 P1 + 3 P2 + 2 INF → **P1 x2 修**(scripts try/catch fail-closed exit 2、破 exit-code 契約)+ **P2#3 修**(cwd 依賴 → git rev-parse --show-toplevel)+ **P2#4 修**(check-cso-trigger docstring stale)+ **P2#5 修**(helper unit tests 5 條)+ **INF#8 修**(helper disclaimer 語義區隔 vs delivery-refs 既有 API)→ **收斂於 0 P1 剩餘、no actionable findings**。Step 4.5 CSO 對本 sprint 動的檔案未觸敏感面(tests/scripts/docs);本 template repo CSO_REQUIRED 是 template 路徑表為空的既有狀態、非本刀觸發。Step 4.6 UI 未觸發(純後端 diff)。
+> **驗證**:typecheck / lint / vitest 37 files 1389 passed / 4 skipped(+5 新)/ check-catalog 35 controls / check-doc-refs 892 refs 0 fail / check-no-source-terms 三段全綠 / check-doc-size progress 14.2 KB / LESSONS 24.2 KB
+> **⭐ 教訓**(累積至 6 條;本 sprint 貢獻 ⑥):
+>   ⑥ **Port `loadHarnessConfig()` 到 CLI script 要 try/catch fail-closed exit 2** — helper 對 config 錯 / 缺會 throw,若 caller 沒 try/catch → Node 頂層變 exit 1(對 fail-closed=2 契約的 script 是 silent fail-open)、對「有待處置清單=exit 1」的 script 是語意衝撞。判準:任何 CLI script 用 loadHarnessConfig 都要 try/catch + 明確 fail-closed exit 2(對稱本 sprint P1 修法姿態)。
+> **⏭️ 下一棒候選**(hint 非 truth,起手 git 核實):
+>   - `scripts/lib/delivery-refs.ts` 未來若加更多讀 config 的 helper、都要對稱 try/catch 姿態(可考慮抽 `loadHarnessConfigOrFail(root, exitCode)` wrapper)
+>   - Team W 側追蹤:merge 後 Team W 升級 harness 時觀察本 sprint 修法是否真解 mode-aware pain(不再重套本地 patch)
+> 📊 成本:CC ~1h / 跨模型 review:Codex 撞 usage limit **降級 Claude fresh subagent 1 pass** / P1 2 修 / P2 3 修 + 2 INF(1 修 1 skip)/ 4 commits + 1 progress entry commit
+
+---
+
 📅 2026-09-16 ㉓ — **CLAUDE.md refactor:精簡 Opus 5 校準 4 段細部偏好**
 
 > **緣起**:Owner pre-existing WIP stash(sprint 開始前存的、SOP-tune v2 port sprint 保留、port 完 Owner 說「處理掉遺留」)—— 主動精簡 template CLAUDE.md 頂級位置的 Opus 5 tuning 細部偏好。Codex 撞 usage limit 走降級 Claude /code-review 路徑,fresh adversarial-reviewer subagent 1 pass 抓 0 P1 + 6 P2(3 修 / 3 defer)。
@@ -117,29 +149,6 @@ type: note
 >   - 下游 fork 若有更多 SOP-tune 迭代 → 再 port 上游(對稱本 sprint 姿態)
 >   - v2 defer 收尾:governance-paths.ts LESSONS_FILE upstream 若未來有 hygiene consumer 加、DEFAULT_ALLOWED_MODELS 過期時更新
 > 📊 成本:CC ~1.5h / 跨模型 review:Codex 撞 usage limit **降級 Claude fresh subagent 1 pass**(引用下游 sprint 已跑 Codex 4 rounds 為完整 SOP evidence)/ P1 1 修 / P2 4 條(1 修 + 3 defer)/ 2 commits + 1 progress entry commit
-
----
-
-📅 2026-09-15 ㉑ — **port SOP-tune 從下游 fork:CTRL-CI-018 Step 4 Codex review 憑證機器化 + Step 4/4.5 SOP 升級**
-
-> **緣起**:下游 fork 實測 SOP-tune sprint(Codex 5 rounds + Step 5 fresh adversarial 1 round 反覆迭代收斂)後 Owner 拍板 port 回 harness 母 repo,讓所有下游 fork 都拿到這批改動。scope 限「本 sprint 改動」——不 port 下游 fork 專案內容(progress/TODOS 特化)也不 port 更早 Sprint X 教訓。
-> **改動 c9b74ff**:7 檔 +1672/-6
->   - `scripts/check-progress-codex-review.ts` NEW ~660 行(純函式 + argv 陣列 gitRun + main flow):Step 4 憑證機器化。走 spawnSync + argv 陣列(擋 shell injection);isSafeGitRef / isProperAncestor / 讀 HEAD blob(擋本地未 commit marker 誤過)
->   - `tests/check-progress-codex-review.test.ts` NEW 105 條測試
->   - CI step「Step 4 Codex Review Evidence Check」(pull_request event only、用 immutable PR base SHA、對稱 Protected Branches Drift Check)
->   - CTRL-CI-018 進 control-catalog.json + docs/CONTROL-CATALOG.md 雙向鎖
->   - SOP Step 4:加 Codex model 選擇註記(GSTACK_CODEX_MODEL env var)+ effort 現況揭露 + CTRL-CI-018 引用
->   - SOP Step 4.5 CSO:改用 `/cso --diff --base <主線> --budget 600`(gstack 1.87.0.0 新參數)+ findings 決策 gate 收窄(明顯 P1 直接修、真實取捨才問 Owner)+ STOP point「critical findings 全處理」(修 or defer)
-> **審查**:下游 fork 已跑 Codex 5 rounds + Step 5 fresh adversarial 1 round 反覆迭代收斂;port 版本繼承所有 fixes。母 repo port 本身屬**同步 downstream 已 review 內容**,無新設計層變動。**Step 4 母 repo re-review 建議 defer**(diff = 抄下游 fork 已審過的 code + 少量 wording 泛化;預期 zero new P1)——若 Owner 要嚴,可另跑一輪 Codex sanity。
-> **驗證**:typecheck / lint / vitest 105 條新測全綠 / catalog OK 35 controls / adoption template mode ready + T5/T10 exceptions / doc-refs 877 refs 0 失效 / doc-size 綠。母 repo checker 對自己 dogfood 過關(entry 內含本行 Codex round 5 收斂憑證)。
-> **⭐ 教訓**(3 條、下游 fork 提煉,defer 進 LESSONS.md 待 retro 節奏):
->   ① 檢查器自身要跑完整 SOP —— 新守門即抓 4 P1
->   ② 戰術補洞的收斂條件 —— 連續兩輪 fix 冒新 P1 → 問 Owner 策略;連續三輪 → 認 v1 邊界
->   ③ Step 5 fresh adversarial 抓 SOP-implementation drift 是強項(SSOT drift 跨檔一致性,Codex 側盲區)
-> **v1 誠實邊界**(catalog notes 完整揭露):此 gate 是**下限**、非 malicious-PR defense。純字串比對抓不到假造 marker;README.md 無條件在 DOCS_ALLOW_EXACT;CONVERGENCE_RE 對「尚未完全收斂」等仍有邊界;entry-identity body-level 比對改 typo 過關。
-> **⏭️ 下一棒候選**(hint 非 truth):downstream 的下 sprint 特化 / 母 repo v2 (governance-file-classes 抽 SSOT + codex-env verify script + parseArgs 空值 fail-closed)
-> 📊 成本:CC ~30min(port 執行)+ ~4h(下游 fork 原 sprint)/ 跨模型 review 5 rounds(下游 fork,port 繼承)/ Step5 獨立發現 1 CRITICAL + 10 INF(下游 fork 已修 4 + defer 7)/ 1 個 port commit
-
 📅 2026-09-09 ⑳ — **governance sprint:CI-016 SSOT durable evidence boundary(range f3291648..d56cbe4)**
 
 > **改動 d56cbe4**:5 檔 wording 對齊 durable evidence boundary(scripts/control-catalog.json CTRL-CI-016 notes / docs/ADOPTION.md §5.2 / scripts/run-mutation-smoke.ts header / .github/workflows/ci.yml smoke step comment / docs/CONTROL-CATALOG.md rendered)。改法將 remote-state stale assertion 拆為 evidence boundary:遠端 enforcement 需 gh api live probe 現場確認;template config `githubGovernanceRequired:false` 表達 adopter requirement default 語意;schedule A-D audit 以 `BRANCH_PROTECTION_TOKEN` + schedule workflow 成功為前提;per-PR verifier 屬 out-of-scope。

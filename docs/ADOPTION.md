@@ -133,7 +133,7 @@ enforce_admins.enabled=true / required_pull_request_reviews)。要讓這條 gate
 ## 4. 本機 git hooks
 
 - [ ] `npm run setup-hooks`(設 `core.hooksPath`,一次即可,clone 的每個人都要跑)
-- [ ] 檢查 `scripts/git-hooks/pre-commit` 的保護分支清單(預設 main/develop)符合你的分支策略
+- [ ] 檢查 `scripts/git-hooks/pre-commit` 的保護分支清單與 `scripts/harness.config.json` 的 `protectedBranches` 對齊(hook 內硬編 case 陣列;template 出廠與導入者宣告值可能不同,依你的專案分支策略調整)
 - [ ] `scripts/git-hooks/commit-msg` 擋「commit 訊息含去識別化 denylist 詞」——
       你若照 §6 移除了去識別化 gate,本 hook 會自動 no-op(不必特別處理)
 - [ ] 檢查 `scripts/git-hooks/code-pattern.sh` 的 `TOOL_ARTIFACT_PATTERN`(本機 AI / 工具產物;出廠列 `.codegraph`、`.gbrain-source`、`_handoffs`,**不加尾斜線**——尾斜線只匹配目錄,symlink 會漏)

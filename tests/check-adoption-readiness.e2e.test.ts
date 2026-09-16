@@ -9,10 +9,15 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { ADR_PATH, EXPECTED_ADR_REFS } from '../scripts/lib/template-governance';
+import { loadHarnessConfig } from '../scripts/lib/harness-config';
 
 const REPO = path.resolve(__dirname, '..');
 const SCRIPT = path.join(REPO, 'scripts/check-adoption-readiness.ts');
 const TSX = path.join(REPO, 'node_modules/.bin/tsx');
+
+// Issue #93 (Group A):E-self 依 harness.config.json.mode 走不同分支,讓 adopted
+// 導入者升級 harness 時不需重套本地 patch。
+const CFG = loadHarnessConfig(REPO);
 
 function run(args: string[], cwd = REPO): { code: number | null; out: string; err: string } {
   const r = spawnSync(TSX, [SCRIPT, ...args], { cwd, encoding: 'utf-8' });
@@ -196,13 +201,26 @@ export const CSO_NOT_APPLICABLE = [{ domain: '橫切保守項', reason: '本專�
 }
 
 describe('check:adoption e2e', () => {
-  it('E-self:本 repo(template)exit 0、首行 TEMPLATE_MODE、不含 READY、列 T3/T4/T5/T10 exception', () => {
-    const r = run([]);
-    expect(r.code, r.err).toBe(0);
-    expect(r.out.split('\n')[0]).toMatch(/^TEMPLATE_MODE — adoption checks NOT applied; 4 template exceptions:/);
-    expect(r.out).not.toContain('READY');
-    for (const id of ['T3', 'T4', 'T5', 'T10']) expect(r.out).toContain(`[exception] ${id}:`);
-    expect(r.out).toContain('[info] T7:');
+  // Issue #93 (Group A #1):E-self 依 mode 分支,adopted repo 升級 harness 時
+  // 走 adopted 分支自然通過、不需重套本地 patch。
+  describe.skipIf(CFG.mode !== 'template')('E-self template mode', () => {
+    it('E-self:本 repo(template)exit 0、首行 TEMPLATE_MODE、不含 READY、列 T3/T4/T5/T10 exception', () => {
+      const r = run([]);
+      expect(r.code, r.err).toBe(0);
+      expect(r.out.split('\n')[0]).toMatch(/^TEMPLATE_MODE — adoption checks NOT applied; 4 template exceptions:/);
+      expect(r.out).not.toContain('READY');
+      for (const id of ['T3', 'T4', 'T5', 'T10']) expect(r.out).toContain(`[exception] ${id}:`);
+      expect(r.out).toContain('[info] T7:');
+    });
+  });
+
+  describe.skipIf(CFG.mode !== 'adopted')('E-self adopted mode', () => {
+    it('E-self:本 repo(adopted)exit 0、首行 ADOPTED_MODE — READY', () => {
+      const r = run([]);
+      expect(r.code, r.err).toBe(0);
+      expect(r.out.split('\n')[0]).toBe('ADOPTED_MODE — READY');
+      expect(r.out).not.toMatch(/^TEMPLATE_MODE/);
+    });
   });
   it('template fixture exit 0', () => {
     const dir = makeRepo(templateFiles());

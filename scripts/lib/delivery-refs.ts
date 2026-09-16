@@ -131,3 +131,47 @@ export function formatRejections(rejections: readonly Rejection[]): string {
     ...lines,
   ].join('\n');
 }
+
+/**
+ * Issue #93 (Group B):依 harness.config.json 的 deliveryBranches[0] 為首,建
+ * candidate list(`b`, `origin/b` 對每個 b),用 `git rev-parse` 找第一個 resolvable
+ * ref 作為 default base。都 resolve 不到 → return `deliveryBranches[0]` fallback
+ * (caller 通常拿去傳給後續 git 命令,fail-closed 語意由 caller 處理)。
+ *
+ * ⚠️ **與 `resolveDeliveryRefs*`(檔頭 API)哲學不同,注意混用**:
+ *   - `resolveDeliveryRefs*` = 嚴格 fail-closed、no fallback、只認 `refs/remotes/origin/*`、
+ *     用於 delivery ref 權威 gate(如 baseline governance)。
+ *   - `resolveDefaultBase` = 便利預設、有 fallback、對本地與 origin 都試、用於 CLI
+ *     script 的「未傳 --base 時的合理猜測」——**不是**權威 base、不能拿來當 gate 依據。
+ * caller 若拿 `resolveDefaultBase` 結果作 baseline governance 決策,會破 delivery-refs
+ * 檔頭承諾的嚴格契約。若要權威 base 走 `resolveDeliveryRefsFromRepo`。
+ *
+ * 過往兩支 script 硬編 `[develop, origin/develop, main, origin/main]`,對
+ * main-only 專案(如 Team W)有 dead reference、semantic misleading。
+ * 抽 shared helper 對稱 SOP-tune v2 的 governance-paths pattern:讓兩處 script
+ * 共用同一份 mode-aware 邏輯,不再各自維護硬編 list。
+ *
+ * @throws loadHarnessConfig 對缺檔 / JSON 壞 / schema 錯會 throw;caller 需
+ *   try/catch 或明確 fail-closed 處理(見 check-cso-trigger.ts / check-claims.ts
+ *   的 main() try/catch 姿態)。
+ */
+export function resolveDefaultBase(repoRoot: string): string {
+  const { deliveryBranches } = loadHarnessConfig(repoRoot);
+  const candidates: string[] = [];
+  for (const b of deliveryBranches) {
+    candidates.push(b, `origin/${b}`);
+  }
+  for (const ref of candidates) {
+    try {
+      execFileSync('git', ['rev-parse', '--verify', '--quiet', ref], {
+        cwd: repoRoot,
+        stdio: 'pipe',
+      });
+      return ref;
+    } catch {
+      // try next
+    }
+  }
+  // 都 resolve 不到 → return deliveryBranches[0](caller fail-closed 處理)
+  return deliveryBranches[0];
+}

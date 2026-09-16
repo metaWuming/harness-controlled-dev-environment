@@ -34,7 +34,7 @@
 //     `[閘門: tests/check-claims.test.ts 有 symlink／hard link 兩條專門守它,mutation 驗過會轉紅]`
 //
 // Usage:
-//   npm run check:claims                             # base 預設 develop(不存在時退 main)
+//   npm run check:claims                             # base 預設為 harness.config.json 的 deliveryBranches[0]
 //   npx tsx scripts/check-claims.ts --base=origin/develop
 //   npx tsx scripts/check-claims.ts --base=<sha>     # 只看某一輪之後自己新加的東西
 //
@@ -46,6 +46,7 @@
 
 import { execSync } from 'node:child_process';
 import { closeSync, constants, fstatSync, openSync, readFileSync } from 'node:fs';
+import { resolveDefaultBase } from './lib/delivery-refs';
 
 /**
  * 量詞清單。**每一條都要對得上一個真實踩過的案例**——沒有案例的不要加,
@@ -216,36 +217,46 @@ export function untrackedAsAddedLines(
 
 /**
  * 預設 diff base:與 `check-cso-trigger.ts` 同一套解析,行為要一致才不會兩支對不同的東西。
- * 🔴 Fresh review F1 修:同步 check-cso-trigger 的 origin fallback。舊寫法兩個 ref
- *    都試不到會 `return 'develop'`,對本機沒 develop/main 但有 `origin/*` 的 fresh
- *    clone,check-cso-trigger 已能 pick `origin/develop`、check-claims 卻整支失敗。
- *    對齊順序讓兩支對同一組 refs 解析。
+ * Issue #93 (Group B):兩支 script 共用 `scripts/lib/delivery-refs.ts` 的
+ * `resolveDefaultBase(REPO_ROOT)`,依 harness.config.json 的 deliveryBranches
+ * 動態建 candidate list,取代舊硬編 `[develop, origin/develop, main, origin/main]`
+ * (對 main-only 專案有 dead reference)。
  */
-function resolveDefaultBase(): string {
-  for (const ref of ['develop', 'origin/develop', 'main', 'origin/main']) {
-    try {
-      execSync(`git rev-parse --verify --quiet ${ref}`, { stdio: 'pipe' });
-      return ref;
-    } catch {
-      /* try next */
-    }
-  }
-  return 'develop';
-}
 
 function main(): void {
   if (process.argv.slice(2).some((a) => a === '--help' || a === '-h')) {
     console.log(
       'check-claims — 量詞自檢器(掃 diff 新增行的全稱/唯一性量詞,產待處置清單、非 CI gate)\n' +
         '用法:\n' +
-        '  npm run check:claims                          # base 預設 develop(不存在時退 main)\n' +
+        '  npm run check:claims                          # base 預設為 harness.config.json 的 deliveryBranches[0]\n' +
         '  npx tsx scripts/check-claims.ts --base=<ref|sha>   # 只看某輪之後自己新加的\n' +
         'exit: 0=無命中  1=有待處置清單(非錯誤,請逐條過目)  2=無法判定(非法/非祖先 base)',
     );
     process.exit(0);
   }
   const baseArg = process.argv.find((a) => a.startsWith('--base='));
-  const base = baseArg ? baseArg.slice('--base='.length) : resolveDefaultBase();
+  // Issue #93 fresh review P1 + P2#3 修:讀 harness.config.json 走 git rev-parse
+  // 拿 repo root(而非 process.cwd() 可能是子目錄)+ try/catch 落 fail-closed exit 2
+  //(而非讓 loadHarnessConfig throw 冒到 Node 頂層變 exit 1、跟「有待處置清單」
+  // 語意撞衝)。
+  let base: string;
+  if (baseArg) {
+    base = baseArg.slice('--base='.length);
+  } else {
+    try {
+      const repoRoot = execSync('git rev-parse --show-toplevel', {
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }).trim();
+      base = resolveDefaultBase(repoRoot);
+    } catch (e) {
+      console.error(
+        `❌ 無法解析預設 base(讀 harness.config.json 失敗或 git rev-parse 錯):${(e as Error).message}\n` +
+          `   (fail-closed exit 2;請顯式 --base=<ref> 或修正 scripts/harness.config.json)`,
+      );
+      process.exit(2);
+    }
+  }
   // 形狀檢查:擋掉 option smuggling(首字不得是 `-`)與 shell 元字元。
   if (!/^[A-Za-z0-9_][\w./-]*$/.test(base)) {
     console.error(`❌ 非法 base ref:${base}(無法判定,請自己人工掃一遍)`);

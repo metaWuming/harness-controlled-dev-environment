@@ -18,7 +18,7 @@
 //     未導入)、用法錯誤,一律 exit 2。
 //
 // Usage:
-//   npx tsx scripts/check-cso-trigger.ts            # diff base 預設 develop → origin/develop → main → origin/main
+//   npx tsx scripts/check-cso-trigger.ts            # diff base 預設為 harness.config.json 的 deliveryBranches[0](local, origin/*)
 //   npx tsx scripts/check-cso-trigger.ts --base=origin/develop
 //
 // Exit codes:0 = CSO_NOT_REQUIRED / **2 = CSO_REQUIRED,含所有 fail-closed 情況**。
@@ -27,6 +27,7 @@
 
 import { execSync } from 'node:child_process';
 import { detectInvocation, reportIfNotMain } from './lib/invoked-as-main';
+import { resolveDefaultBase } from './lib/delivery-refs';
 import { CSO_TRIGGER_PATTERNS, type CsoDomain } from './cso-trigger.config';
 
 export type { CsoDomain };
@@ -75,22 +76,12 @@ export function evaluateCsoTrigger(
 }
 
 /**
- * 預設 diff base:develop 優先(feature→develop 工作流),不存在時退 main。
- * 也試 `origin/*`:fresh clone 只會有預設分支的本機 branch,沒有 `develop` →
- * 舊版兩個 ref 都試不到就 return 'develop' 讓後續 base 檢查 fail-closed;
- * fresh clone 只有 origin refs 時就整支失敗、拿不到自動 base。
+ * 預設 diff base:讀 scripts/harness.config.json 的 deliveryBranches[0](Issue #93 (Group B))。
+ * 過往硬編 `[develop, origin/develop, main, origin/main]` 對 main-only 專案有
+ * dead reference。改為共用 helper `resolveDefaultBase(REPO_ROOT)`,依專案宣告的
+ * deliveryBranches 動態建 candidate list。都 resolve 不到 → 返 deliveryBranches[0]
+ * fallback,後續 base 檢查 fail-closed。
  */
-function resolveDefaultBase(): string {
-  for (const ref of ['develop', 'origin/develop', 'main', 'origin/main']) {
-    try {
-      execSync(`git rev-parse --verify --quiet ${ref}`, { stdio: 'pipe' });
-      return ref;
-    } catch {
-      /* try next */
-    }
-  }
-  return 'develop'; // 都 resolve 不到 → 交給 fail-closed 處理
-}
 
 function main(): void {
   // 🔴 argv 白名單先驗 (Codex R1 P1):舊版只 find `--base=`、其他參數靜默忽略。
@@ -124,7 +115,27 @@ function main(): void {
     );
     process.exit(2);
   }
-  const base = baseArgValue ?? resolveDefaultBase();
+  // Issue #93 fresh review P1 + P2#3 修:讀 harness.config.json 走 git rev-parse
+  // 拿 repo root(而非 process.cwd() 可能是子目錄)+ try/catch 落 fail-closed exit 2
+  //(而非讓 loadHarnessConfig throw 冒到 Node 頂層變 exit 1、破契約)。
+  let base: string;
+  if (baseArgValue) {
+    base = baseArgValue;
+  } else {
+    try {
+      const repoRoot = execSync('git rev-parse --show-toplevel', {
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }).trim();
+      base = resolveDefaultBase(repoRoot);
+    } catch (e) {
+      console.error(
+        `❌ 無法解析預設 base(讀 harness.config.json 失敗或 git rev-parse 錯):${(e as Error).message}\n` +
+          `   (fail-closed,視同 CSO_REQUIRED;請顯式 --base=<ref> 或修正 scripts/harness.config.json)`,
+      );
+      process.exit(2);
+    }
+  }
 
   // 🔴 形狀檢查(必須在空表檢查之前,Codex R2 P2):不含空白 / 分號 / 管線 / `$` /
   //    反引號 / 引號 / glob 或 `=`,且**必須以英數起頭**(擋掉 `--flag` 形狀的 option
