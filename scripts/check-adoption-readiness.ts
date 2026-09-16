@@ -45,11 +45,10 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { detectInvocation, reportIfNotMain } from './lib/invoked-as-main';
 import {
-  HARNESS_CONFIG_PATH,
   KNOWN_ADAPTERS,
   TEMPLATE_PROJECT_ID,
   literalBranchNameViolation,
-  loadHarnessConfig,
+  loadHarnessConfigOrFail,
   type AdapterName,
   type HarnessConfig,
 } from './lib/harness-config';
@@ -902,14 +901,8 @@ async function main(): Promise<number> {
   }
   const root = rootArgs[0] ? path.resolve(rootArgs[0].slice('--root='.length)) : execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf-8' }).trim();
 
-  let cfg: HarnessConfig;
-  try {
-    cfg = loadHarnessConfig(root);
-  } catch (e) {
-    console.error(`❌ ${(e as Error).message}`);
-    console.error(`NOT_READY — ${HARNESS_CONFIG_PATH} 無法載入(exit 2)`);
-    return 2;
-  }
+  // loadHarnessConfigOrFail:catch throw、印 msgPrefix、process.exit(2)(見 harness-config.ts JSDoc)
+  const cfg: HarnessConfig = loadHarnessConfigOrFail(root);
   let io: CheckerIo;
   try {
     io = await buildRealIo(root);
