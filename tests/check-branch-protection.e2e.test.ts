@@ -213,10 +213,13 @@ describe('check-branch-protection e2e — CLI adapter wiring + fake gh + status 
     expect(r.stderr).toMatch(/檔案不存在.*明確選擇 mode/);
     expect(r.ghCalls).toBe(0);
   });
-  it('case 16b:harness.config.json JSON 壞 → exit 2、wrapper 印檔名、gh 未呼叫', () => {
+  it('case 16b:harness.config.json JSON 壞 → exit 2、wrapper 印檔名 + JSON 解析錯、gh 未呼叫', () => {
     const r = run({ configOverride: '{', ghToken: 'x', githubRepository: 'ownerx/repox' });
     expect(r.code).toBe(2);
     expect(r.stderr).toContain('scripts/harness.config.json');
+    // F6 修:確認錯訊息真的透過 JSON 解析層 → 未來 parseHarnessConfig 錯訊息若被
+    // 換掉、本 assertion 會抓
+    expect(r.stderr).toMatch(/JSON 解析失敗/);
     expect(r.ghCalls).toBe(0);
   });
 });

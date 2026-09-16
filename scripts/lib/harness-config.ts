@@ -9,8 +9,12 @@
 //   - **fail-closed、無 fallback**:檔案不存在、JSON 壞掉、schemaVersion 未知、mode
 //     拼錯、欄位型別錯、未知欄位、陣列空 / 重複、分支名不合文法 —— 一律 throw。
 //     呼叫端 catch → exit 2(「無法判定」與「未就緒」同等對待)。
-//     **CLI script 應用 `loadHarnessConfigOrFail`(檔尾同檔 export)兌現此契約**;
-//     library 層(需把 throw 轉成資料 / throw-through 而非 exit)自寫 try/catch。
+//   - **CLI vs library 職責分配**:
+//     • CLI script(終端 entrypoint):用 `loadHarnessConfigOrFail`(檔尾同檔 export)
+//       兌現上條 exit 2 契約——wrapper 內 catch throw、印 msgPrefix、`process.exit(2)`。
+//     • library 層(呼叫需把 throw 轉成資料或 throw-through 而非 exit):自寫 try/catch。
+//       例:`scripts/lib/delivery-refs.ts::loadDeclaredDeliveryBranches` 轉 `Rejection`;
+//       `resolveDefaultBase` throw-through(caller 自理)。
 //   - **不做正規化**:不 trim、不 lower-case、不去前綴。原值不合法就是不合法。
 //
 // 分支名字面文法(`assertLiteralBranchName`):config 裡的 protectedBranches /
@@ -223,11 +227,14 @@ export function loadHarnessConfig(root: string): HarnessConfig {
 }
 
 /**
- * CLI-edge wrapper:兌現檔頭 L11 契約「呼叫端 catch → exit 2」。
+ * ⚠️ **失敗時直接 `process.exit(2)`**——caller 無法接續、cleanup / finally / 外層
+ * error handler 不會執行。只給**終端 CLI entrypoint** 用;呼叫此函式後 return type
+ * 是 `HarnessConfig`(never 分支即刻 exit)。
  *
- * 給**終端 CLI script** 用:catch loadHarnessConfig 的 throw、印錯訊息、`process.exit(2)`。
- * **library 層**(需把 throw 轉成資料而非 exit)用 loadHarnessConfig + 自己 try/catch——
- * 例:scripts/lib/delivery-refs.ts::loadDeclaredDeliveryBranches 轉 Rejection。
+ * CLI-edge wrapper:兌現檔頭「fail-closed → exit 2」契約。catch loadHarnessConfig
+ * 的 throw、印錯訊息、`process.exit(2)`。**library 層**(需把 throw 轉成資料 /
+ * throw-through 而非 exit)用 loadHarnessConfig + 自寫 try/catch——見檔頭「CLI vs
+ * library 職責分配」bullet。
  *
  * 動機(progress ㉔ 教訓 ⑥):helper throw 冒到 Node 頂層變 exit 1,對 fail-closed=2
  * 契約是 silent fail-open;對「exit 1 = 有待處置清單」的 script 是語意撞衝。

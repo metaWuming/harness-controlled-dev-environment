@@ -12,12 +12,20 @@
 |---|---|---|---|
 | `scripts/check-branch-protection.ts` | L18, 157-163 | try/catch → `讀 harness.config.json 失敗:${msg}` + return 2 | ✅ 遷移 |
 | `scripts/check-adoption-readiness.ts` | L52, 906-912 | try/catch → `NOT_READY — ${HARNESS_CONFIG_PATH} 無法載入(exit 2)` + return 2 | ✅ 遷移 |
-| `scripts/check-claims.ts` | L246-258 (via `resolveDefaultBase`) | try/catch → fail-closed exit 2 + comment 明講「破契約 = exit 1」 | ✅ 遷移 |
-| `scripts/check-cso-trigger.ts` | L125-137 (via `resolveDefaultBase`) | 同上 pattern | ✅ 遷移 |
+| `scripts/check-claims.ts` | L246-258 (via `resolveDefaultBase`) | try/catch 同時包 git rev-parse + resolveDefaultBase | ❌ 不遷(見下) |
+| `scripts/check-cso-trigger.ts` | L125-137 (via `resolveDefaultBase`) | 同上 pattern | ❌ 不遷(見下) |
 | `scripts/lib/delivery-refs.ts::loadDeclaredDeliveryBranches` | L109-117 | try/catch → `{ rejection: {code:'config.invalid'} }` 資料化 | ❌ 不動 |
 | `scripts/lib/delivery-refs.ts::resolveDefaultBase` | L158-159 | 裸呼、throw-through(JSDoc 明講 caller 自理) | ❌ 不動 |
 
-4 個 CLI caller、pattern 100% 一致(exit 2 + 錯訊息);2 個 library 層 caller **語意刻意不 exit**、保留 throw→資料轉換權。
+2 個直接 CLI caller pattern 一致 → 遷 wrapper;其餘 4 個 pattern 特殊 → 保留。
+
+### 為何 check-claims / check-cso-trigger 不遷(Step 4 review 補記)
+
+Phase 2 起手實際讀 code 才發現這兩 caller 是**間接**經 `delivery-refs.ts::resolveDefaultBase`——本身**不直接** import `loadHarnessConfig`。它們的 try/catch **同時**包 `git rev-parse --show-toplevel` + `resolveDefaultBase(repoRoot)` 兩層失敗、印錯訊息含兩因合併「讀 harness.config.json 失敗或 git rev-parse 錯」+ 特化 hint「請顯式 --base=<ref>」。
+
+現行 wrapper signature `(root, msgPrefix?)` **不足以覆蓋**兩因訊息 + follow-up hint pattern;若要覆蓋需擴 signature(例:多行 prefix / suffix hint),違反 SOP-tune 教訓 ⑦ 判準「close 表面成本 <5 分鐘」。
+
+**決議**:兩 caller 永久 non-wrapper(保留自寫 try/catch),或未來 sprint 擴 wrapper API 時 revisit。**本 sprint scope 縮為 2 個直接 caller**。
 
 ## Phases
 
@@ -36,15 +44,13 @@
 
 **驗證**:typecheck / lint / `npm test tests/harness-config.test.ts`
 
-### Phase 2 — 遷移 4 個 CLI caller
+### Phase 2 — 遷移 2 個直接 CLI caller(Step 4 review 縮寫:原 plan 寫 4 個)
 
 依序改動,每 caller 一個 commit(atomic):
 1. `check-branch-protection.ts`——直接 caller、遷移最簡單
-2. `check-adoption-readiness.ts`——訊息 `NOT_READY — ...無法載入(exit 2)` 用 msgPrefix 保留
-3. `check-claims.ts::resolveDefaultBase`——**間接** caller,`resolveDefaultBase` 本身是 hardcoded ref list 沒讀 config;實際 loadHarnessConfig 呼叫在 `check-claims.ts:243`(依 explore 探勘位置)。遷移該處
-4. `check-cso-trigger.ts`——同 check-claims pattern
+2. `check-adoption-readiness.ts`——用 msgPrefix `NOT_READY — ${HARNESS_CONFIG_PATH} 無法載入(exit 2)` 保留 CI log grep 對稱
 
-**注意**:探勘顯示 check-claims / check-cso-trigger 的 `resolveDefaultBase` 是本地版、跟 `delivery-refs.ts::resolveDefaultBase` **不同函式**。Phase 2 起手第一動:讀這 4 個 caller 完整定位真實 loadHarnessConfig 呼叫點,不靠 explore 摘要。
+**check-claims.ts / check-cso-trigger.ts 為何 skip**:見 Context 段「為何 check-claims / check-cso-trigger 不遷」補記(間接 caller、兩因訊息 + follow-up hint 需擴 wrapper signature、不划算)。
 
 **驗證**:每 caller 遷移後跑 `npm test` + 對應 e2e。全 4 個遷完跑 `npm run typecheck && npm run lint && npm test`。
 

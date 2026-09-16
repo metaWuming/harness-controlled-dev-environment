@@ -7,7 +7,8 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 import {
   HARNESS_CONFIG_PATH,
   KNOWN_ADAPTERS,
@@ -342,12 +343,24 @@ describe('loadHarnessConfigOrFail — CLI-edge wrapper', () => {
     return mkdtempSync(path.join(tmpdir(), 'harness-config-orfail-'));
   }
 
-  const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
-    throw new Error(`__test_exit__:${code}`);
-  }) as never);
-  const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  // F3 修:spies 用 beforeAll 安裝、afterAll 完整 restore(避免 describe-body scope
+  // 泄漏到 file 內其他 describe / 未來新增 test);beforeEach 清 call log 保 test 獨立。
+  let exitSpy: MockInstance;
+  let errSpy: MockInstance;
 
-  afterEach(() => {
+  beforeAll(() => {
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`__test_exit__:${code}`);
+    }) as never);
+    errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterAll(() => {
+    exitSpy.mockRestore();
+    errSpy.mockRestore();
+  });
+
+  beforeEach(() => {
     exitSpy.mockClear();
     errSpy.mockClear();
   });

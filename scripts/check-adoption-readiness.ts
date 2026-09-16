@@ -45,6 +45,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { detectInvocation, reportIfNotMain } from './lib/invoked-as-main';
 import {
+  HARNESS_CONFIG_PATH,
   KNOWN_ADAPTERS,
   TEMPLATE_PROJECT_ID,
   literalBranchNameViolation,
@@ -902,7 +903,11 @@ async function main(): Promise<number> {
   const root = rootArgs[0] ? path.resolve(rootArgs[0].slice('--root='.length)) : execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf-8' }).trim();
 
   // loadHarnessConfigOrFail:catch throw、印 msgPrefix、process.exit(2)(見 harness-config.ts JSDoc)
-  const cfg: HarnessConfig = loadHarnessConfigOrFail(root);
+  // 保留 NOT_READY marker(對稱 L917 buildRealIo 錯訊息、供 CI log / dashboard 統一 grep)
+  const cfg: HarnessConfig = loadHarnessConfigOrFail(
+    root,
+    `NOT_READY — ${HARNESS_CONFIG_PATH} 無法載入(exit 2)`,
+  );
   let io: CheckerIo;
   try {
     io = await buildRealIo(root);
