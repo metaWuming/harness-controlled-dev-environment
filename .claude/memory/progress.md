@@ -75,6 +75,32 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-09-16 ㉕ — **loadHarnessConfigOrFail wrapper:兌現「呼叫端 catch → exit 2」doc 承諾**
+
+> **緣起**:progress ㉔ 教訓 ⑥ + 「下一棒候選」明列可考慮抽 wrapper。Owner 拍板母 repo 起手(#93 已 merged、母 repo 有直接 caller 可遷)、Team W 下次 upgrade 自動吃到、不對稱 SOP-tune 系列「下游先探路」姿態(理由:Team W 目前 caller 是 issue-93-前狀態、沒 wrapper 服務對象)。
+> **改動 6 commits + 1 progress commit,6 檔 +283/-42**:
+>   - `scripts/lib/harness-config.ts`:尾部新 export `loadHarnessConfigOrFail(root, msgPrefix?)`(~20 行)——catch throw、印 `❌ ${msgPrefix}:${err.message}`、`process.exit(2)`;檔頭 comment 拆兩 bullet(fail-closed invariant + CLI vs library 職責分配)、library 例外明列 `delivery-refs.ts::loadDeclaredDeliveryBranches`(轉 Rejection)+ `resolveDefaultBase`(throw-through);wrapper JSDoc 首行加 ⚠️「cleanup 不執行」警語
+>   - `scripts/check-branch-protection.ts`(直接 caller):L157-163 手寫 try/catch → 單行 wrapper 呼叫(-9+4)
+>   - `scripts/check-adoption-readiness.ts`(直接 caller):L905-912 → 單行 wrapper,msgPrefix `NOT_READY — ${HARNESS_CONFIG_PATH} 無法載入(exit 2)` 保留 CI log grep 對稱(對稱 L917 sibling)
+>   - `tests/harness-config.test.ts`:+68 line 4 unit tests(happy / 缺檔 / 壞 JSON / 客製 msgPrefix)、spy lifecycle 用 beforeAll/afterAll + mockRestore + beforeEach mockClear(避免 describe-body scope 污染)
+>   - `tests/check-branch-protection.e2e.test.ts`:+2 e2e cases(config 缺 / JSON 壞)assert exit 2 + 訊息 + gh 未呼叫;run() opts 加 `skipConfigWrite` / `configOverride`;case 16b 加 `/JSON 解析失敗/` assertion
+>   - `.claude/plans/loadHarnessConfigOrFail-wrapper.md` NEW ~105 行:Context / 4 Phases / Sensible Defaults(D1-D7)/ 風險 / review 姿態 / 預估
+> **範圍縮寫**(Step 4 F2 修法):plan 原寫 4 個 CLI caller、Phase 2 起手實際讀 code 發現 check-claims / check-cso-trigger 是**間接** caller(經 `delivery-refs.ts::resolveDefaultBase`)、try/catch 同時包 git rev-parse + resolveDefaultBase 兩層失敗、訊息含兩因合併 + 特化 hint「請顯式 --base」。現行 wrapper signature `(root, msgPrefix?)` 覆蓋不足;違反 SOP-tune v2 教訓 ⑦「close 表面成本 <5 分鐘」判準。**決議**兩 caller 永久 non-wrapper 或未來擴 API 時 revisit;本 sprint scope 縮為 2 個直接 caller。
+> **審查**:
+> 無 Codex 環境(usage limit 撞頂、下週三恢復)→ 走 SOP 允許的降級 Claude /code-review 路徑。
+> Claude /code-review round 1(fresh adversarial-reviewer subagent、Sonnet)抓 0 P1 + 0 P2 + 9 INF → **F1 修**(NOT_READY msgPrefix 保留)+ **F2 修**(plan 4→2 caller narrowing)+ **F3 修**(spy lifecycle)+ **F5 修**(wrapper JSDoc ⚠️)+ **F6 修**(case 16b 加 JSON 解析失敗 assert)+ **F9 修**(檔頭 comment 拆兩 bullet)+ **F4/F7/F8 skip**(訊息 UX 深議題 defer / pre-existing dead code / plan 內部 provenance justified)。Step 5 sanity(fresh subagent 2nd pass)抓 S1 conf 8 + S2 conf 5 → **S1 修**(plan 補 L55/L77/L107 三處 "4"→"2" narrowing 未落實)、**S2 skip**(reviewer 明講被 F4 skip 決策部分吸收)→ **收斂於 0 P1 剩餘、no actionable findings**。Step 4.5 CSO 未觸敏感面(scripts/lib/ + tests/ + docs);本 template repo CSO_REQUIRED 是 template 路徑表為空既有狀態、非本刀觸發。Step 4.6 UI 未觸發(純後端 diff)。
+> **驗證**:typecheck / lint / vitest 影響區 3 files 207 passed / check-doc-refs 904 refs 0 fail / check-no-source-terms 三段全綠 / check-catalog 35 controls / check-doc-size progress 14.0 KB(archived ㉒ 到 progress-2026-09.md)。**已知 flake**:tests/check-doc-refs.test.ts G5 case 全套並行時 30s timeout(baseline main 同樣 fail、非本 sprint 引入;single-file 19s 過)。
+> **⭐ 教訓**(累積至 7 條;本 sprint 貢獻 ⑦):
+>   ⑦ **plan file 內反覆數字得逐處全掃、不能只改「主要 3 spot」**(Step 5 sanity F2 抓出) — F2 修法只 close 表格 15/16 row + Phase 2 header + Context 補記 = 3 spot;plan 內另有 L55(Phase 2 驗證)、L77(D4 Sensible Default)、L107(預估成本)3 spot 保留舊數字。SSOT within-file drift 比 cross-file drift 更難抓,因為主觀感覺「已改」。判準:plan file 內任何量詞(N caller / N phase / N commit)narrowing 修法時,對整檔跑 `grep -n "^N 個\|N caller\|N phase"` 全掃、逐 spot 對齊,不憑「改主要幾處就 done」直覺。
+> **⏭️ 下一棒候選**(hint 非 truth,起手 git 核實):
+>   - Team W 側追蹤:下次 harness upgrade 觀察 wrapper 是否自動吃到、check-branch-protection / check-adoption-readiness 訊息 UX 是否有意料外差異
+>   - check-claims / check-cso-trigger 兩因訊息若未來簡化 → revisit wrapper 遷移(可能擴 signature 加 hint suffix、或加另一種 wrapper for 兩因情境)
+>   - F4 defer:wrapper 訊息重複 path segment + `❌` 裝飾——待其他 caller 加時再 revisit 訊息格式
+>   - vitest check-doc-refs G5 case 全套並行 timeout — 提高 testTimeout 或改 serial(獨立 sprint)
+> 📊 成本:CC ~1.5h / 跨模型 review 2 rounds(Step 4 抓 9 INF 修 6、Step 5 sanity 抓 2 修 1)/ P1 0 / P2 0 / INF 11(9 Step 4 + 2 Step 5)/ 修 7 + skip 4 / 6 commits + 1 progress entry commit
+
+---
+
 📅 2026-09-16 ㉔ — **issue #93:5 條 template 硬寫改 mode-aware(adopted 導入者升級不再重套 patch)**
 
 > **緣起**:Owner 2026-09-16 拍板做完 CLAUDE.md refactor(#97 pending)後動 #93。issue 明列 5 條 harness-owned tests/scripts 硬寫 template 出廠值(TEMPLATE_MODE / template / exit 2 / develop-first base),adopted 導入者(如 Team W)每次升級 harness 都要重套本地 patch。修法對稱 SOP-tune v2 governance-paths pattern:讓兩處 script 共用 mode-aware 邏輯。
@@ -127,28 +153,7 @@ type: note
 
 ---
 
-📅 2026-09-16 ㉒ — **port SOP-tune v2 從下游 fork:checker 收窄 v1 defer 7 條 INF + check-codex-env + pre-push opt-in gate**
-
-> **緣起**:下游 fork(Team W)完成 SOP-tune v2 sprint(#39, squash SHA 23c2eb5)後 Owner 拍板 port 回母 repo,對稱 v1 upstream 姿態(SHA 1da107a)。下游 sprint 已完整 SOP:Codex 4 rounds + Step 5 fresh adversarial + Owner 拍板動禁區 + squash merged。本 port 精選 upstream 用得到的子集,排除 downstream-only 檔(progress.md / TODOS / archive / check-sprint-hygiene 相關)。
-> **改動 12d7697 + 5873eb3 = 2 commits, 11 檔 +766/-71**:
->   - `scripts/lib/governance-paths.ts` NEW ~90 行 (d):PROGRESS_FILE / README_FILE / TODOS_BOOKKEEPING_FILES / PROGRESS_ARCHIVE_PREFIX / HANDOFFS_PREFIX / TRIVIAL_FORBIDDEN_PATTERNS。**不含 LESSONS_FILE 與 hygiene 表格**(母 repo 無 hygiene consumer YAGNI)。TRIVIAL_FORBIDDEN 刪掉下游特化 `src/git/` / `src/approval/` / `src/state.ts`,保留通用 CSO gate 相關
->   - `scripts/check-progress-codex-review.ts` (c)(f)(h)(d) 修 + Step 5 F1 SSOT drift 修 + F6 @deprecated:parseArgs 四種空字串形式 fail-closed;getCommitMessagesResult 三態 discriminated union { ok | error | no-non-merge } + main() 明確 fail-closed;DEGRADATION_MARKER_RE 加行首 anchor + Unicode escape 字元集(半形 `,;:` + CJK 全形 `，：；` + 頓號 `、` + 破折號家族 `－—–―` + ASCII `-`);isDocsFile 用 PROGRESS_ARCHIVE_PREFIX constant;TRIVIAL_FORBIDDEN_PATTERNS 移 lib import
->   - `scripts/check-bookkeeping-commit.ts` import 改用 governance-paths 基礎組件
->   - `scripts/check-codex-env.ts` NEW ~140 行 (g):驗 GSTACK_CODEX_MODEL 在允許清單 ['gpt-5.6-sol', 'gpt-6-astra'] + --allow-value 給 experimental + --env override 給測試 + 純函式 checkCodexEnv + parseArgs(env 外部注入好測)+ 對稱 invoked-as-main lib
->   - `package.json`:check:codex-env npm script
->   - `scripts/git-hooks/pre-push`:尾部加 opt-in gate,需 `ENABLE_CODEX_ENV_CHECK=1` 明確啟用(fresh review P1 修法,對稱 template「外部工具全 optional」政策,不擋不用 gstack 的 adopter)
->   - `scripts/control-catalog.json` + `docs/CONTROL-CATALOG.md`:CTRL-CI-018 notes 重寫為 v2 邊界四條(含 v1 邊界 (4) DEGRADATION regex bullet-prefix false positive、pre-push opt-in 姿態明講)
->   - `tests/lib/governance-paths.test.ts` NEW 20 case、`tests/check-codex-env.test.ts` NEW 18 case、`tests/check-progress-codex-review.test.ts` +13 case(空字串 4 + DEGRADATION regex 6 + getCommitMessagesResult 三態 3)。共 37 files 1384 passed / 3 skipped
-> **審查**:
-> 無 Codex 環境(usage limit 撞頂、下週三恢復)→ 走 SOP 允許的降級 Claude /code-review 路徑。
-> 理據:下游 sprint 已跑 Codex 4 rounds 收乾、port 僅精選移植。母 repo Claude /code-review round 1(fresh adversarial-reviewer subagent、Sonnet)對 port 品質做確認,抓 1 P1 + 4 P2 → **P1 修**(pre-push gate 反轉為 opt-in、對稱「外部工具全 optional」政策)+ **P2#3 修**(catalog notes 補 opt-in 姿態)+ P2#2/#4/#5 defer(escape hatch 已在 / regression risk 有限 / @deprecated 已標)→ **收斂於 0 P1 剩餘、no actionable findings**。Step 4.5 CSO 對 pre-push 動禁區觸發判定 → 母 repo pre-push 本身在既有 gitleaks 家族內、opt-in 反轉修法只加 3 行條件、無新機制、視作 auditor 涵蓋。Step 4.6 UI 未觸發。
-> **驗證**:typecheck / lint / vitest 37 files 1384 passed(+51 新)/ check-catalog 35 controls / check-no-source-terms 三段全綠 / catalog:render + check:catalog 雙向對應綠
-> **⭐ 教訓**(累積至 4 條;本 sprint 貢獻 ④):
->   ④ **port 上游時「外部工具全 optional」政策違反是常見 finding** — 下游對「用 gstack」是 baseline、預設 enabled gate 自然;上游對 adopter 集合更寬,同 gate 預設 enabled 會 hard-fail 不用 gstack 的 adopter、違反 optional 承諾。判準:下游 sprint 修法涉及 gate/hook/env-check 時,port 上游要 flip default 為 opt-in(對稱 template 政策)。教訓 ② 應用於 port 情境。
-> **⏭️ 下一棒候選**(hint 非 truth,起手 git 核實):
->   - 下游 fork 若有更多 SOP-tune 迭代 → 再 port 上游(對稱本 sprint 姿態)
->   - v2 defer 收尾:governance-paths.ts LESSONS_FILE upstream 若未來有 hygiene consumer 加、DEFAULT_ALLOWED_MODELS 過期時更新
-> 📊 成本:CC ~1.5h / 跨模型 review:Codex 撞 usage limit **降級 Claude fresh subagent 1 pass**(引用下游 sprint 已跑 Codex 4 rounds 為完整 SOP evidence)/ P1 1 修 / P2 4 條(1 修 + 3 defer)/ 2 commits + 1 progress entry commit
+<!-- ㉒ port SOP-tune v2 已於本 sprint(loadHarnessConfigOrFail wrapper)進 archive(依 20 KB 額度慣例) -->
 📅 2026-09-09 ⑳ — **governance sprint:CI-016 SSOT durable evidence boundary(range f3291648..d56cbe4)**
 
 > **改動 d56cbe4**:5 檔 wording 對齊 durable evidence boundary(scripts/control-catalog.json CTRL-CI-016 notes / docs/ADOPTION.md §5.2 / scripts/run-mutation-smoke.ts header / .github/workflows/ci.yml smoke step comment / docs/CONTROL-CATALOG.md rendered)。改法將 remote-state stale assertion 拆為 evidence boundary:遠端 enforcement 需 gh api live probe 現場確認;template config `githubGovernanceRequired:false` 表達 adopter requirement default 語意;schedule A-D audit 以 `BRANCH_PROTECTION_TOKEN` + schedule workflow 成功為前提;per-PR verifier 屬 out-of-scope。

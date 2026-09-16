@@ -15,7 +15,7 @@
 //   7. 任一分支或 preflight fail → exit 2、diagnostic 明列
 
 import { execFileSync } from 'node:child_process';
-import { loadHarnessConfig } from './lib/harness-config';
+import { loadHarnessConfigOrFail } from './lib/harness-config';
 import { assertBranchProtection, parseBranchProtection } from './lib/branch-protection';
 
 interface Repo {
@@ -153,14 +153,9 @@ function main(): number {
   }
 
   // 3. 讀 harness.config.json protectedBranches
-  let branches: string[];
-  try {
-    const cfg = loadHarnessConfig(cwd);
-    branches = [...cfg.protectedBranches];
-  } catch (e) {
-    console.error(`讀 harness.config.json 失敗:${e instanceof Error ? e.message : String(e)}`);
-    return 2;
-  }
+  //    loadHarnessConfigOrFail:catch throw、印 msgPrefix、process.exit(2)(見 harness-config.ts JSDoc)
+  const cfg = loadHarnessConfigOrFail(cwd);
+  const branches = [...cfg.protectedBranches];
   if (branches.length === 0) {
     console.error(`harness.config.json protectedBranches 為空`);
     return 2;

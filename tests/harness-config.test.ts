@@ -7,13 +7,15 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 import {
   HARNESS_CONFIG_PATH,
   KNOWN_ADAPTERS,
   TEMPLATE_PROJECT_ID,
   literalBranchNameViolation,
   loadHarnessConfig,
+  loadHarnessConfigOrFail,
   parseHarnessConfig,
 } from '../scripts/lib/harness-config';
 
@@ -331,5 +333,91 @@ describe('Sprint 17 B1 shipped-artifact regression', () => {
       .map((l) => l.trim())
       .filter((l) => l === '@CLAUDE.md');
     expect(importLines.length).toBe(1);
+  });
+});
+
+// ─────────────────────────── loadHarnessConfigOrFail CLI-edge wrapper
+// 契約:catch throw、印 msgPrefix 訊息、process.exit(2)。library 層不用這個(見 harness-config.ts JSDoc)。
+describe('loadHarnessConfigOrFail — CLI-edge wrapper', () => {
+  function tmpRoot(): string {
+    return mkdtempSync(path.join(tmpdir(), 'harness-config-orfail-'));
+  }
+
+  // F3 修:spies 用 beforeAll 安裝、afterAll 完整 restore(避免 describe-body scope
+  // 泄漏到 file 內其他 describe / 未來新增 test);beforeEach 清 call log 保 test 獨立。
+  let exitSpy: MockInstance;
+  let errSpy: MockInstance;
+
+  beforeAll(() => {
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`__test_exit__:${code}`);
+    }) as never);
+    errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterAll(() => {
+    exitSpy.mockRestore();
+    errSpy.mockRestore();
+  });
+
+  beforeEach(() => {
+    exitSpy.mockClear();
+    errSpy.mockClear();
+  });
+
+  it('happy path:合法 config → 回 config,不 exit', () => {
+    const root = tmpRoot();
+    try {
+      mkdirSync(path.join(root, 'scripts'));
+      writeFileSync(path.join(root, HARNESS_CONFIG_PATH), JSON.stringify(VALID_ADOPTED));
+      expect(loadHarnessConfigOrFail(root).mode).toBe('adopted');
+      expect(exitSpy).not.toHaveBeenCalled();
+      expect(errSpy).not.toHaveBeenCalled();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('缺檔 → 印 default prefix + process.exit(2)', () => {
+    const root = tmpRoot();
+    try {
+      expect(() => loadHarnessConfigOrFail(root)).toThrow(/__test_exit__:2/);
+      expect(exitSpy).toHaveBeenCalledWith(2);
+      expect(errSpy).toHaveBeenCalledTimes(1);
+      const msg = errSpy.mock.calls[0]?.[0] as string;
+      expect(msg).toContain(`讀 ${HARNESS_CONFIG_PATH} 失敗`);
+      expect(msg).toContain('檔案不存在');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('壞 JSON → 印 default prefix + process.exit(2)', () => {
+    const root = tmpRoot();
+    try {
+      mkdirSync(path.join(root, 'scripts'));
+      writeFileSync(path.join(root, HARNESS_CONFIG_PATH), '{');
+      expect(() => loadHarnessConfigOrFail(root)).toThrow(/__test_exit__:2/);
+      expect(exitSpy).toHaveBeenCalledWith(2);
+      expect(errSpy).toHaveBeenCalledTimes(1);
+      const msg = errSpy.mock.calls[0]?.[0] as string;
+      expect(msg).toContain(`讀 ${HARNESS_CONFIG_PATH} 失敗`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('客製 msgPrefix → 印客製 prefix + process.exit(2)', () => {
+    const root = tmpRoot();
+    try {
+      expect(() =>
+        loadHarnessConfigOrFail(root, 'NOT_READY — config 無法載入')
+      ).toThrow(/__test_exit__:2/);
+      const msg = errSpy.mock.calls[0]?.[0] as string;
+      expect(msg).toContain('NOT_READY — config 無法載入');
+      expect(msg).not.toContain('讀 scripts/harness.config.json 失敗');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

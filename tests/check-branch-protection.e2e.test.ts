@@ -57,6 +57,10 @@ interface RunOpts {
   githubRepository?: string;
   githubHeadRepository?: string;
   cwd?: string;
+  /** skip 寫 harness.config.json(給「config 缺」case 用) */
+  skipConfigWrite?: boolean;
+  /** 客製 raw config 內容(壞 JSON / 缺欄位 等 fixture) */
+  configOverride?: string;
 }
 
 interface RunResult {
@@ -84,7 +88,10 @@ function run(opts: RunOpts): RunResult {
     requiredAgentAdapters: ['claude', 'codex'],
     githubGovernanceRequired: false,
   };
-  writeFileSync(path.join(scriptsDir, 'harness.config.json'), JSON.stringify(cfg));
+  if (!opts.skipConfigWrite) {
+    const raw = opts.configOverride ?? JSON.stringify(cfg);
+    writeFileSync(path.join(scriptsDir, 'harness.config.json'), raw);
+  }
 
   const fake = makeFakeGh();
   const env: NodeJS.ProcessEnv = {
@@ -197,6 +204,23 @@ describe('check-branch-protection e2e — CLI adapter wiring + fake gh + status 
     const r = run({ fakeGhMode: 'malformed-json', ghToken: 'x', githubRepository: 'ownerx/repox' });
     expect(r.code).toBe(2);
     expect(r.stderr).toMatch(/非 valid JSON/);
+  });
+  // ─── case 16:loadHarnessConfigOrFail wrapper 前置守門(config 缺 / 壞)
+  //     wrapper 在讀 config 階段就 exit 2、不呼 gh(對稱 case 11a token preflight)
+  it('case 16a:harness.config.json 缺 → exit 2、wrapper 印檔案不存在、gh 未呼叫', () => {
+    const r = run({ skipConfigWrite: true, ghToken: 'x', githubRepository: 'ownerx/repox' });
+    expect(r.code).toBe(2);
+    expect(r.stderr).toMatch(/檔案不存在.*明確選擇 mode/);
+    expect(r.ghCalls).toBe(0);
+  });
+  it('case 16b:harness.config.json JSON 壞 → exit 2、wrapper 印檔名 + JSON 解析錯、gh 未呼叫', () => {
+    const r = run({ configOverride: '{', ghToken: 'x', githubRepository: 'ownerx/repox' });
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('scripts/harness.config.json');
+    // F6 修:確認錯訊息真的透過 JSON 解析層 → 未來 parseHarnessConfig 錯訊息若被
+    // 換掉、本 assertion 會抓
+    expect(r.stderr).toMatch(/JSON 解析失敗/);
+    expect(r.ghCalls).toBe(0);
   });
 });
 
