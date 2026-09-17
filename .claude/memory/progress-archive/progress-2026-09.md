@@ -3,6 +3,26 @@ title: Progress Archive — 2026-09(2026-08-31 ①)
 type: archive
 ---
 
+📅 2026-09-16 ㉕ — **loadHarnessConfigOrFail wrapper:兌現「呼叫端 catch → exit 2」doc 承諾**
+
+> **緣起**:progress ㉔ 教訓 ⑥ 明列可考慮抽 wrapper。Owner 拍板母 repo 起手。
+> **改動 6 commits, 6 檔 +283/-42**:scripts/lib/harness-config.ts 新 loadHarnessConfigOrFail 20 行 wrapper(catch throw + exit 2 + ⚠️ cleanup 不執行警語);check-branch-protection.ts + check-adoption-readiness.ts 兩 direct caller 遷 wrapper(msgPrefix 保留 grep 對稱);harness-config.test.ts +4 unit / check-branch-protection.e2e.test.ts +2 e2e;check-claims / check-cso-trigger 間接 caller wrapper signature 覆蓋不足、scope 縮為 2 直接 caller。
+> **審查**:無 Codex → 降級 Claude /code-review。R1 抓 0 P1 + 0 P2 + 9 INF(6 修 3 skip);Step 5 sanity 2nd pass 抓 S1 修 S2 skip;收斂於 0 P1。
+> **⭐ 教訓**(累積 ⑦):plan file 內反覆數字得逐處全掃、不能只改主要 3 spot——SSOT within-file drift 比 cross-file 更難抓。
+> 📊 成本:CC ~1.5h / 跨模型 review 2 rounds / P1 0 / P2 0 / INF 11 / 修 7 + skip 4
+
+---
+
+📅 2026-09-16 ㉔ — **issue #93:5 條 template 硬寫改 mode-aware(adopted 導入者升級不再重套 patch)**
+
+> **緣起**:Owner 2026-09-16 拍板 #93。5 條 harness-owned tests/scripts 硬寫 template 出廠值,adopted 導入者升級都要重套本地 patch。修法對稱 SOP-tune v2 governance-paths pattern。
+> **改動 4 commits, 9 檔 +170/-59**:Group A(3 tests 走 mode-aware)+ Group B(scripts/lib/delivery-refs.ts 新 resolveDefaultBase + check-cso-trigger/check-claims 遷)+ Group C(docs/ADOPTION.md wording)+ Fresh review 修(try/catch fail-closed exit 2 + git rev-parse --show-toplevel + delivery-refs.test.ts +5 unit)。
+> **審查**:無 Codex → 降級 Claude /code-review R1 fresh 抓 2 P1 + 3 P2 + 2 INF → P1 x2 修 + P2#3/4/5 修 + INF#8 修 + 少數 skip → 收斂於 0 P1。
+> **⭐ 教訓**(累積 ⑥):Port loadHarnessConfig 到 CLI script 要 try/catch fail-closed exit 2 — helper throw 冒到頂層變 exit 1,破契約。
+> 📊 成本:CC ~1h / 跨模型 review 降級 Claude 1 pass / P1 2 修 / P2 3 修 + 2 INF(1 修 1 skip)
+
+---
+
 📅 2026-09-16 ㉒ — **port SOP-tune v2 從下游 fork:checker 收窄 v1 defer 7 條 INF + check-codex-env + pre-push opt-in gate**
 
 > **緣起**:下游 fork(Team W)完成 SOP-tune v2 sprint(#39, squash SHA 23c2eb5)後 Owner 拍板 port 回母 repo,對稱 v1 upstream 姿態(SHA 1da107a)。下游 sprint 已完整 SOP:Codex 4 rounds + Step 5 fresh adversarial + Owner 拍板動禁區 + squash merged。本 port 精選 upstream 用得到的子集,排除 downstream-only 檔(progress.md / TODOS / archive / check-sprint-hygiene 相關)。
