@@ -68,6 +68,31 @@ type: note
 
 <!-- 教訓從這裡開始,新的在最上面 -->
 
+## [2026-09-17] Skill 姿態把 turn 變 text-only → 事實上的 pause,SOP 指引 CSO 降級路徑必須改成 Agent
+
+**情境**
+Team W 下游 fork(2026-09-17)Sprint E / Sprint F 兩次踩:Step 4.5 CSO_REQUIRED 觸發後,依 SOP 明文降級跑 Claude Code 內建 `security-review` skill。skill invoke 後給 Claude 一份 prompt 讓其扮演 senior security engineer 產出報告 → Claude 輸出報告 → **輸出即結束 turn** = 事實上的 pause。Owner 明講「不能再停在 CSO」。
+
+**錯的觀察**
+skill 呼叫模式讓主 session 在**輸出報告後常直接結束 turn**——過往實測到的行為,不宣稱是 skill 引擎「天生保證」pause,但實測結果是 caller 無下一 tool call、不會跑 mutation 探針 / 進 Step 5,對 Owner 而言就是 idle 卡在 gate。**Agent 姿態並非自動保證 caller 會繼續**,而是 caller 收到既定 markdown 報告後**依 SOP 規範必須**繼續下一 tool call。單靠 memory 提醒不夠(Sprint E 才提醒完 Sprint F 又踩)。
+
+**規則**
+- **SOP Step 4.5 降級路徑不指定 skill,指定 Agent**(subagent_type=security-reviewer,定義在 `.claude/agents/security-reviewer.md`)。
+- 派 agent 流程:caller 派 agent → agent 回傳既定 markdown 安全審報告 → caller 依 outcome(COMPLETE_CLEAN / COMPLETE_WITH_FINDINGS / INCOMPLETE)繼續下一 tool call(fix / mutation / Step 5 / 排障)。SOP 明文要求**同 turn 繼續、除非真實取捨**。
+- Skill 實測結果:invoke → Claude 扮演角色產出報告 → 常直接結束 turn。實務上等同 pause。
+
+**修法**
+- `.claude/sop/plan-mode-checklist.md` Step 4.5 「無 gstack 降級:Claude Code 內建 `security-review` skill」→ 改成「無 gstack 降級:派 Agent(subagent_type=security-reviewer)」+ 明列**為何不用 skill** 的紅字警告。
+- 新加 `.claude/agents/security-reviewer.md` template agent 檔,提供既定 prompt 契約(命中域、分析 3 phases、輸出 markdown 格式、邊界誠實)。
+- 適用範圍:所有 harness adopted repo(母 repo template 改後,下次 upgrade 自動吃到)。
+
+**類推**
+- 未來若加其他「gate 用 skill」,先問「這 skill 是回傳 JSON 給 caller、還是讓 Claude 扮演角色產出報告」——後者過往實測會讓主 session 在輸出報告後結束 turn(非引擎保證但實務常見)。
+- Agent(工具)vs Skill(角色扮演)的差別**不是引擎級保證**:agent 完成後 caller 依 SOP 要求繼續下一步,skill 過往實測 Claude 常在輸出後結束 turn。差別由 **SOP 規範強制** + **agent 定義的 outcome 契約**確立,不是工具本身的行為保證。
+- **memory feedback 是規則層,SOP + agent 定義是機制層**——踩兩次就把它機器化到 SOP。
+
+---
+
 ## [2026-09-03] Dev loop `npm run lint` 與 CI `npx eslint .` 命令不對稱,CI Lint 抓到本地未見的 unused import(真根因待查、對稱原則先套)
 
 **情境**

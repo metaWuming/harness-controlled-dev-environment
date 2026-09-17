@@ -75,6 +75,32 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-09-17 ㉗ — **Sprint H:SOP Step 4.5 CSO 降級路徑改指定 Agent(取代 security-review skill 實測 turn 結束問題)**
+
+> **緣起**:Owner 拍板 4 棒 auto sprint 序第 4 棒(原規劃 M5 起手改為此 Sprint H,理由:Owner 觀察到 Team W 下游 fork Sprint E/F 兩次連踩「跑完 security-review skill 就 pause 不繼續」問題、比 M5 起手清楚受益且風險小、M5 前置 CLAUDE.md §4.2 Design System 回填仍需另刀)。母 repo template 修法後,所有 harness adopted repo 下次 upgrade 自動吃到。
+> **改動 3 commits, 3 檔 +186/-25**:
+>   - **`.claude/sop/plan-mode-checklist.md` Step 4.5**「無 gstack 降級」措辭改:從「Claude Code 內建 security-review skill」→「派 Agent(subagent_type=security-reviewer)」+ 明列紅字警告「不要把 skill 當降級實作」(過往實測 turn 結束、非引擎保證)+ 派 agent 契約(prompt 帶目標 repo、命中域、意圖、對稱姿態;caller 優先提供已解析 base ref)+ outcome 三態(COMPLETE_CLEAN / COMPLETE_WITH_FINDINGS / INCOMPLETE)+ INCOMPLETE 排障流程。
+>   - **`.claude/agents/security-reviewer.md` NEW ~220 行**:template agent def,對稱既有 adversarial-reviewer.md 姿態。硬性邊界(唯讀 + 從 diff 出發 + 只報 HIGH/MEDIUM;audit trail 竄改/漏 attribution 屬安全問題必報,非 audit log observability 排除);審什麼(6 軸:Input Validation / Authn/Authz / Crypto/Secrets / Injection/RCE / Data Exposure / **Audit Integrity** / **Deployment/Ops**);分析 3 phases(context / comparative + 反轉回歸驗 / vulnerability assessment);輸出格式含 outcome 三態必填。
+>   - **`.claude/memory/LESSONS.md`** 新加 2026-09-17 條目:記錄根因(skill 實測 turn 結束、非引擎保證,由 SOP 規範強制 caller 繼續)+ 規則(SOP 明列指引)+ 類推(Agent vs Skill 差別由 SOP 規範 + agent outcome 契約確立、非工具本身保證)。
+> **審查總結**:
+>   > **Codex round 1**(gpt-5-codex medium):**3 P1 + 3 P2** findings —— F1 env/CLI 信任性(取決於來源與 trust boundary、命中 sink 要報)、F2 收緊姿態要驗回歸(對稱姿態只作比較基準)、F3 INCOMPLETE outcome 三態(取代「信心 <0.7 不報告」)、F4 加 Audit Integrity + Deployment/Ops 軸、F5 skill/agent 因果不誇大(過往實測 vs 引擎保證)、F6 caller 契約三處互斥修法 —— **全處置(P1 全修 + 散文級照抄 Codex 替換句)**。
+>   > **Codex round 2 sanity**:**1 P2 行為級 + 2 散文級** —— F3-cont INCOMPLETE 定義擴充(任何必要 phase 未完成都算)、F4 base 解析契約(caller 優先提供 / fallback CLAUDE.md §4.6 + harness.config.json / 零或多候選 INCOMPLETE 不猜)、F5 三處統一散文(移除殘留「輸出即 turn 結束」「永遠是 pause 陷阱」絕對化)—— **全處置**。
+>   > **Codex round 3 sanity**:**no actionable findings, convergent**。**收斂**。
+>   > **Step 4.5 CSO gate**:template repo `CSO_REQUIRED` fail-closed(路徑表為空為設計);人工判定 **CSO_NOT_REQUIRED**(純 SOP/agent def/LESSONS 治理文件,無 code exec、無 attack surface、對稱既有 adversarial-reviewer 姿態)。
+>   > **Step 4.6 UI**:未觸發(純 docs 治理修法)
+>   > **Step 5 sanity skip**:3 rounds Codex 累積 9 findings 全處置(6 R1 + 3 R2)、R3 收斂 + 純治理文件對稱既有姿態 → 教訓 ⑫/⑬ 應用,skip subagent 呼叫。
+> **驗證**:typecheck 綠 / lint 綠 / check:doc-size 綠(progress 19.4 KB、LESSONS 26.5 KB)
+> **⭐ 教訓**(累積 ⑧):**「因果宣稱誇大化」的散文級陷阱** —— Sprint H R1 我把 skill/agent 差別寫成「天生 pause / 天生繼續」引擎級保證,實際上是 SOP 規範 + agent outcome 契約確立的**規範層**差別、非工具本身保證。Codex R1 F5 + R2 F5 兩輪都抓到「絕對化敘述」需收窄。**規則**:描述工具/機制的行為時,分清「引擎保證」(spec 明文)vs「實測常見」(觀察結果)vs「規範強制」(SOP/契約強制),用詞對應精確。**衍生**:sprint entry 若含機制描述,寫「過往實測」比「天生保證」保守但正確。
+> **⏭️ 下一棒候選**(hint 非 truth):
+>   - Team W 下游 fork 側追蹤:下次 harness upgrade 觀察 SOP Step 4.5 是否自動吃到 subagent 姿態、CI 是否有意料外差異、Sprint E/F 「security-review skill pause」問題是否根治
+>   - 其他 gate(4.6 視覺關 / gstack 家族的 review skills)是否也有同類「skill 輸出即 turn 結束」風險 → 未來獨立 sprint 檢視
+>   - **M5 前置**:CLAUDE.md §4.2 Design System 回填(獨立 sprint,M5 起手前必做)
+> **check:claims 逐條處置**:未跑 check:claims(3 commits 純 SOP / agent def / LESSONS 治理文件,無 code 動 → 手動核對已完成,無留待處置項)
+> 📊 成本:CC ~1.5h(3 commits + 3 rounds Codex + 人工 CSO 判定 + Step 5 sanity skip 判斷)/ 跨模型 review 3 rounds Codex / **3 P1**(全修)/ **6 P2**(4 行為級修 + 2 散文級照抄)/ **Step5 獨立發現 0 個** / **收斂**(R3 no actionable findings) / 3 檔改動(.claude/sop/plan-mode-checklist.md + .claude/agents/security-reviewer.md + .claude/memory/LESSONS.md)+ progress
+> 📐 量測:baseline SHA `d1b0b35`(main HEAD);feature branch tip = R2 fix commit `1e11cd2`;來源分佈:R1 = 初始 patch 內既有缺陷 x6(agent def 過度信任 env、姿態豁免 defense-in-depth、outcome 未三態、命中域軸不全、因果宣稱誇大、caller 契約 3 處互斥)、R2 = R1 fix 引入的新面 x1(base 解析契約)+ 散文級 x2;model:Codex gpt-5-codex 3 rounds medium;blast radius:agent def NEW 220 行 + SOP 修 22 行 + LESSONS 新條目 26 行;無 code / 無 test / 無 cross-file breaking
+
+---
+
 📅 2026-09-17 ㉖ — **port Team W Sprint A:weekly-health-check step5Independent regex 收窄(避免 Step 5 sanity + N INF 誤配)**
 
 > **緣起**:下游 fork(Team W)Sprint A(2026-09-17)在 `scripts/weekly-health-check.ts` 修的 regex 收窄,port 回上游 harness template 避免相同 bug 在其他 adopted repo 持續影響。
@@ -93,39 +119,13 @@ type: note
 
 ---
 
-<!-- ㉕ loadHarnessConfigOrFail wrapper 已於 ㉖ port sprint(2026-09-17)進 archive(依 20 KB 額度慣例) -->
+<!-- ㉕ loadHarnessConfigOrFail 已於 ㉖/㉗ sprint(2026-09-17)進 archive(依 20 KB 額度慣例) -->
 
 ---
 
-📅 2026-09-16 ㉔ — **issue #93:5 條 template 硬寫改 mode-aware(adopted 導入者升級不再重套 patch)**
+<!-- ㉕ loadHarnessConfigOrFail 已於 Sprint H(2026-09-17 ㉗)進 archive(依 20 KB 額度慣例) -->
 
-> **緣起**:Owner 2026-09-16 拍板做完 CLAUDE.md refactor(#97 pending)後動 #93。issue 明列 5 條 harness-owned tests/scripts 硬寫 template 出廠值(TEMPLATE_MODE / template / exit 2 / develop-first base),adopted 導入者(如 Team W)每次升級 harness 都要重套本地 patch。修法對稱 SOP-tune v2 governance-paths pattern:讓兩處 script 共用 mode-aware 邏輯。
-> **改動 3 commits + 1 fresh review fix commit = 4 commits, 9 檔 +170/-59**:
->   - **Group A(cafdbba)**:3 條 tests 走 mode-aware
->     - `tests/check-adoption-readiness.e2e.test.ts` E-self case → describe.skipIf 分 template / adopted;template 保留原 T3-T10 exception assert、adopted 分支 assert 首行 ADOPTED_MODE — READY
->     - `tests/harness-config.test.ts` 本 repo mode case → toContain(['template','adopted']) + projectId 依 mode 判定
->     - `tests/invoked-as-main.e2e.test.ts` 兩 consumer spec → CFG_MODE 分支的 expectedMainExit(check-cso-trigger [0,2] / check-adoption-readiness matcher 換 TEMPLATE_MODE↔ADOPTED_MODE)
->   - **Group B(90ceaf9)**:2 條 scripts 讀 deliveryBranches[0]
->     - `scripts/lib/delivery-refs.ts` 新 export `resolveDefaultBase(repoRoot)`:讀 `loadHarnessConfig(repoRoot).deliveryBranches[0]` 為首、對 local + origin/* 都試、都不到 → return deliveryBranches[0] fallback
->     - `scripts/check-cso-trigger.ts` / `scripts/check-claims.ts` 刪 local resolveDefaultBase、import shared helper
->     - `tests/check-claims.test.ts` 兩個「預設 base」e2e 改對新語意 assert、makeRepo 加 optional harnessConfig fixture
->     - `check-cso-trigger.ts:21` + `check-claims.ts:37,231` usage 字串同步
->   - **Group C(3c91141)**:`docs/ADOPTION.md:136` wording「預設 main/develop」→「與 protectedBranches 對齊」
->   - **Fresh review 修(b3a...)**:P1/P2 fix
->     - 兩支 script main() 加 try/catch 包 resolveDefaultBase 呼叫、catch 落 fail-closed exit 2(不讓 loadHarnessConfig throw 冒到 Node 頂層變 exit 1、破契約)
->     - 兩支改用 `git rev-parse --show-toplevel` 拿 repo root(而非 process.cwd() 可能是子目錄)
->     - `scripts/lib/delivery-refs.ts` helper docblock 加 disclaimer 明講「與 resolveDeliveryRefs* 哲學不同、非權威 base」
->     - `tests/delivery-refs.test.ts` 加 5 條 unit tests(happy path / config missing / config 壞 / all unresolvable / fallback)
-> **審查**:
-> 無 Codex 環境(usage limit 撞頂、下週三恢復)→ 走 SOP 允許的降級 Claude /code-review 路徑。
-> Claude /code-review round 1(fresh adversarial-reviewer subagent、Sonnet)抓 2 P1 + 3 P2 + 2 INF → **P1 x2 修**(scripts try/catch fail-closed exit 2、破 exit-code 契約)+ **P2#3 修**(cwd 依賴 → git rev-parse --show-toplevel)+ **P2#4 修**(check-cso-trigger docstring stale)+ **P2#5 修**(helper unit tests 5 條)+ **INF#8 修**(helper disclaimer 語義區隔 vs delivery-refs 既有 API)→ **收斂於 0 P1 剩餘、no actionable findings**。Step 4.5 CSO 對本 sprint 動的檔案未觸敏感面(tests/scripts/docs);本 template repo CSO_REQUIRED 是 template 路徑表為空的既有狀態、非本刀觸發。Step 4.6 UI 未觸發(純後端 diff)。
-> **驗證**:typecheck / lint / vitest 37 files 1389 passed / 4 skipped(+5 新)/ check-catalog 35 controls / check-doc-refs 892 refs 0 fail / check-no-source-terms 三段全綠 / check-doc-size progress 14.2 KB / LESSONS 24.2 KB
-> **⭐ 教訓**(累積至 6 條;本 sprint 貢獻 ⑥):
->   ⑥ **Port `loadHarnessConfig()` 到 CLI script 要 try/catch fail-closed exit 2** — helper 對 config 錯 / 缺會 throw,若 caller 沒 try/catch → Node 頂層變 exit 1(對 fail-closed=2 契約的 script 是 silent fail-open)、對「有待處置清單=exit 1」的 script 是語意衝撞。判準:任何 CLI script 用 loadHarnessConfig 都要 try/catch + 明確 fail-closed exit 2(對稱本 sprint P1 修法姿態)。
-> **⏭️ 下一棒候選**(hint 非 truth,起手 git 核實):
->   - `scripts/lib/delivery-refs.ts` 未來若加更多讀 config 的 helper、都要對稱 try/catch 姿態(可考慮抽 `loadHarnessConfigOrFail(root, exitCode)` wrapper)
->   - Team W 側追蹤:merge 後 Team W 升級 harness 時觀察本 sprint 修法是否真解 mode-aware pain(不再重套本地 patch)
-> 📊 成本:CC ~1h / 跨模型 review:Codex 撞 usage limit **降級 Claude fresh subagent 1 pass** / P1 2 修 / P2 3 修 + 2 INF(1 修 1 skip)/ 4 commits + 1 progress entry commit
+<!-- ㉔ issue #93 mode-aware 已於 Sprint H(2026-09-17 ㉗)進 archive(依 20 KB 額度慣例) -->
 
 ---
 

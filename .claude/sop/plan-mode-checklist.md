@@ -247,8 +247,20 @@ Step 6/7 收尾照走。
       〔預設:gstack `/cso --diff --base <主線> --budget 600`(gstack 1.87.0.0 起支援;
       `--diff --base <主線>` 只掃本 sprint 變更面、不重掃整 repo;`--budget 600` 卡
       10 分鐘 wall-clock 上限。`<主線>` 依 `CLAUDE.md` §4.6 protected / delivery
-      branch 慣例:多數 `main`,GitFlow 為 `develop`);無 gstack 降級:Claude Code
-      內建 `security-review` skill〕
+      branch 慣例:多數 `main`,GitFlow 為 `develop`);無 gstack 降級:**派 Agent
+      (`subagent_type=security-reviewer`,定義見 `.claude/agents/security-reviewer.md`)**〕
+      🔴 **不要把 `security-review` skill 當作本 gate 的降級實作**:過往實測主 session
+      在輸出報告後曾直接結束 turn。改派 security-reviewer subagent;Agent 回傳後,
+      caller **必須**在同一 turn 繼續 findings gate、mutation 探針或 Step 5,除非
+      觸發真實取捨。派 agent 時 prompt 帶:目標 repo、CSO_REQUIRED 命中域、變更意圖、
+      對稱既有姿態;**caller 優先提供已解析的 base ref**(recommended);caller 未提供
+      時 agent 依目標 repo 的 `CLAUDE.md` §4.6 與 `scripts/harness.config.json` 解析。
+      agent 依 outcome 三態(COMPLETE_CLEAN / COMPLETE_WITH_FINDINGS / INCOMPLETE)
+      回報。INCOMPLETE 表示審查未完成:工具/證據故障先排障,caller 輸入或 trust-boundary
+      歧義先補資料或決策,再重派;取得 COMPLETE_CLEAN 或處理完 COMPLETE_WITH_FINDINGS
+      前**不得**通過安全關。
+      (2026-09-17 Team W Sprint E/F 兩次踩、Owner 明講「不能再停在 CSO」→ 母 repo
+      永久收該指引;歷史脈絡見 `.claude/memory/LESSONS.md` 對應條目。)
   - 🔴 **findings 決策 gate**——只在**真實取捨**時停下問 Owner:
     - **明顯 P1 + 單一修法路徑**(如 missing input validation、hardcoded secret、
       typo 造成 auth bypass):**直接修 + 標 fix commit**,不用 pause。

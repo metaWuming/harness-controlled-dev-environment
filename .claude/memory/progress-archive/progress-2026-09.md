@@ -13,6 +13,16 @@ type: archive
 
 ---
 
+📅 2026-09-16 ㉔ — **issue #93:5 條 template 硬寫改 mode-aware(adopted 導入者升級不再重套 patch)**
+
+> **緣起**:Owner 2026-09-16 拍板 #93。5 條 harness-owned tests/scripts 硬寫 template 出廠值,adopted 導入者升級都要重套本地 patch。修法對稱 SOP-tune v2 governance-paths pattern。
+> **改動 4 commits, 9 檔 +170/-59**:Group A(3 tests 走 mode-aware)+ Group B(scripts/lib/delivery-refs.ts 新 resolveDefaultBase + check-cso-trigger/check-claims 遷)+ Group C(docs/ADOPTION.md wording)+ Fresh review 修(try/catch fail-closed exit 2 + git rev-parse --show-toplevel + delivery-refs.test.ts +5 unit)。
+> **審查**:無 Codex → 降級 Claude /code-review R1 fresh 抓 2 P1 + 3 P2 + 2 INF → P1 x2 修 + P2#3/4/5 修 + INF#8 修 + 少數 skip → 收斂於 0 P1。
+> **⭐ 教訓**(累積 ⑥):Port loadHarnessConfig 到 CLI script 要 try/catch fail-closed exit 2 — helper throw 冒到頂層變 exit 1,破契約。
+> 📊 成本:CC ~1h / 跨模型 review 降級 Claude 1 pass / P1 2 修 / P2 3 修 + 2 INF(1 修 1 skip)
+
+---
+
 📅 2026-09-16 ㉒ — **port SOP-tune v2 從下游 fork:checker 收窄 v1 defer 7 條 INF + check-codex-env + pre-push opt-in gate**
 
 > **緣起**:下游 fork(Team W)完成 SOP-tune v2 sprint(#39, squash SHA 23c2eb5)後 Owner 拍板 port 回母 repo,對稱 v1 upstream 姿態(SHA 1da107a)。下游 sprint 已完整 SOP:Codex 4 rounds + Step 5 fresh adversarial + Owner 拍板動禁區 + squash merged。本 port 精選 upstream 用得到的子集,排除 downstream-only 檔(progress.md / TODOS / archive / check-sprint-hygiene 相關)。
