@@ -74,12 +74,12 @@ type: note
 Team W 下游 fork(2026-09-17)Sprint E / Sprint F 兩次踩:Step 4.5 CSO_REQUIRED 觸發後,依 SOP 明文降級跑 Claude Code 內建 `security-review` skill。skill invoke 後給 Claude 一份 prompt 讓其扮演 senior security engineer 產出報告 → Claude 輸出報告 → **輸出即結束 turn** = 事實上的 pause。Owner 明講「不能再停在 CSO」。
 
 **錯的觀察**
-skill 的呼叫模式是「Claude 扮演 X 產出 Y」——它天生是 text-only turn,跟 SOP「STOP point 達成直接推進」精神衝突。同 Claude 在 skill 之後**沒有下一 tool call**、不會跑 mutation 探針 / 進 Step 5,對 Owner 而言就是 idle 卡在 gate。單靠 memory 提醒不夠(Sprint E 才提醒完 Sprint F 又踩)。
+skill 呼叫模式讓主 session 在**輸出報告後常直接結束 turn**——過往實測到的行為,不宣稱是 skill 引擎「天生保證」pause,但實測結果是 caller 無下一 tool call、不會跑 mutation 探針 / 進 Step 5,對 Owner 而言就是 idle 卡在 gate。**Agent 姿態並非自動保證 caller 會繼續**,而是 caller 收到既定 markdown 報告後**依 SOP 規範必須**繼續下一 tool call。單靠 memory 提醒不夠(Sprint E 才提醒完 Sprint F 又踩)。
 
 **規則**
 - **SOP Step 4.5 降級路徑不指定 skill,指定 Agent**(subagent_type=security-reviewer,定義在 `.claude/agents/security-reviewer.md`)。
-- Agent 姿態:caller 派 agent → agent 回傳 findings JSON → caller 當下 turn 立刻繼續下一 tool call。**天生不會 pause**。
-- Skill 姿態:invoke → Claude 扮演角色產出報告 → turn 結束。**天生 pause**。
+- 派 agent 流程:caller 派 agent → agent 回傳既定 markdown 安全審報告 → caller 依 outcome(COMPLETE_CLEAN / COMPLETE_WITH_FINDINGS / INCOMPLETE)繼續下一 tool call(fix / mutation / Step 5 / 排障)。SOP 明文要求**同 turn 繼續、除非真實取捨**。
+- Skill 實測結果:invoke → Claude 扮演角色產出報告 → 常直接結束 turn。實務上等同 pause。
 
 **修法**
 - `.claude/sop/plan-mode-checklist.md` Step 4.5 「無 gstack 降級:Claude Code 內建 `security-review` skill」→ 改成「無 gstack 降級:派 Agent(subagent_type=security-reviewer)」+ 明列**為何不用 skill** 的紅字警告。
