@@ -247,8 +247,15 @@ Step 6/7 收尾照走。
       〔預設:gstack `/cso --diff --base <主線> --budget 600`(gstack 1.87.0.0 起支援;
       `--diff --base <主線>` 只掃本 sprint 變更面、不重掃整 repo;`--budget 600` 卡
       10 分鐘 wall-clock 上限。`<主線>` 依 `CLAUDE.md` §4.6 protected / delivery
-      branch 慣例:多數 `main`,GitFlow 為 `develop`);無 gstack 降級:Claude Code
-      內建 `security-review` skill〕
+      branch 慣例:多數 `main`,GitFlow 為 `develop`);無 gstack 降級:**派 Agent
+      (`subagent_type=security-reviewer`,定義見 `.claude/agents/security-reviewer.md`),
+      prompt 帶完整 diff + 明確要求回傳 HIGH/MEDIUM findings 摘要 + 位置 + 可達序列**〕
+      🔴 **不要直接 invoke `security-review` skill**:該 skill 天生把 turn 變 text-only
+      (Claude 扮演 security engineer 產出報告 → 輸出即結束 turn → 事實上的 pause),
+      跟 STOP point 「條件達成直接推進」精神衝突。派 Agent 姿態則是 agent 回傳
+      findings、當下 turn 立刻繼續下一 tool call(mutation 探針 / Step 5)。
+      (2026-09-17 Team W Sprint E/F 兩次踩、Owner 明講「不能再停在 CSO」→ 母 repo
+      永久收該指引;歷史脈絡見 `.claude/memory/LESSONS.md` 對應條目。)
   - 🔴 **findings 決策 gate**——只在**真實取捨**時停下問 Owner:
     - **明顯 P1 + 單一修法路徑**(如 missing input validation、hardcoded secret、
       typo 造成 auth bypass):**直接修 + 標 fix commit**,不用 pause。
