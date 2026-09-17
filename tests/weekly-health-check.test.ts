@@ -278,6 +278,69 @@ describe('collectReviewCost', () => {
     const r = collectReviewCost(content, SINCE);
     expect(r.sprints).toBe(0);
   });
+
+  it('Step 5 sanity + N INF 混寫不當獨立發現數(舊 regex 誤配 regression)', () => {
+    // Ported from Team W Sprint A 2026-09-17。收窄 regex 到只認完整欄名
+    // 「Step5 獨立發現 N 個」——兩條 cost line 都有 `Step 5 sanity + N` 但無「獨立發現」,
+    // step5Independent 應回 null(不是有資料)
+    // Sprint 2 R1 P2 修:第二條 fixture 補上 cost line 內的 `Step 5 sanity + INF-1`
+    // (原版把測試詞放 heading 而非 📊 line、collector 只解析 📊 → 舊 regex 也回 null)。
+    const content = [
+      '📅 2026-05-20 ① — **只寫 Step 5 sanity 未填獨立發現欄**',
+      '> 📊 成本:CC ~40min(2 commits + 1 round Codex + Step 5 sanity + 4 INF 補)/ P1 0 / P2 0',
+      '',
+      '📅 2026-05-21 ② — **另一條 sanity**',
+      '> 📊 成本:CC ~1h / Step 5 sanity + INF-1 補 / 跨模型 review 2 rounds / P1 total 0',
+      '',
+    ].join('\n');
+    const r = collectReviewCost(content, SINCE);
+    expect(r.sprints).toBe(2);
+    // 舊 regex 會抓「Step 5 sanity + 4 INF」→ 4 或「Step 5 sanity + INF-1」→ 1、
+    // step5Sum=5、step5Seen=true;收窄後兩條都不匹配 → null
+    expect(r.step5Independent).toBeNull();
+  });
+
+  it('「Step5 獨立發現」與「Step 5 sanity」共存時只認前者', () => {
+    const content = [
+      '📅 2026-05-20 ① — **兩個欄都寫**',
+      '> 📊 成本:Step 5 sanity 補 3 條 INF / 跨模型 review 2 rounds / Step5 獨立發現 7 個',
+      '',
+    ].join('\n');
+    const r = collectReviewCost(content, SINCE);
+    expect(r.step5Independent).toBe(7);
+  });
+
+  it('Sprint 2 R1 P2:跨欄位分隔符不誤匹配(獨立發現後接 / P1 N 個)', () => {
+    // R1 反例:舊 [^0-9]* 讓「Step5 獨立發現 / P1 2 個」跨欄抓到 P1 欄名中的 1。
+    // 新 regex [\s:：）)]* 只允許空白冒號括號,遇到 / 或 P 就 stop → 不匹配。
+    const content = [
+      '📅 2026-05-20 ① — **獨立發現後直接跨欄無數字**',
+      '> 📊 成本:CC ~1h / Step5 獨立發現 / P1 2 個 / P2 3 個',
+      '',
+    ].join('\n');
+    const r = collectReviewCost(content, SINCE);
+    expect(r.step5Independent).toBeNull();
+  });
+
+  it('Sprint 2 R1 P2:半形冒號變體「Step 5: 獨立發現 7」', () => {
+    const content = [
+      '📅 2026-05-20 ① — **冒號變體**',
+      '> 📊 成本:Step 5: 獨立發現 7 / 跨模型 review 2 rounds',
+      '',
+    ].join('\n');
+    const r = collectReviewCost(content, SINCE);
+    expect(r.step5Independent).toBe(7);
+  });
+
+  it('Sprint 2 R1 P2:全形括號變體「Step 5（獨立發現）7」', () => {
+    const content = [
+      '📅 2026-05-20 ① — **括號變體**',
+      '> 📊 成本:Step 5（獨立發現）7 / 跨模型 review 2 rounds',
+      '',
+    ].join('\n');
+    const r = collectReviewCost(content, SINCE);
+    expect(r.step5Independent).toBe(7);
+  });
 });
 
 describe('ISO 8601 week 計算', () => {
