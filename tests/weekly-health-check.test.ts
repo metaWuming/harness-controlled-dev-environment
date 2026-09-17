@@ -278,6 +278,35 @@ describe('collectReviewCost', () => {
     const r = collectReviewCost(content, SINCE);
     expect(r.sprints).toBe(0);
   });
+
+  it('Step 5 sanity + N INF 混寫不當獨立發現數(舊 regex 誤配 regression)', () => {
+    // Ported from Team W Sprint A 2026-09-17。收窄 regex 到只認完整欄名
+    // 「Step5 獨立發現 N 個」——本 fixture 兩條 entry 都無「獨立發現」全形/半形文字,
+    // step5Independent 應回 null(不是有資料)
+    const content = [
+      '📅 2026-05-20 ① — **只寫 Step 5 sanity 未填獨立發現欄**',
+      '> 📊 成本:CC ~40min(2 commits + 1 round Codex + Step 5 sanity + 4 INF 補)/ P1 0 / P2 0',
+      '',
+      '📅 2026-05-21 ② — **Step 5 sanity + INF-1 補**',
+      '> 📊 成本:CC ~1h / 跨模型 review 2 rounds Codex + 1 round Claude adversarial-reviewer / P1 total 0',
+      '',
+    ].join('\n');
+    const r = collectReviewCost(content, SINCE);
+    expect(r.sprints).toBe(2);
+    // 舊 regex 會抓「Step 5 sanity + 4 INF」→ 4 或「Step 5 sanity + INF-1」→ 1、
+    // step5Sum=5、step5Seen=true;收窄後兩條都不匹配 → null
+    expect(r.step5Independent).toBeNull();
+  });
+
+  it('「Step5 獨立發現」與「Step 5 sanity」共存時只認前者', () => {
+    const content = [
+      '📅 2026-05-20 ① — **兩個欄都寫**',
+      '> 📊 成本:Step 5 sanity 補 3 條 INF / 跨模型 review 2 rounds / Step5 獨立發現 7 個',
+      '',
+    ].join('\n');
+    const r = collectReviewCost(content, SINCE);
+    expect(r.step5Independent).toBe(7);
+  });
 });
 
 describe('ISO 8601 week 計算', () => {
