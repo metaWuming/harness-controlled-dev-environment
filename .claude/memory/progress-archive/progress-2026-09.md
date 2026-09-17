@@ -5,11 +5,11 @@ type: archive
 
 📅 2026-09-16 ㉕ — **loadHarnessConfigOrFail wrapper:兌現「呼叫端 catch → exit 2」doc 承諾**
 
-> **緣起**:progress ㉔ 教訓 ⑥ 明列可考慮抽 wrapper。Owner 拍板母 repo 起手。
-> **改動 6 commits, 6 檔 +283/-42**:scripts/lib/harness-config.ts 新 loadHarnessConfigOrFail 20 行 wrapper(catch throw + exit 2 + ⚠️ cleanup 不執行警語);check-branch-protection.ts + check-adoption-readiness.ts 兩 direct caller 遷 wrapper(msgPrefix 保留 grep 對稱);harness-config.test.ts +4 unit / check-branch-protection.e2e.test.ts +2 e2e;check-claims / check-cso-trigger 間接 caller wrapper signature 覆蓋不足、scope 縮為 2 直接 caller。
-> **審查**:無 Codex → 降級 Claude /code-review。R1 抓 0 P1 + 0 P2 + 9 INF(6 修 3 skip);Step 5 sanity 2nd pass 抓 S1 修 S2 skip;收斂於 0 P1。
-> **⭐ 教訓**(累積 ⑦):plan file 內反覆數字得逐處全掃、不能只改主要 3 spot——SSOT within-file drift 比 cross-file 更難抓。
-> 📊 成本:CC ~1.5h / 跨模型 review 2 rounds / P1 0 / P2 0 / INF 11 / 修 7 + skip 4
+> **緣起**:progress ㉔ 教訓 ⑥ + 「下一棒候選」明列可考慮抽 wrapper。Owner 拍板母 repo 起手(#93 已 merged、母 repo 有直接 caller 可遷)、Team W 下次 upgrade 自動吃到。
+> **改動 6 commits + 1 progress commit,6 檔 +283/-42**:scripts/lib/harness-config.ts 新 loadHarnessConfigOrFail 20 行 wrapper(catch throw + exit 2 + ⚠️ cleanup 不執行警語);check-branch-protection.ts + check-adoption-readiness.ts 兩 direct caller 遷 wrapper(msgPrefix 保留 grep 對稱);harness-config.test.ts +4 unit / check-branch-protection.e2e.test.ts +2 e2e;check-claims / check-cso-trigger 間接 caller wrapper signature 覆蓋不足、scope 縮為 2 直接 caller。
+> **審查**:無 Codex 環境 → 降級 Claude /code-review。R1 抓 0 P1 + 0 P2 + 9 INF(6 修 3 skip);Step 5 sanity 抓 S1 conf 8 修 S2 skip;收斂於 0 P1。
+> **⭐ 教訓**(累積 ⑦):plan file 內反覆數字得逐處全掃、不能只改「主要 3 spot」——SSOT within-file drift 比 cross-file 更難抓。
+> 📊 成本:CC ~1.5h / 跨模型 review 2 rounds / P1 0 / P2 0 / INF 11 / 修 7 + skip 4 / 6 commits + 1 progress entry commit
 
 ---
 
