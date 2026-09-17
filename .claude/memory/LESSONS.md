@@ -87,8 +87,8 @@ skill 呼叫模式讓主 session 在**輸出報告後常直接結束 turn**—�
 - 適用範圍:所有 harness adopted repo(母 repo template 改後,下次 upgrade 自動吃到)。
 
 **類推**
-- 未來若加其他「gate 用 skill」,先問「這 skill 是回傳 JSON 給 caller、還是讓 Claude 扮演角色產出報告」——後者永遠是 pause 陷阱。
-- Agent(工具)vs Skill(角色扮演)的介面差在**誰負責決定 turn 結束**:agent 完成後 caller 決定,skill 完成後 Claude 常慣性結束 turn。
+- 未來若加其他「gate 用 skill」,先問「這 skill 是回傳 JSON 給 caller、還是讓 Claude 扮演角色產出報告」——後者過往實測會讓主 session 在輸出報告後結束 turn(非引擎保證但實務常見)。
+- Agent(工具)vs Skill(角色扮演)的差別**不是引擎級保證**:agent 完成後 caller 依 SOP 要求繼續下一步,skill 過往實測 Claude 常在輸出後結束 turn。差別由 **SOP 規範強制** + **agent 定義的 outcome 契約**確立,不是工具本身的行為保證。
 - **memory feedback 是規則層,SOP + agent 定義是機制層**——踩兩次就把它機器化到 SOP。
 
 ---

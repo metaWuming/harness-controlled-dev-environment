@@ -18,7 +18,7 @@ tools: Read, Grep, Glob, Bash
 ## 需要 caller 提供的輸入
 
 呼叫時 prompt 應包含:
-1. **目標 repo 路徑**;base 依該 repo `CLAUDE.md` §4.6 的 protected / delivery branch 規則解析(agent 自行讀該 CLAUDE.md 決定);agent 自行跑 `git diff <base>...HEAD` 讀 diff。
+1. **目標 repo 路徑** + **caller 優先提供已解析的 base ref**(recommended)。caller 未提供時,agent 依該 repo `CLAUDE.md` §4.6 與 `scripts/harness.config.json` 解析 protected / delivery branch。若得到零個或多個候選,outcome=INCOMPLETE 並列出候選,**不得自行猜測**(如 `main` 或 `develop`)。取得 base 後 agent 自行跑 `git diff <base>...HEAD` 讀 diff。
 2. **CSO_REQUIRED 命中域清單**(PII / 權限/IDOR/資產轉移 / 金流 / 稽核 / 部署 ops 等)
 3. **變更意圖一句話**(讓你判斷「新面 vs 收緊既有」)
 4. **對稱既有姿態說明**(若有):例「對稱 xxx 姿態新加 defense-in-depth」
@@ -75,7 +75,7 @@ tools: Read, Grep, Glob, Bash
 (三態擇一必填。定義:
 - `COMPLETE_CLEAN`:三 phases 全跑完、命中域全審完 → 0 HIGH/MEDIUM
 - `COMPLETE_WITH_FINDINGS`:三 phases 全跑完 → 有 HIGH/MEDIUM 見下方
-- `INCOMPLETE`:repo/diff/命中域證據取不到 → 列缺什麼、SOP 明定排障重派前**不得**通過安全關)
+- `INCOMPLETE`:任何必要 phase 或命中域未完成,不論原因是輸入/證據不足、工具或命令失敗、未解歧義、無法執行必要驗證,或整體信心不足;必須列出 blocker、已取得證據與下一個解除動作。SOP 明定排障重派前**不得**通過安全關。)
 
 ## 分析
 - Phase 1: <既有姿態一句話>
@@ -113,4 +113,4 @@ tools: Read, Grep, Glob, Bash
 - SOP Step 4.5 CSO gate: `.claude/sop/plan-mode-checklist.md`
 - 觸發判定機器: `scripts/check-cso-trigger.ts`
 - 路徑表: `scripts/cso-trigger.config.ts`(導入時填)
-- 為何不用 `security-review` skill: 該 skill 讓 Claude 扮演 senior security engineer 產出報告→輸出即 turn 結束→事實 pause,跟 SOP「STOP point 達成直接推進」精神衝突。Agent 姿態則回傳結果、caller 立刻繼續下一步。
+- 為何不用 `security-review` skill: 過往實測中,直接 invoke `security-review` skill 後,主 session 曾在輸出報告後結束 turn;這不是 skill 或 agent 的引擎保證。本 gate 因此改派 `security-reviewer` agent,並由 SOP 要求 caller 收到 outcome 後在同一 turn 繼續下一步,真實取捨除外。
