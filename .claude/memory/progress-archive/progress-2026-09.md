@@ -3,6 +3,16 @@ title: Progress Archive — 2026-09(2026-08-31 ①)
 type: archive
 ---
 
+📅 2026-09-16 ㉕ — **loadHarnessConfigOrFail wrapper:兌現「呼叫端 catch → exit 2」doc 承諾**
+
+> **緣起**:progress ㉔ 教訓 ⑥ + 「下一棒候選」明列可考慮抽 wrapper。Owner 拍板母 repo 起手(#93 已 merged、母 repo 有直接 caller 可遷)、Team W 下次 upgrade 自動吃到。
+> **改動 6 commits + 1 progress commit,6 檔 +283/-42**:scripts/lib/harness-config.ts 新 loadHarnessConfigOrFail 20 行 wrapper(catch throw + exit 2 + ⚠️ cleanup 不執行警語);check-branch-protection.ts + check-adoption-readiness.ts 兩 direct caller 遷 wrapper(msgPrefix 保留 grep 對稱);harness-config.test.ts +4 unit / check-branch-protection.e2e.test.ts +2 e2e;check-claims / check-cso-trigger 間接 caller wrapper signature 覆蓋不足、scope 縮為 2 直接 caller。
+> **審查**:無 Codex 環境 → 降級 Claude /code-review。R1 抓 0 P1 + 0 P2 + 9 INF(6 修 3 skip);Step 5 sanity 抓 S1 conf 8 修 S2 skip;收斂於 0 P1。
+> **⭐ 教訓**(累積 ⑦):plan file 內反覆數字得逐處全掃、不能只改「主要 3 spot」——SSOT within-file drift 比 cross-file 更難抓。
+> 📊 成本:CC ~1.5h / 跨模型 review 2 rounds / P1 0 / P2 0 / INF 11 / 修 7 + skip 4 / 6 commits + 1 progress entry commit
+
+---
+
 📅 2026-09-16 ㉒ — **port SOP-tune v2 從下游 fork:checker 收窄 v1 defer 7 條 INF + check-codex-env + pre-push opt-in gate**
 
 > **緣起**:下游 fork(Team W)完成 SOP-tune v2 sprint(#39, squash SHA 23c2eb5)後 Owner 拍板 port 回母 repo,對稱 v1 upstream 姿態(SHA 1da107a)。下游 sprint 已完整 SOP:Codex 4 rounds + Step 5 fresh adversarial + Owner 拍板動禁區 + squash merged。本 port 精選 upstream 用得到的子集,排除 downstream-only 檔(progress.md / TODOS / archive / check-sprint-hygiene 相關)。
