@@ -225,9 +225,19 @@ export function collectReviewCost(
     const p2 = line.match(/P2\s*(\d+)/i);
     if (p2) totalP2 += Number(p2[1]);
     // 舊 regex `Step\s*5[^0-9]*(\d+)` 太寬,會誤配「Step 5 sanity + 4 INF 補」→ 把
-    // 4 當獨立發現數。收窄到只認完整欄名「Step5 獨立發現 N 個」(可能有全形/半形空白差異)。
-    // Ported from Team W Sprint A(TODOS L438 修)2026-09-17。
-    const s5 = line.match(/Step\s*5\s*獨立發現[^0-9]*(\d+)/i);
+    // 4 當獨立發現數。收窄到只認完整欄名「Step5 獨立發現 N 個」與其常見變體
+    // (半/全形空白、冒號、括號),但**數字必須緊跟欄名**,不得跨欄位分隔符。
+    //
+    // 允許變體(Sprint 2 R1 P2 收窄):
+    //   - Step5 獨立發現 7 個 / Step5 獨立發現 7
+    //   - Step 5 獨立發現 7 個(半形空白)
+    //   - Step 5: 獨立發現 7、Step 5:獨立發現 7
+    //   - Step 5(獨立發現)7、Step 5（獨立發現）7(半/全形括號)
+    // 阻擋(R1 P2 反例):
+    //   - Step5 獨立發現 / P1 2 個  →  跨欄位分隔符,不匹配數字
+    //
+    // Ported from Team W Sprint A(TODOS L438 修)2026-09-17,並吸收 harness R1 findings。
+    const s5 = line.match(/Step\s*5[\s:：（(]*獨立發現[\s:：）)]*(\d+)/i);
     if (s5) {
       step5Sum += Number(s5[1]);
       step5Seen = true;
