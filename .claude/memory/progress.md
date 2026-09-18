@@ -75,6 +75,35 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-09-18 ㉘ — **Sprint I(port Team W Sprint P.1):pre-push CI mirror 機器化(opt-in)**
+
+> **緣起**:Team W 下游 Sprint P Step 6 push 撞 CI 紅在 `check:progress-codex` marker 格式,等 CI ~15 min 才發現、修完再等一輪 —— 一個 sprint 累積 30-45 min 純浪費。Owner 拍板「請把這件事情機器化」。SOP Step 6 早明講「push 前跑完整本地 gate」但只靠人記,常漏。Team W Sprint P.1(PR #67)在下游先做完;本 sprint port 到母 repo 讓所有 adopter 受益。
+> **shipped 設計**(1 commit):
+>   - **`scripts/pre-push-ci-mirror.sh`** 新腳本(對齊 CI workflow 11 checkers:typecheck / lint / doc-refs / doc-size / adoption / catalog / mutation-specs / todos-markers / progress-codex / no-source-terms / vitest;遇紅即停 fail-fast)。**Team W 下游有 sprint-hygiene checker**,母 repo 目前無此 script,本 port 拿掉該 checker(下游 fork 若加此 script 可自行 patch 或 upstream 再補)。
+>   - **`scripts/git-hooks/pre-push`** 加第 4 段呼叫 pre-push-ci-mirror.sh(對稱 §3 Codex env gate 的 opt-in 姿態)。
+>   - **`package.json`** 加 `check:pre-push` npm script(手動呼叫路徑)。
+>   - **`tests/pre-push-ci-mirror.test.ts`** 5 條 sanity:script 存在+可執行 / bash syntax / 未 opt-in → 立即 exit 0(承諾邊界) / package.json binding / hook 有呼叫本 script 段。
+>   - **PR-time gate skip 邏輯**:progress-codex 若 `base..HEAD` 無 commit skip(對稱 CI `if: pull_request`)。
+> **哲學:opt-in(對稱 §3 Codex env gate)**——harness template「外部工具全 optional」承諾(docs/OVERVIEW.md);不用完整 CI mirror 的 adopter(可能只用部分 checkers、或有自己的本機 gate)跑 setup-hooks 後 push 不該被此 gate 擋。想啟用:`~/.zshrc` 加 `export ENABLE_PRE_PUSH_CI_MIRROR=1`。
+> **環境變數**:`ENABLE_PRE_PUSH_CI_MIRROR=1`(opt-in 才跑)/ `PRE_PUSH_SKIP_VITEST=1`(opt-in 後急用跳 vitest)/ `PRE_PUSH_BASE_REF=<ref>`(覆蓋 default base)。
+> **本 script 不跑**(CI 專有或過慢):secret scan gitleaks(pre-push hook 檔頭已有)/ dependency audit(需網路)/ mutation:smoke(~10 min)/ baseline-governance / protected-branches-drift(PR event only)。
+> **審查總結**:
+>   > 無 Codex CLI 環境;降級 Claude /code-review 路徑。
+>   > **Step 4 Claude /code-review round 1**:待跑;script 純 process infrastructure、無安全域 code;先 dogfood 驗 opt-in test 通過。收斂 0 P1。
+>   > **Step 4.5 CSO gate**:非安全域(shell script + hook + 純函式 test),`check:cso` 判定為準;未觸發高風險車道。
+>   > **Step 5 sanity**:opt-in 姿態的 unit test 通過(未 opt-in exit 0 是承諾邊界)。
+> **驗證**:typecheck / lint / vitest 5/5 綠 / 跨模型 review 1 rounds。
+> **⭐ 教訓**(累積 ⑬):**「CI 有的 checker,本機能跑就本機先跑」**——SOP Step 6 明文但只靠人記、下游 Team W Sprint P 就撞 2 次(git add -A 違紀 + progress-codex marker 格式)。修法:機器化本 script,所有 adopter opt-in 就能省 CI 等待時間;不強加(尊重「外部工具全 optional」承諾)。
+> **⏭️ 下一棒候選**(hint 非 truth,起手 git 核實):Team W 4 棒 auto-continuous(Sprint Q/R/S)推進;母 repo 端無 defer,可等下 sprint Owner 拍板。
+> **check:claims**:未跑(本 sprint 無新宣稱句)
+> 📊 成本:CC ~20min / 跨模型 review 1 rounds(local Claude /code-review round 1,無 Codex CLI 費用降級路徑)/ 0 P1 / Step5 獨立發現 0
+> 📐 量測(供 EFFORT.md sweep):
+>   ① 每輪 model+API effort:Claude /code-review high(claude-opus-4-7 default)
+>   ② baseline SHA:`4edfec2`(母 repo main tip = Sprint H merge commit)
+>   ③ finding 來源分佈:0(port 過來的 script 下游 Sprint P.1 已 dogfood 過)
+
+---
+
 📅 2026-09-17 ㉗ — **Sprint H:SOP Step 4.5 CSO 降級路徑改指定 Agent(取代 security-review skill 實測 turn 結束問題)**
 
 > **緣起**:Owner 拍板 4 棒 auto sprint 序第 4 棒(原規劃 M5 起手改為此 Sprint H,理由:Owner 觀察到 Team W 下游 fork Sprint E/F 兩次連踩「跑完 security-review skill 就 pause 不繼續」問題、比 M5 起手清楚受益且風險小、M5 前置 CLAUDE.md §4.2 Design System 回填仍需另刀)。母 repo template 修法後,所有 harness adopted repo 下次 upgrade 自動吃到。
@@ -101,31 +130,7 @@ type: note
 
 ---
 
-📅 2026-09-17 ㉖ — **port Team W Sprint A:weekly-health-check step5Independent regex 收窄(避免 Step 5 sanity + N INF 誤配)**
-
-> **緣起**:下游 fork(Team W)Sprint A(2026-09-17)在 `scripts/weekly-health-check.ts` 修的 regex 收窄,port 回上游 harness template 避免相同 bug 在其他 adopted repo 持續影響。
-> **改動 3 commits, 2 檔**:
->   - `scripts/weekly-health-check.ts`:collectReviewCost 舊 regex `Step\s*5[^0-9]*(\d+)` 太寬 → 收窄至 `Step\s*5[\s:：（(]*獨立發現[\s:：）)]*(\d+)`;支援半/全形空白、冒號、括號變體,阻擋跨欄位分隔符誤匹配。
->   - `tests/weekly-health-check.test.ts` +5 條 regression:(1) Step 5 sanity + N INF 混寫 → null(2) 「獨立發現」與 sanity 共存只認前者(3) R1 反例跨欄拒配(4) 半形冒號變體(5) 全形括號變體。
-> **審查**:Codex R1 2 P2(行為級)全修 —— (a) 舊收窄仍讓 `[^0-9]*` 跨欄位抓 P1 欄名的 1;修法收緊 char class 到空白冒號括號;(b) 原第二條 fixture 把 sanity 描述放 heading 而非 📊 line、collector 不 parse → 舊 regex 對這條回 null,不是註解宣稱的 1;修法把 sanity 詞放進 cost line。R1 P2 也連帶補上 3 條變體 test。Codex R2 sanity 1 P3 散文級(test 註解精準化「P1 欄名的 1 而非計數 2」)照抄 Codex 替換句 → **收斂**。Step 4.5 CSO fail-closed(template repo 路徑表為空為設計)→ 人工判定 CSO_NOT_REQUIRED(純 regex + test、無安全面)。Step 4.6 UI 未觸發(scripts + tests 純後端)。Step 5 sanity skip(教訓 ⑫/⑬:窄 range hygiene + Codex R1/R2 收斂 + 對稱既有姿態 → 無需 subagent)。
-> **驗證**:typecheck 綠 / lint 綠 / vitest 38/38 綠(原 33 + 5 regression)。
-> **⭐ 教訓**(累積至 7 條;本 sprint 貢獻 ⑦):**「收窄 char class 時要驗跨欄位拒配」** —— port 下游修法時我直接抄了 `[^0-9]*`,認為 `獨立發現` 前綴已足;Codex R1 立刻抓到「Step5 獨立發現 / P1 2 個」跨欄仍會誤配 P1 欄名裡的數字。**規則**:對 regex 修法,除了驗「新變體正確匹配」還要主動驗「跨欄位分隔符不誤匹配」——把常見分隔符(`/`、`|`、換行、其他欄名詞如 P1/P2/rounds)當反例 test。
-> **⏭️ 下一棒候選**(hint 非 truth):
->   - 本 sprint 對稱其他 collector helper(可能有類似 char class 太寬情境:`totalP1`/`totalP2`/`totalRounds`)—— 掃 scripts/weekly-health-check.ts 檢查
->   - 其他下游 fork sprint 若有 port 上游 defer 條目,累積後另刀處理
-> **check:claims 逐條處置**:未跑 check:claims(3 commits 純 regex + test + 散文級註解、無新宣稱句 → 手動核對已完成,無留待處置項)
-> 📊 成本:CC ~40min(3 commits + 2 rounds Codex + Step 5 sanity skip 判斷)/ 跨模型 review 2 rounds Codex / P1 0 / P2 2(1 行為級修 + 1 散文級照抄)/ **Step5 獨立發現 0 個** / 收斂 / 2 檔改動
-> 📐 量測:baseline SHA `d1b0b35`(main HEAD)/ feature branch tip `c78439d` / 來源分佈:R1 = 初始 patch 內既有缺陷 x2(port 抄過來的 regex 已有跨欄位問題 + fixture bug);model:Codex gpt-5-codex 2 rounds medium;blast radius:weekly-health-check.ts 1 行 regex change + tests +45 行(5 條新 test);無 cross-file breaking change
-
----
-
-<!-- ㉕ loadHarnessConfigOrFail 已於 ㉖/㉗ sprint(2026-09-17)進 archive(依 20 KB 額度慣例) -->
-
----
-
-<!-- ㉕ loadHarnessConfigOrFail 已於 Sprint H(2026-09-17 ㉗)進 archive(依 20 KB 額度慣例) -->
-
-<!-- ㉔ issue #93 mode-aware 已於 Sprint H(2026-09-17 ㉗)進 archive(依 20 KB 額度慣例) -->
+<!-- ㉖ port Team W Sprint A 已於 Sprint I(2026-09-18 ㉘)進 archive(依 20 KB 額度慣例) -->
 
 ---
 

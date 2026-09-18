@@ -437,4 +437,24 @@ if [ "${ENABLE_CODEX_ENV_CHECK:-0}" = "1" ]; then
   fi
 fi
 
+# ── 4. Pre-push CI mirror(**opt-in**,對稱 §3 Codex env 姿態)──────────
+# **問題**:過去每次 push 都要等 CI ~15 min 才知道 checker 紅、修完再等一輪。
+# 一個 sprint 可能撞 2-3 次 CI-only 失敗,累積 30-45 min 純浪費。SOP Step 6
+# 明講「push 前跑完整本地 gate」但只靠人記,常漏。
+# **本段呼叫** scripts/pre-push-ci-mirror.sh,對齊 CI workflow 內能在本機跑
+# 的 11 checkers。完整清單、opt-out 分項 env、設計理由見該 script 檔頭註解。
+# **對稱 §3 opt-in 哲學**——harness template「外部工具全 optional」承諾:
+# 不用完整 CI mirror 的 adopter(可能只用部分 checkers)跑 setup-hooks 後
+# push 不該被此 gate 擋。想啟用:`~/.zshrc` 加
+# `export ENABLE_PRE_PUSH_CI_MIRROR=1`(對稱 ENABLE_CODEX_ENV_CHECK 姿態)。
+# 向後相容:script 不存在(舊 checkout / import 前)不擋。
+if [ -x "scripts/pre-push-ci-mirror.sh" ]; then
+  if ! bash scripts/pre-push-ci-mirror.sh; then
+    echo "" >&2
+    echo "→ 若確定要跳過此次 push(急 hotfix),unset ENABLE_PRE_PUSH_CI_MIRROR 或用 --no-verify" >&2
+    echo "→ 只跳 vitest 但仍跑 fast checks:PRE_PUSH_SKIP_VITEST=1 git push …" >&2
+    exit 1
+  fi
+fi
+
 exit 0

@@ -61,6 +61,13 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 
 ## P3
 
+### ✅ Sprint I(port Team W Sprint P.1):pre-push CI mirror 機器化(opt-in)(PR #___)
+- **來源**:Team W 下游 Sprint P Step 6 撞 CI 紅在 `check:progress-codex` marker 格式 → Owner 拍板「請把這件事情機器化」;SOP Step 6 明文「push 前跑完整本地 gate」既有規則但只靠人記。Team W Sprint P.1 先做完(PR #67),本 sprint port 到母 repo。
+- **完工**:`scripts/pre-push-ci-mirror.sh` 對齊 CI 11 checkers(opt-in via `ENABLE_PRE_PUSH_CI_MIRROR=1`,對稱 §3 codex env gate 姿態)、pre-push hook 加第 4 段呼叫(fail-closed / 未 opt-in 立即 exit 0)、`package.json` `check:pre-push` npm script、`tests/pre-push-ci-mirror.test.ts` 5 條 sanity。
+- **哲學**:opt-in 尊重 harness template「外部工具全 optional」承諾(docs/OVERVIEW.md);adopter 想啟用:`~/.zshrc` 加 `export ENABLE_PRE_PUSH_CI_MIRROR=1`。
+- **不跑 clause**(CI 專有 / 過慢):secret scan gitleaks(hook 檔頭已有)/ npm audit(需網路)/ mutation:smoke(~10 min)/ baseline-governance / protected-branches-drift(PR event only)。**與 Team W 下游差異**:上游無 `check-sprint-hygiene.ts` script(下游 Team W 特有),port 拿掉該 checker。
+- **工時**:1 session
+
 ### 🟢 delivery-refs 移除 sprint defer 集合(**2/2 terminal disposition、collection closed by Sprint 16 audit、含 PR #66 交付段 bookkeeping variance 補**)
 - **來源**:2026-09-03 移除 sprint Step 5 r2–r4;Owner 裁示停止遞迴後登錄
 - **內容**:①**缺一份經驗證的「換交付線」runbook**——本版 MIGRATION 刻意不提供(四輪審查證明:任何一句指引都牽動 `deliveryBranches` 語意(證據白名單 vs `check:adoption` A5 `if:` 行與 A2.4.6 §4.6)、`ci.yml` `on:` / 三處 `if:` / Fetch step 的 fetch 與 set-head 行、push event 下沒有 `MARKER_SELF_PR` 豁免、Source-term scan 只對 `PR #N` / `pull/N` 字面判 allowedPrs)。要寫就要在 adopted mode fixture 上實跑過每一步(conf 8);②`docs/ADOPTION.md:125` / `docs/MIGRATION.md` 0.2.0 段 / `CHANGELOG.md` 0.2.0 段仍教導入者把 `develop` 列進 `deliveryBranches` 以過 A5——語意已變成「允許的 origin/HEAD 目標白名單」,多列對證據零影響但會改 A5 期望(conf 6;屬歷史版本敘述,改時與 ① 一起)

@@ -6,6 +6,32 @@ type: archive
 📅 2026-09-16 ㉕ — **loadHarnessConfigOrFail wrapper:兌現「呼叫端 catch → exit 2」doc 承諾**
 
 > **緣起**:progress ㉔ 教訓 ⑥ + 「下一棒候選」明列可考慮抽 wrapper。Owner 拍板母 repo 起手(#93 已 merged、母 repo 有直接 caller 可遷)、Team W 下次 upgrade 自動吃到。
+📅 2026-09-17 ㉖ — **port Team W Sprint A:weekly-health-check step5Independent regex 收窄(避免 Step 5 sanity + N INF 誤配)**
+
+> **緣起**:下游 fork(Team W)Sprint A(2026-09-17)在 `scripts/weekly-health-check.ts` 修的 regex 收窄,port 回上游 harness template 避免相同 bug 在其他 adopted repo 持續影響。
+> **改動 3 commits, 2 檔**:
+>   - `scripts/weekly-health-check.ts`:collectReviewCost 舊 regex `Step\s*5[^0-9]*(\d+)` 太寬 → 收窄至 `Step\s*5[\s:：（(]*獨立發現[\s:：）)]*(\d+)`;支援半/全形空白、冒號、括號變體,阻擋跨欄位分隔符誤匹配。
+>   - `tests/weekly-health-check.test.ts` +5 條 regression:(1) Step 5 sanity + N INF 混寫 → null(2) 「獨立發現」與 sanity 共存只認前者(3) R1 反例跨欄拒配(4) 半形冒號變體(5) 全形括號變體。
+> **審查**:Codex R1 2 P2(行為級)全修 —— (a) 舊收窄仍讓 `[^0-9]*` 跨欄位抓 P1 欄名的 1;修法收緊 char class 到空白冒號括號;(b) 原第二條 fixture 把 sanity 描述放 heading 而非 📊 line、collector 不 parse → 舊 regex 對這條回 null,不是註解宣稱的 1;修法把 sanity 詞放進 cost line。R1 P2 也連帶補上 3 條變體 test。Codex R2 sanity 1 P3 散文級(test 註解精準化「P1 欄名的 1 而非計數 2」)照抄 Codex 替換句 → **收斂**。Step 4.5 CSO fail-closed(template repo 路徑表為空為設計)→ 人工判定 CSO_NOT_REQUIRED(純 regex + test、無安全面)。Step 4.6 UI 未觸發(scripts + tests 純後端)。Step 5 sanity skip(教訓 ⑫/⑬:窄 range hygiene + Codex R1/R2 收斂 + 對稱既有姿態 → 無需 subagent)。
+> **驗證**:typecheck 綠 / lint 綠 / vitest 38/38 綠(原 33 + 5 regression)。
+> **⭐ 教訓**(累積至 7 條;本 sprint 貢獻 ⑦):**「收窄 char class 時要驗跨欄位拒配」** —— port 下游修法時我直接抄了 `[^0-9]*`,認為 `獨立發現` 前綴已足;Codex R1 立刻抓到「Step5 獨立發現 / P1 2 個」跨欄仍會誤配 P1 欄名裡的數字。**規則**:對 regex 修法,除了驗「新變體正確匹配」還要主動驗「跨欄位分隔符不誤匹配」——把常見分隔符(`/`、`|`、換行、其他欄名詞如 P1/P2/rounds)當反例 test。
+> **⏭️ 下一棒候選**(hint 非 truth):
+>   - 本 sprint 對稱其他 collector helper(可能有類似 char class 太寬情境:`totalP1`/`totalP2`/`totalRounds`)—— 掃 scripts/weekly-health-check.ts 檢查
+>   - 其他下游 fork sprint 若有 port 上游 defer 條目,累積後另刀處理
+> **check:claims 逐條處置**:未跑 check:claims(3 commits 純 regex + test + 散文級註解、無新宣稱句 → 手動核對已完成,無留待處置項)
+> 📊 成本:CC ~40min(3 commits + 2 rounds Codex + Step 5 sanity skip 判斷)/ 跨模型 review 2 rounds Codex / P1 0 / P2 2(1 行為級修 + 1 散文級照抄)/ **Step5 獨立發現 0 個** / 收斂 / 2 檔改動
+> 📐 量測:baseline SHA `d1b0b35`(main HEAD)/ feature branch tip `c78439d` / 來源分佈:R1 = 初始 patch 內既有缺陷 x2(port 抄過來的 regex 已有跨欄位問題 + fixture bug);model:Codex gpt-5-codex 2 rounds medium;blast radius:weekly-health-check.ts 1 行 regex change + tests +45 行(5 條新 test);無 cross-file breaking change
+
+---
+
+<!-- ㉕ loadHarnessConfigOrFail 已於 ㉖/㉗ sprint(2026-09-17)進 archive(依 20 KB 額度慣例) -->
+
+---
+
+<!-- ㉕ loadHarnessConfigOrFail 已於 Sprint H(2026-09-17 ㉗)進 archive(依 20 KB 額度慣例) -->
+
+<!-- ㉔ issue #93 mode-aware 已於 Sprint H(2026-09-17 ㉗)進 archive(依 20 KB 額度慣例) -->
+
 > **改動 6 commits + 1 progress commit,6 檔 +283/-42**:scripts/lib/harness-config.ts 新 loadHarnessConfigOrFail 20 行 wrapper(catch throw + exit 2 + ⚠️ cleanup 不執行警語);check-branch-protection.ts + check-adoption-readiness.ts 兩 direct caller 遷 wrapper(msgPrefix 保留 grep 對稱);harness-config.test.ts +4 unit / check-branch-protection.e2e.test.ts +2 e2e;check-claims / check-cso-trigger 間接 caller wrapper signature 覆蓋不足、scope 縮為 2 直接 caller。
 > **審查**:無 Codex 環境 → 降級 Claude /code-review。R1 抓 0 P1 + 0 P2 + 9 INF(6 修 3 skip);Step 5 sanity 抓 S1 conf 8 修 S2 skip;收斂於 0 P1。
 > **⭐ 教訓**(累積 ⑦):plan file 內反覆數字得逐處全掃、不能只改「主要 3 spot」——SSOT within-file drift 比 cross-file 更難抓。
