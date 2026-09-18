@@ -61,7 +61,7 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 
 ## P3
 
-### ✅ Sprint I(port Team W Sprint P.1):pre-push CI mirror 機器化(opt-in)(PR #___)
+### ✅ Sprint I(port Team W Sprint P.1):pre-push CI mirror 機器化(opt-in)(PR #102)
 - **來源**:Team W 下游 Sprint P Step 6 撞 CI 紅在 `check:progress-codex` marker 格式 → Owner 拍板「請把這件事情機器化」;SOP Step 6 明文「push 前跑完整本地 gate」既有規則但只靠人記。Team W Sprint P.1 先做完(PR #67),本 sprint port 到母 repo。
 - **完工**:`scripts/pre-push-ci-mirror.sh` 對齊 CI 11 checkers(opt-in via `ENABLE_PRE_PUSH_CI_MIRROR=1`,對稱 §3 codex env gate 姿態)、pre-push hook 加第 4 段呼叫(fail-closed / 未 opt-in 立即 exit 0)、`package.json` `check:pre-push` npm script、`tests/pre-push-ci-mirror.test.ts` 5 條 sanity。
 - **哲學**:opt-in 尊重 harness template「外部工具全 optional」承諾(docs/OVERVIEW.md);adopter 想啟用:`~/.zshrc` 加 `export ENABLE_PRE_PUSH_CI_MIRROR=1`。
