@@ -23,6 +23,7 @@
     "check:no-source-terms": "tsx scripts/check-no-source-terms.ts",
     "check:bookkeeping": "tsx scripts/check-bookkeeping-commit.ts",
     "check:progress-codex": "tsx scripts/check-progress-codex-review.ts",
+    "check:pre-push": "bash scripts/pre-push-ci-mirror.sh",
     "check:adoption": "tsx scripts/check-adoption-readiness.ts",
     "check:codex-env": "tsx scripts/check-codex-env.ts",
     "catalog:render": "tsx scripts/render-control-catalog.ts --write",
