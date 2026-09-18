@@ -60,16 +60,46 @@ if [ "${ENABLE_PRE_PUSH_CI_MIRROR:-0}" != "1" ]; then
 fi
 
 # 決定 base ref(progress-codex 用)
-# 順序:env override > origin/HEAD symbolic > origin/main fallback
+# 順序(F2 修):env override > origin/HEAD symbolic > harness.config deliveryBranches[0] > fail
 BASE_REF="${PRE_PUSH_BASE_REF:-}"
 if [ -z "$BASE_REF" ]; then
   # 先嘗試 origin/HEAD symbolic-ref(default branch,動態抓)
   if head_ref=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null); then
     BASE_REF="${head_ref#refs/remotes/}"
-  else
-    # fallback:origin/main(絕大多數部署)
-    BASE_REF="origin/main"
+  # F2 修(review round 1):fallback 讀 harness.config.json deliveryBranches[0],
+  # 對 GitFlow(develop 為 delivery)不誤選 origin/main。
+  elif [ -f "scripts/harness.config.json" ] && command -v node >/dev/null 2>&1; then
+    delivery=$(node -e '
+      try {
+        const cfg = JSON.parse(require("fs").readFileSync("scripts/harness.config.json", "utf8"));
+        if (Array.isArray(cfg.deliveryBranches) && cfg.deliveryBranches.length > 0) {
+          process.stdout.write(cfg.deliveryBranches[0]);
+        }
+      } catch { /* fail-closed:讓下方 -z 分支 fail */ }
+    ' 2>/dev/null)
+    if [ -n "$delivery" ]; then
+      BASE_REF="origin/$delivery"
+    fi
   fi
+  # F2 修:仍拿不到 → fail-closed,不再靜默用 origin/main
+  if [ -z "$BASE_REF" ]; then
+    echo "" >&2
+    echo "✗ pre-push CI mirror: 無法判定 base ref。" >&2
+    echo "   → 修法:git remote set-head origin -a(建 origin/HEAD symbolic)" >&2
+    echo "   → 或設 PRE_PUSH_BASE_REF=<ref>(例:PRE_PUSH_BASE_REF=origin/develop)" >&2
+    echo "   → 或補 scripts/harness.config.json deliveryBranches 欄位" >&2
+    exit 1
+  fi
+fi
+
+# F3 修(review round 1):驗 BASE_REF 存在。避免 git rev-list 靜默 fallback 到 0
+# → skip PR-time gate 使用者誤以為跑了。fail-closed 附訊息教修法。
+if ! git rev-parse --verify --quiet "$BASE_REF" >/dev/null; then
+  echo "" >&2
+  echo "✗ pre-push CI mirror: BASE_REF=$BASE_REF 不存在(未 fetch?)。" >&2
+  echo "   → 修法:git fetch origin --prune;再重試 push" >&2
+  echo "   → 或設 PRE_PUSH_BASE_REF 覆蓋成本機已有的 ref" >&2
+  exit 1
 fi
 
 # 通用 runner:名字 + command → 失敗立即 exit 1

@@ -447,7 +447,8 @@ fi
 # 不用完整 CI mirror 的 adopter(可能只用部分 checkers)跑 setup-hooks 後
 # push 不該被此 gate 擋。想啟用:`~/.zshrc` 加
 # `export ENABLE_PRE_PUSH_CI_MIRROR=1`(對稱 ENABLE_CODEX_ENV_CHECK 姿態)。
-# 向後相容:script 不存在(舊 checkout / import 前)不擋。
+# 向後相容:script 不存在(舊 checkout / import 前)不擋——但若 opt-in
+# 已 enable 卻 script 缺席 → warn(F4 修:避免 fail-open 靜默失效)。
 if [ -x "scripts/pre-push-ci-mirror.sh" ]; then
   if ! bash scripts/pre-push-ci-mirror.sh; then
     echo "" >&2
@@ -455,6 +456,12 @@ if [ -x "scripts/pre-push-ci-mirror.sh" ]; then
     echo "→ 只跳 vitest 但仍跑 fast checks:PRE_PUSH_SKIP_VITEST=1 git push …" >&2
     exit 1
   fi
+elif [ "${ENABLE_PRE_PUSH_CI_MIRROR:-0}" = "1" ]; then
+  # F4 修(review round 1):opt-in enabled 但 script 缺席 = fail-open。
+  # print warning(不 fail push 避免破壞 hotfix flow,但明說 gate 沒跑)。
+  echo "" >&2
+  echo "⚠️  ENABLE_PRE_PUSH_CI_MIRROR=1 但 scripts/pre-push-ci-mirror.sh 缺席/不可執行 —— pre-push CI mirror 未跑" >&2
+  echo "   → 修法:git checkout main -- scripts/pre-push-ci-mirror.sh 或重跑 npm run setup-hooks" >&2
 fi
 
 exit 0

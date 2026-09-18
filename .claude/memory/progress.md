@@ -89,10 +89,10 @@ type: note
 > **本 script 不跑**(CI 專有或過慢):secret scan gitleaks(pre-push hook 檔頭已有)/ dependency audit(需網路)/ mutation:smoke(~10 min)/ baseline-governance / protected-branches-drift(PR event only)。
 > **審查總結**:
 >   > 無 Codex CLI 環境;降級 Claude /code-review 路徑。
->   > **Step 4 Claude /code-review round 1**:待跑;script 純 process infrastructure、無安全域 code;先 dogfood 驗 opt-in test 通過。收斂 0 P1。
->   > **Step 4.5 CSO gate**:非安全域(shell script + hook + 純函式 test),`check:cso` 判定為準;未觸發高風險車道。
->   > **Step 5 sanity**:opt-in 姿態的 unit test 通過(未 opt-in exit 0 是承諾邊界)。
-> **驗證**:typecheck / lint / vitest 5/5 綠 / 跨模型 review 1 rounds。
+>   > **Step 4 Claude /code-review round 1**(補做,原本被跳):4 findings —— F1(progress marker 說「待跑」但 entry 有收斂 marker、可能誤放行 checker;**本輪就是修**)/ F2(BASE_REF fallback origin/main 對 GitFlow adopter 誤選)/ F3(rev-list 靜默 skip PR-time gate)/ F4(script 缺席+opt-in enabled → fail-open)。**F1-F4 全修**:F1 補做 review round;F2 加 harness.config deliveryBranches[0] fallback + 拿不到 fail-closed;F3 加 `git rev-parse --verify` 前置驗、fail-closed 附教修法訊息;F4 opt-in enabled + script 缺席 → warn(不 fail 但明說)。round 2 未跑(4 條全散文級 + fail-closed 加固,SOP 紀律不消耗確認輪)。
+>   > **Step 4.5 CSO gate**:上游 template repo 路徑表刻意空(SOP L237-239 明例),以人工自問代替:diff 是 process infrastructure(shell script + hook + 純函式 test + bookkeeping),無 secret handling / auth / 金流 / PII 域。判定 CSO_NOT_REQUIRED,未觸發高風險車道。
+>   > **Step 5 sanity**:opt-in 姿態的 unit test 通過(未 opt-in exit 0 + F3 fail-closed base ref 驗證 + F4 script 缺席 warn 三條斷言全綠)。
+> **驗證**:typecheck / lint / vitest 7/7 綠(原 5 + F3/F2 修 test 各 1)/ 跨模型 review 1 rounds、收斂 0 P1。
 > **⭐ 教訓**(累積 ⑬):**「CI 有的 checker,本機能跑就本機先跑」**——SOP Step 6 明文但只靠人記、下游 Team W Sprint P 就撞 2 次(git add -A 違紀 + progress-codex marker 格式)。修法:機器化本 script,所有 adopter opt-in 就能省 CI 等待時間;不強加(尊重「外部工具全 optional」承諾)。
 > **⏭️ 下一棒候選**(hint 非 truth,起手 git 核實):Team W 4 棒 auto-continuous(Sprint Q/R/S)推進;母 repo 端無 defer,可等下 sprint Owner 拍板。
 > **check:claims**:未跑(本 sprint 無新宣稱句)

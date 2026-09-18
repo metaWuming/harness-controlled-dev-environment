@@ -70,5 +70,31 @@ describe("pre-push-ci-mirror.sh(opt-in)", () => {
     // 未來若把 opt-in gate 誤搬回 hook(強制跑)本 assertion 仍過 —— 但 script
     // 自己的 ENABLE_PRE_PUSH_CI_MIRROR check 是承諾邊界(見上一 test 案)
     expect(content).toContain('if [ -x "scripts/pre-push-ci-mirror.sh" ]');
+    // F4 修(round 1):opt-in enabled 但 script 缺席 → warn(不 fail-open 靜默)
+    expect(content).toMatch(/pre-push CI mirror 未跑/);
+  });
+
+  it("F3 修(round 1):opt-in enabled + BASE_REF 不存在 → exit 1 附教修法訊息", () => {
+    const r = spawnSync("bash", [scriptPath], {
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        ENABLE_PRE_PUSH_CI_MIRROR: "1",
+        PRE_PUSH_BASE_REF: "origin/definitely-nonexistent-ref-for-test",
+      },
+      timeout: 10_000, // fail-closed 應該在 verify block 立即 exit,不會跑到 fast checks
+    });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/BASE_REF=.*不存在/);
+    expect(r.stderr).toMatch(/git fetch origin/); // 教修法訊息在
+  });
+
+  it("F2 修(round 1):script 含 harness.config.json fallback 邏輯(GitFlow adopter 對 develop 不誤選 origin/main)", () => {
+    const content = execFileSync("cat", [scriptPath], { encoding: "utf-8" });
+    // fallback 讀 harness.config deliveryBranches[0]
+    expect(content).toMatch(/harness\.config\.json/);
+    expect(content).toMatch(/deliveryBranches/);
+    // 拿不到 → fail-closed(不再靜默 fallback origin/main)
+    expect(content).toMatch(/無法判定 base ref/);
   });
 });
