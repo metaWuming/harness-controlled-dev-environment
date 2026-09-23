@@ -456,6 +456,28 @@ export function isDocsOnlyDiff(files: string[]): boolean {
 }
 
 /**
+ * Dependabot npm 依賴更新 PR 豁免:dependabot PR 不是 sprint,寫不出 progress entry。
+ * 兩條件都要成立:
+ *   1. PR 作者 = dependabot[bot](CI 從 github.event.pull_request.user.login 經
+ *      PR_AUTHOR_LOGIN 傳入;`[bot]` 後綴是 GitHub App 保留帳號,人類帳號拿不到)
+ *   2. diff 非空,且只動根目錄 package.json / package-lock.json
+ * github-actions ecosystem 的 dependabot PR 會動 .github/workflows/**,不在豁免範圍。
+ * 誠實邊界:人類 push commit 到 dependabot branch、只改這兩檔 → 仍豁免(PR 作者不變)。
+ */
+export const DEPENDABOT_LOGIN = "dependabot[bot]";
+
+const DEPENDENCY_MANIFEST_FILES: ReadonlySet<string> = new Set<string>([
+  "package.json",
+  "package-lock.json",
+]);
+
+export function isDependabotManifestOnlyPr(author: string | undefined, files: string[]): boolean {
+  return author === DEPENDABOT_LOGIN
+    && files.length > 0
+    && files.every((f) => DEPENDENCY_MANIFEST_FILES.has(f));
+}
+
+/**
  * 讀 base 版 progress.md(用於 P1-2 entry-identity 比對)。
  * base 沒有 progress.md → 回 null(fresh repo / 檔案新加,不擋)。
  * R3 P2-2:改 argv 陣列、非字串拼接。
@@ -586,6 +608,10 @@ async function main(): Promise<number> {
   if (!hasProgress) {
     if (diffIsDocs) {
       console.log(`✅ diff(${files.length} 檔)全為 docs-only 檔且沒動 ${PROGRESS_PATH} → no-op(非 sprint 收尾 PR)`);
+      return 0;
+    }
+    if (isDependabotManifestOnlyPr(process.env.PR_AUTHOR_LOGIN, files)) {
+      console.log(`✅ PR 作者為 ${DEPENDABOT_LOGIN} 且 diff 只動 package.json / package-lock.json → dependabot 依賴更新豁免(非 sprint PR)`);
       return 0;
     }
     // R3 P1-3 / R4 P1-1:trivial 例外通道(收窄)
