@@ -151,7 +151,9 @@ Step 6/7 收尾照走。
 - [ ] **Codex model 選擇**:gstack 預設 model 隨 gstack 版本更新可能改變(訂閱 rolling default)。
       **導入者可透過 env var `GSTACK_CODEX_MODEL=<model>` 明確指定**(建議設在 `~/.zshrc` 或
       shell profile,不進 repo);想省成本可挑輕量 model、想加深度可挑重量 model。
-      本模板 `check:codex-env` 預設清單只放行 `gpt-6-sol`(要用別的 model:改清單或加 `--allow-value`)。
+      本模板 `check:codex-env` 預設清單只放行 `gpt-6-sol`。要用別的 model:改 `scripts/check-codex-env.ts`
+      的 `DEFAULT_ALLOWED_MODELS`(pre-push 與 scope note 範本呼叫時都不帶 `--allow-value`,
+      `--allow-value` 只適用手動單次執行)。
       **不論走哪條路都要顯式指定 model,不靠預設值**:
       - gstack `/codex`:env var `GSTACK_CODEX_MODEL`
       - shell 直接呼 `codex review`:`codex review --base origin/<主線> -c 'model="<model>"' -c 'review_model="<model>"'`
