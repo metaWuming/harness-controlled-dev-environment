@@ -851,4 +851,34 @@ type: archive
 > 📊 成本:CC ~3h / 跨模型 review = plan r1-r11(誠實降級 P1 pushback 為主軸)+ Step 4 r1-r2(1 P1 DOC-ANCHOR narrow-fix)+ Step 5 adversarial 1 round + frozen full-range 1 round = 4 sequences / P1 累 = 4(plan security-contract-weak + target-identity-not-actual + Step 4 doc-anchor-mismatch;無 Step 5 P1)、P2 累 = 0 / Step5 獨立發現 8 個 informational(F1-F4 fix、F5-F8 defer)。
 > 📐 量測(供 `docs/EFFORT.md` sweep):每輪 effort:plan medium(誠實 wording 主軸、非 novel design)、Phase 1 code medium(既有 4-layer 上加 2 layer、pattern well-defined)、Step 4/5 review high(adversarial security-adjacent);baseline SHA `15b7e329b7e672b6ba87af5b72b123b3da369ba8`;來源分佈:staged roadmap milestone(Owner 拍板、非既有缺陷、非漏改 consumer、非 baseline 後引入;plan r1 誠實邊界 pushback 是 scope-clarification 非 finding);security-adjacent sprint 承 supervisor 11 round plan + adversarial 專攻 wording-honesty + threat-model completeness = 覆蓋等效 CSO 專責審。
 
+---
 
+📅 2026-09-16 ㉓ — **CLAUDE.md refactor:精簡 Opus 5 校準 4 段細部偏好**
+
+> **緣起**:Owner pre-existing WIP stash(sprint 開始前存的、SOP-tune v2 port sprint 保留、port 完 Owner 說「處理掉遺留」)—— 主動精簡 template CLAUDE.md 頂級位置的 Opus 5 tuning 細部偏好。Codex 撞 usage limit 走降級 Claude /code-review 路徑,fresh adversarial-reviewer subagent 1 pass 抓 0 P1 + 6 P2(3 修 / 3 defer)。
+> **改動 371f51d 之後 3 檔 -13**:
+>   - `CLAUDE.md`:pop stash 4 段刪除 — 原則 1「不同解讀會不會導出完全不同成果」單一判準句(表格已 encode 同語意)、原則 5「回報節奏(Opus 5 校準)」3 行清單、輸出格式「一律繁體中文」條、輸出格式「避免廢話」條
+>   - `CLAUDE.md`:F1 修 L35 尾註「合併成上面單一判準」→「合併成上面的表格 + 浮上來 ≠ 停下來 補充」(dangling reference 修)+ F2 修 L126 label「(單一判準)」→「(問 vs 拍板 表格)」(cosmetic)
+>   - `.claude/sop/decision-request-template.md`:F3 修 L9/L11 dangling SSOT claim → 改為引用 CLAUDE.md 原則 1「問 vs 拍板 表格」而非已刪的 verbatim 判準句
+> **審查**:
+> 無 Codex 環境(usage limit 撞頂、下週三恢復)→ 走 SOP 允許的降級 Claude /code-review 路徑。
+> Claude /code-review round 1(fresh adversarial-reviewer subagent、Sonnet)抓 0 P1 + 6 P2:F1 conf 8 CLAUDE.md L35 dangling ref(必修)、F2 conf 6 L126 label drift(cosmetic 順手修)、F3 conf 8 decision-request-template SSOT dangling(必修)、F4/F5 conf 2-3 not real issue、F6 conf 6 ADOPTION.md 若 downstream headless AI 員工吃不到 ~/.claude/CLAUDE.md 需自行加回語言/廢話偏好(Owner 領地、defer)→ **收斂於 0 P1 剩餘、no actionable findings**。Step 4.5 CSO 未觸發(純 doc 治理層,非 auth/gate/env-check 敏感面)。Step 4.6 UI 未觸發。
+> **驗證**:typecheck / lint / check-doc-refs 891 refs 0 fail / check-no-source-terms 三段全綠 / diff -13 純刪 + 3 條 wording 修
+> **⭐ 教訓**(累積至 5 條;本 sprint 貢獻 ⑤):
+>   ⑤ **CLAUDE.md 精簡要 fresh review 檢查 dangling reference 而非只跑 checker** — 純 doc 刪除 typecheck / lint / doc-refs 都不會抓到 dangling 語意 reference(例:「上面單一判準」指向已刪的 L21-22)。fresh subagent 對 diff 用 semantic lens 一 pass 抓到 CLAUDE.md + SOP template 兩處 dangling SSOT。純 doc refactor 也值得跑 fresh。
+> **⏭️ 下一棒候選**(hint 非 truth,起手 git 核實):
+>   - **Issue #93** 5 條 template 硬寫 mode-aware(前置已滿足、Owner 拍板並行)
+>   - F6 defer:ADOPTION.md §5 若下游用 headless AI 員工需自行加回語言/廢話偏好(Owner 領地決定)
+> 📊 成本:CC ~20min / 跨模型 review:Codex 撞 usage limit **降級 Claude fresh subagent 1 pass** / P1 0 / P2 6 條(3 修 + 3 defer)/ 1 commit + 1 progress entry commit
+
+---
+
+📅 2026-09-09 ⑳ — **governance sprint:CI-016 SSOT durable evidence boundary(range f3291648..d56cbe4)**
+
+> **改動 d56cbe4**:5 檔 wording 對齊 durable evidence boundary(scripts/control-catalog.json CTRL-CI-016 notes / docs/ADOPTION.md §5.2 / scripts/run-mutation-smoke.ts header / .github/workflows/ci.yml smoke step comment / docs/CONTROL-CATALOG.md rendered)。改法將 remote-state stale assertion 拆為 evidence boundary:遠端 enforcement 需 gh api live probe 現場確認;template config `githubGovernanceRequired:false` 表達 adopter requirement default 語意;schedule A-D audit 以 `BRANCH_PROTECTION_TOKEN` + schedule workflow 成功為前提;per-PR verifier 屬 out-of-scope。
+> **Step 4 flow P2 finding**:supervisor 於 detached review clone 發現 check:claims 命中需在 progress.md 留人工處置史;本 entry(⑳-b commit)即該留史。
+> **check:claims 逐條處置**(pre-merge、PR body 對齊同兩項 disposition、兩處貼、不轉抄):
+> - `scripts/control-catalog.json:997` KEEP — CI-016 notes 內被標示為「不成立」的舊防線措辭之校正引文,非 current enforcement 斷言。
+> - `docs/CONTROL-CATALOG.md:52` KEEP — catalog:render 產物、對應 catalog.json 同引文、非新斷言。
+> **claims 工具語意**:命中為待人工處置 flow signal、非 product / CI failure(tool 命中時 exit code 非 0 為預期行為);PR body 對照本 entry 貼同兩項 disposition。
+> **驗證**:typecheck / lint 綠;catalog:render 34 controls 35414 bytes;check:catalog CATALOG_OK;check:doc-refs 854 refs 0 fail;check:mutation-specs 14 spec 167 probes drift zero-diff;vitest focused 3 files 100 passed 0 skip。

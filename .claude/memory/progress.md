@@ -75,6 +75,29 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-09-23 ㉙ — **port Team W Sprint CM:Codex review model 預設改 gpt-6-sol + 各呼叫路徑顯式指定**
+
+> **緣起**:Owner 在 Team W 拍板 Step 4 Codex review 不論走 gstack / `codex review` / `codex exec` 都顯式指定 `gpt-6-sol`,並指示 upstream 到母 repo。
+> **shipped**(2 commits):
+>   - `scripts/check-codex-env.ts`:預設清單只放行 `gpt-6-sol`(取代 `gpt-5.6-sol` / `gpt-6-astra`);檔頭說明導入者改清單的方法
+>   - `tests/check-codex-env.test.ts`:對齊新清單 + 精確斷言 `DEFAULT_ALLOWED_MODELS`
+>   - `.claude/sop/plan-mode-checklist.md` Step 4:每條路徑的顯式指定寫法(model 以 `<model>` 泛化,不寫死)+ 守門範圍說明(pre-push opt-in、只驗 env)
+>   - `.claude/sop/codex-review-scope-note-template.md`:建暫存檔前先跑 `check:codex-env`;`codex exec` 帶 `-c model=$GSTACK_CODEX_MODEL`
+> **與 Team W 版差異**:母 repo 無 `reviewer-a.md`(引擎專屬);pre-push 母 repo 版註解本來就不提 model、不動;checklist 保留模板「導入者自選 model」語氣,不寫「一律」
+> **審查總結**:
+>   > **Codex round 1**(gpt-6-sol,`codex review --base origin/main -c model -c review_model`):1 P2 修(說明寫可加 `--allow-value`,但 pre-push / 範本呼叫都不帶 → 改為「改清單」)
+>   > **Codex round 2**(gpt-6-sol):**0 findings,收斂**
+>   > **Step 4.5 CSO gate**:模板 repo 路徑表刻意空(fail-closed REQUIRED 為設計),以人工自問代替:diff 是守門清單收窄 + SOP 文件,無 secret / auth / 金流 / PII 域。同一改動在 Team W 已過 `security-review` 0 findings、mutate exit 0。判定 CSO_NOT_REQUIRED
+>   > **Step 5 sanity**:同內容在 Team W 已跑 worktree 獨立審(0 CRITICAL / 6 INFO,相關修正已一併 port);母 repo 側 check-codex-env 20/20 綠
+> **驗證**:typecheck / lint 綠;check-codex-env 20/20
+> **⭐ 教訓**(累積 ⑭):**「port 到模板時,說明要對齊模板的實際呼叫方式」**——Team W 版可寫死 model,模板版改成泛化;順手寫的 `--allow-value` 替代方案在 pre-push / 範本兩個呼叫點都用不到,Codex round 1 抓到
+> **⏭️ 下一棒候選**(hint 非 truth):無母 repo 側 defer;Team W 側 F3(CI 不驗 progress 寫的 model)若日後做,可再 upstream
+> **check:claims**:命中既有檔 2 處(`tests/pre-push-ci-mirror.test.ts:46`,非本 sprint 改動),本 sprint 新增唯一性斷言有精確測試,保留
+> 📊 成本:CC ~20min / 跨模型 review 2 rounds / 0 P1 / 1 P2 / Step5 沿用下游
+> 📐 量測:Codex round 1..2 gpt-6-sol;baseline `87146e4`(母 repo main tip);來源分佈 baseline 後引入 1(round 1 P2)
+
+---
+
 📅 2026-09-18 ㉘ — **Sprint I(port Team W Sprint P.1):pre-push CI mirror 機器化(opt-in)**
 
 > **緣起**:Team W 下游 Sprint P Step 6 push 撞 CI 紅在 `check:progress-codex` marker 格式,等 CI ~15 min 才發現、修完再等一輪 —— 一個 sprint 累積 30-45 min 純浪費。Owner 拍板「請把這件事情機器化」。SOP Step 6 早明講「push 前跑完整本地 gate」但只靠人記,常漏。Team W Sprint P.1(PR #67)在下游先做完;本 sprint port 到母 repo 讓所有 adopter 受益。
@@ -134,36 +157,10 @@ type: note
 
 ---
 
-📅 2026-09-16 ㉓ — **CLAUDE.md refactor:精簡 Opus 5 校準 4 段細部偏好**
-
-> **緣起**:Owner pre-existing WIP stash(sprint 開始前存的、SOP-tune v2 port sprint 保留、port 完 Owner 說「處理掉遺留」)—— 主動精簡 template CLAUDE.md 頂級位置的 Opus 5 tuning 細部偏好。Codex 撞 usage limit 走降級 Claude /code-review 路徑,fresh adversarial-reviewer subagent 1 pass 抓 0 P1 + 6 P2(3 修 / 3 defer)。
-> **改動 371f51d 之後 3 檔 -13**:
->   - `CLAUDE.md`:pop stash 4 段刪除 — 原則 1「不同解讀會不會導出完全不同成果」單一判準句(表格已 encode 同語意)、原則 5「回報節奏(Opus 5 校準)」3 行清單、輸出格式「一律繁體中文」條、輸出格式「避免廢話」條
->   - `CLAUDE.md`:F1 修 L35 尾註「合併成上面單一判準」→「合併成上面的表格 + 浮上來 ≠ 停下來 補充」(dangling reference 修)+ F2 修 L126 label「(單一判準)」→「(問 vs 拍板 表格)」(cosmetic)
->   - `.claude/sop/decision-request-template.md`:F3 修 L9/L11 dangling SSOT claim → 改為引用 CLAUDE.md 原則 1「問 vs 拍板 表格」而非已刪的 verbatim 判準句
-> **審查**:
-> 無 Codex 環境(usage limit 撞頂、下週三恢復)→ 走 SOP 允許的降級 Claude /code-review 路徑。
-> Claude /code-review round 1(fresh adversarial-reviewer subagent、Sonnet)抓 0 P1 + 6 P2:F1 conf 8 CLAUDE.md L35 dangling ref(必修)、F2 conf 6 L126 label drift(cosmetic 順手修)、F3 conf 8 decision-request-template SSOT dangling(必修)、F4/F5 conf 2-3 not real issue、F6 conf 6 ADOPTION.md 若 downstream headless AI 員工吃不到 ~/.claude/CLAUDE.md 需自行加回語言/廢話偏好(Owner 領地、defer)→ **收斂於 0 P1 剩餘、no actionable findings**。Step 4.5 CSO 未觸發(純 doc 治理層,非 auth/gate/env-check 敏感面)。Step 4.6 UI 未觸發。
-> **驗證**:typecheck / lint / check-doc-refs 891 refs 0 fail / check-no-source-terms 三段全綠 / diff -13 純刪 + 3 條 wording 修
-> **⭐ 教訓**(累積至 5 條;本 sprint 貢獻 ⑤):
->   ⑤ **CLAUDE.md 精簡要 fresh review 檢查 dangling reference 而非只跑 checker** — 純 doc 刪除 typecheck / lint / doc-refs 都不會抓到 dangling 語意 reference(例:「上面單一判準」指向已刪的 L21-22)。fresh subagent 對 diff 用 semantic lens 一 pass 抓到 CLAUDE.md + SOP template 兩處 dangling SSOT。純 doc refactor 也值得跑 fresh。
-> **⏭️ 下一棒候選**(hint 非 truth,起手 git 核實):
->   - **Issue #93** 5 條 template 硬寫 mode-aware(前置已滿足、Owner 拍板並行)
->   - F6 defer:ADOPTION.md §5 若下游用 headless AI 員工需自行加回語言/廢話偏好(Owner 領地決定)
-> 📊 成本:CC ~20min / 跨模型 review:Codex 撞 usage limit **降級 Claude fresh subagent 1 pass** / P1 0 / P2 6 條(3 修 + 3 defer)/ 1 commit + 1 progress entry commit
-
+<!-- ㉓ CLAUDE.md refactor 已於 port Team W Sprint CM(2026-09-23 ㉙)進 archive(依 20 KB 額度慣例) -->
 ---
 
 <!-- ㉒ port SOP-tune v2 已於本 sprint(loadHarnessConfigOrFail wrapper)進 archive(依 20 KB 額度慣例) -->
-📅 2026-09-09 ⑳ — **governance sprint:CI-016 SSOT durable evidence boundary(range f3291648..d56cbe4)**
-
-> **改動 d56cbe4**:5 檔 wording 對齊 durable evidence boundary(scripts/control-catalog.json CTRL-CI-016 notes / docs/ADOPTION.md §5.2 / scripts/run-mutation-smoke.ts header / .github/workflows/ci.yml smoke step comment / docs/CONTROL-CATALOG.md rendered)。改法將 remote-state stale assertion 拆為 evidence boundary:遠端 enforcement 需 gh api live probe 現場確認;template config `githubGovernanceRequired:false` 表達 adopter requirement default 語意;schedule A-D audit 以 `BRANCH_PROTECTION_TOKEN` + schedule workflow 成功為前提;per-PR verifier 屬 out-of-scope。
-> **Step 4 flow P2 finding**:supervisor 於 detached review clone 發現 check:claims 命中需在 progress.md 留人工處置史;本 entry(⑳-b commit)即該留史。
-> **check:claims 逐條處置**(pre-merge、PR body 對齊同兩項 disposition、兩處貼、不轉抄):
-> - `scripts/control-catalog.json:997` KEEP — CI-016 notes 內被標示為「不成立」的舊防線措辭之校正引文,非 current enforcement 斷言。
-> - `docs/CONTROL-CATALOG.md:52` KEEP — catalog:render 產物、對應 catalog.json 同引文、非新斷言。
-> **claims 工具語意**:命中為待人工處置 flow signal、非 product / CI failure(tool 命中時 exit code 非 0 為預期行為);PR body 對照本 entry 貼同兩項 disposition。
-> **驗證**:typecheck / lint 綠;catalog:render 34 controls 35414 bytes;check:catalog CATALOG_OK;check:doc-refs 854 refs 0 fail;check:mutation-specs 14 spec 167 probes drift zero-diff;vitest focused 3 files 100 passed 0 skip。
-
+<!-- ⑳ governance sprint CI-016 已於 port Team W Sprint CM(2026-09-23 ㉙)進 archive(依 20 KB 額度慣例) -->
 
 > 更早的 entries 見 [progress-archive/progress-2026-09.md](progress-archive/progress-2026-09.md)
