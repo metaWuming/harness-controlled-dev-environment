@@ -75,6 +75,28 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-09-23 ㉚ — **CTRL-CI-018 加 dependabot npm 依賴更新 PR 豁免**
+
+> **緣起**:Owner 問 #103(eslint / @types/node)、#104(vitest 4→5)兩個 dependabot PR 要不要處理。核實:兩者 CI 都只卡在 Step 4 Codex Review Evidence Check(step 19,「動了非 docs 檔但沒動 progress.md」),step 20-21(source-term scan、vitest)被跳過。根因是 #95(2026-09-15)導入本 gate 後 dependabot PR 寫不出 progress entry,之後每週都會擋(#94 是 gate 前合的)。本機補跑兩 PR 的 vitest 皆 1407 passed。Owner 選「CI 對 dependabot 豁免」。
+> **改動**(5 檔):
+>   - `scripts/check-progress-codex-review.ts`:新增 `isDependabotManifestOnlyPr`——env `PR_AUTHOR_LOGIN` = `dependabot[bot]` 且 diff 非空、只動根目錄 `package.json` / `package-lock.json` → exit 0;放在 `!hasProgress` 分支、docs-only 之後、trivial 之前;檔頭補兩個非 docs 例外通道
+>   - `.github/workflows/ci.yml`:該 step 以 env 傳 `github.event.pull_request.user.login`(不內插進 run)
+>   - `tests/check-progress-codex-review.test.ts`:unit 4 + e2e 5(正例、非 dependabot 作者、未傳 env、多動 src 檔、ci.yml env wiring 內容斷言);`runCli` 預設清掉外部 `PR_AUTHOR_LOGIN`
+>   - `scripts/control-catalog.json` + render `docs/CONTROL-CATALOG.md`:bypass 補豁免條件;notes 補誠實邊界 (5)(6)(7)
+> **審查**:
+>   > **Codex round 1**(gpt-6-sol,`codex review --base origin/main -c model -c review_model`):no actionable findings
+>   > **Step 4.5**:模板 repo、表空為設計;人工判定——改動決定「誰可跳過 CI 關卡」屬權限面,判不準從嚴 → 人工視同 CSO_REQUIRED、走高風險車道。security-reviewer:COMPLETE_CLEAN(新例外比既有 [trivial] 通道更窄,無新增過關能力)。mutation 探針 5/5 抓到(`scripts/mutate.ts`,綁 SHA `b387df7`):作者檢查、檔案範圍、空 diff、main 讀 env、ci.yml env key
+>   > **Step 5 worktree 獨立審**(adversarial-reviewer,detached worktree @ `3d69d8e`):0 CRITICAL / 11 INFO。實測 #103 #104 真實 head 合進本分支後:dependabot 作者 exit 0、其他作者 exit 2;兩者全套 vitest 與 check:no-source-terms 綠。修 5 條(ci.yml wiring 測試、反例補 stderr 斷言、邊界 (5)(6)(7) 揭露補正、檔頭);不修:temp dir 未清 / fixture 非 merge ref(沿用既有 e2e 慣例)、「diff 非空」在 main 中被 docs-only 分支先吃掉(unit 層防禦、無害)、SOP checklist 未提本通道(catalog 為正本)
+>   > **Codex round 2**(gpt-6-sol,含 Step 5 修正):no actionable findings,收斂
+> **驗證**:tsc / eslint 綠;check:catalog / check:doc-size / check:doc-refs / check:adoption / check:mutation-specs 綠;本檔 128 passed;全套 vitest 1 次跑出 1 條 `check-doc-refs` G5 逾時(38s > 30s,負載下),單獨重跑 25/25 綠,與本改動無關
+> **⭐ 教訓**(累積 ⑮):**「新增 CI gate 時要先問:bot 開的 PR 過得了嗎?」**——#95 導入 progress entry gate 時沒考慮 dependabot,結果之後每個依賴更新 PR 都被擋,而且擋在 vitest 之前,連測試結果都看不到
+> **⏭️ 下一棒候選**(hint 非 truth):① 合併後 #103 #104 需 `@dependabot rebase`(re-run 會沿用舊 merge ref 仍紅),兩者都動 lockfile、後合的會再 rebase 一次;② github-actions ecosystem 的 dependabot PR 仍會被擋(動 workflow 屬 super-sensitive),下次出現時再決定處理方式
+> **check:claims**:`--base=origin/main` 0 處需處置
+> 📊 成本:CC ~1.5h / 跨模型 review 2 rounds / 0 P1 / 0 P2 / Step5 獨立發現 11 INFO(修 5)
+> 📐 量測:Codex round 1..2 gpt-6-sol;baseline `b44f655`(main tip);來源分佈 baseline 後引入 5(皆 INFO 揭露 / 測試缺口)
+
+---
+
 📅 2026-09-23 ㉙ — **port Team W Sprint CM:Codex review model 預設改 gpt-6-sol + 各呼叫路徑顯式指定**
 
 > **緣起**:Owner 在 Team W 拍板 Step 4 Codex review 不論走 gstack / `codex review` / `codex exec` 都顯式指定 `gpt-6-sol`,並指示 upstream 到母 repo。
@@ -127,30 +149,7 @@ type: note
 
 ---
 
-📅 2026-09-17 ㉗ — **Sprint H:SOP Step 4.5 CSO 降級路徑改指定 Agent(取代 security-review skill 實測 turn 結束問題)**
-
-> **緣起**:Owner 拍板 4 棒 auto sprint 序第 4 棒(原規劃 M5 起手改為此 Sprint H,理由:Owner 觀察到 Team W 下游 fork Sprint E/F 兩次連踩「跑完 security-review skill 就 pause 不繼續」問題、比 M5 起手清楚受益且風險小、M5 前置 CLAUDE.md §4.2 Design System 回填仍需另刀)。母 repo template 修法後,所有 harness adopted repo 下次 upgrade 自動吃到。
-> **改動 3 commits, 3 檔 +186/-25**:
->   - **`.claude/sop/plan-mode-checklist.md` Step 4.5**「無 gstack 降級」措辭改:從「Claude Code 內建 security-review skill」→「派 Agent(subagent_type=security-reviewer)」+ 明列紅字警告「不要把 skill 當降級實作」(過往實測 turn 結束、非引擎保證)+ 派 agent 契約(prompt 帶目標 repo、命中域、意圖、對稱姿態;caller 優先提供已解析 base ref)+ outcome 三態(COMPLETE_CLEAN / COMPLETE_WITH_FINDINGS / INCOMPLETE)+ INCOMPLETE 排障流程。
->   - **`.claude/agents/security-reviewer.md` NEW ~220 行**:template agent def,對稱既有 adversarial-reviewer.md 姿態。硬性邊界(唯讀 + 從 diff 出發 + 只報 HIGH/MEDIUM;audit trail 竄改/漏 attribution 屬安全問題必報,非 audit log observability 排除);審什麼(6 軸:Input Validation / Authn/Authz / Crypto/Secrets / Injection/RCE / Data Exposure / **Audit Integrity** / **Deployment/Ops**);分析 3 phases(context / comparative + 反轉回歸驗 / vulnerability assessment);輸出格式含 outcome 三態必填。
->   - **`.claude/memory/LESSONS.md`** 新加 2026-09-17 條目:記錄根因(skill 實測 turn 結束、非引擎保證,由 SOP 規範強制 caller 繼續)+ 規則(SOP 明列指引)+ 類推(Agent vs Skill 差別由 SOP 規範 + agent outcome 契約確立、非工具本身保證)。
-> **審查總結**:
->   > **Codex round 1**(gpt-5-codex medium):**3 P1 + 3 P2** findings —— F1 env/CLI 信任性(取決於來源與 trust boundary、命中 sink 要報)、F2 收緊姿態要驗回歸(對稱姿態只作比較基準)、F3 INCOMPLETE outcome 三態(取代「信心 <0.7 不報告」)、F4 加 Audit Integrity + Deployment/Ops 軸、F5 skill/agent 因果不誇大(過往實測 vs 引擎保證)、F6 caller 契約三處互斥修法 —— **全處置(P1 全修 + 散文級照抄 Codex 替換句)**。
->   > **Codex round 2 sanity**:**1 P2 行為級 + 2 散文級** —— F3-cont INCOMPLETE 定義擴充(任何必要 phase 未完成都算)、F4 base 解析契約(caller 優先提供 / fallback CLAUDE.md §4.6 + harness.config.json / 零或多候選 INCOMPLETE 不猜)、F5 三處統一散文(移除殘留「輸出即 turn 結束」「永遠是 pause 陷阱」絕對化)—— **全處置**。
->   > **Codex round 3 sanity**:**no actionable findings, convergent**。**收斂**。
->   > **Step 4.5 CSO gate**:template repo `CSO_REQUIRED` fail-closed(路徑表為空為設計);人工判定 **CSO_NOT_REQUIRED**(純 SOP/agent def/LESSONS 治理文件,無 code exec、無 attack surface、對稱既有 adversarial-reviewer 姿態)。
->   > **Step 4.6 UI**:未觸發(純 docs 治理修法)
->   > **Step 5 sanity skip**:3 rounds Codex 累積 9 findings 全處置(6 R1 + 3 R2)、R3 收斂 + 純治理文件對稱既有姿態 → 教訓 ⑫/⑬ 應用,skip subagent 呼叫。
-> **驗證**:typecheck 綠 / lint 綠 / check:doc-size 綠(progress 19.4 KB、LESSONS 26.5 KB)
-> **⭐ 教訓**(累積 ⑧):**「因果宣稱誇大化」的散文級陷阱** —— Sprint H R1 我把 skill/agent 差別寫成「天生 pause / 天生繼續」引擎級保證,實際上是 SOP 規範 + agent outcome 契約確立的**規範層**差別、非工具本身保證。Codex R1 F5 + R2 F5 兩輪都抓到「絕對化敘述」需收窄。**規則**:描述工具/機制的行為時,分清「引擎保證」(spec 明文)vs「實測常見」(觀察結果)vs「規範強制」(SOP/契約強制),用詞對應精確。**衍生**:sprint entry 若含機制描述,寫「過往實測」比「天生保證」保守但正確。
-> **⏭️ 下一棒候選**(hint 非 truth):
->   - Team W 下游 fork 側追蹤:下次 harness upgrade 觀察 SOP Step 4.5 是否自動吃到 subagent 姿態、CI 是否有意料外差異、Sprint E/F 「security-review skill pause」問題是否根治
->   - 其他 gate(4.6 視覺關 / gstack 家族的 review skills)是否也有同類「skill 輸出即 turn 結束」風險 → 未來獨立 sprint 檢視
->   - **M5 前置**:CLAUDE.md §4.2 Design System 回填(獨立 sprint,M5 起手前必做)
-> **check:claims 逐條處置**:未跑 check:claims(3 commits 純 SOP / agent def / LESSONS 治理文件,無 code 動 → 手動核對已完成,無留待處置項)
-> 📊 成本:CC ~1.5h(3 commits + 3 rounds Codex + 人工 CSO 判定 + Step 5 sanity skip 判斷)/ 跨模型 review 3 rounds Codex / **3 P1**(全修)/ **6 P2**(4 行為級修 + 2 散文級照抄)/ **Step5 獨立發現 0 個** / **收斂**(R3 no actionable findings) / 3 檔改動(.claude/sop/plan-mode-checklist.md + .claude/agents/security-reviewer.md + .claude/memory/LESSONS.md)+ progress
-> 📐 量測:baseline SHA `d1b0b35`(main HEAD);feature branch tip = R2 fix commit `1e11cd2`;來源分佈:R1 = 初始 patch 內既有缺陷 x6(agent def 過度信任 env、姿態豁免 defense-in-depth、outcome 未三態、命中域軸不全、因果宣稱誇大、caller 契約 3 處互斥)、R2 = R1 fix 引入的新面 x1(base 解析契約)+ 散文級 x2;model:Codex gpt-5-codex 3 rounds medium;blast radius:agent def NEW 220 行 + SOP 修 22 行 + LESSONS 新條目 26 行;無 code / 無 test / 無 cross-file breaking
-
+<!-- ㉗ Sprint H 已於 CTRL-CI-018 dependabot 豁免(2026-09-23 ㉚)進 archive(依 20 KB 額度慣例) -->
 ---
 
 <!-- ㉖ port Team W Sprint A 已於 Sprint I(2026-09-18 ㉘)進 archive(依 20 KB 額度慣例) -->

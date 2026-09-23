@@ -18,6 +18,8 @@ import {
   extractLatestEntryHeading,
   getCommitMessagesResult,
   hasTrivialMarker,
+  DEPENDABOT_LOGIN,
+  isDependabotManifestOnlyPr,
   isDocsFile,
   isDocsOnlyDiff,
   isSafeGitRef,
@@ -684,10 +686,42 @@ describe("extractAllEntryBodies (R4 P1-2)", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────
+// isDependabotManifestOnlyPr:dependabot npm PR 豁免
+
+describe("isDependabotManifestOnlyPr", () => {
+  it("dependabot + 只動 package.json / package-lock.json → true", () => {
+    expect(isDependabotManifestOnlyPr(DEPENDABOT_LOGIN, ["package.json", "package-lock.json"])).toBe(true);
+    expect(isDependabotManifestOnlyPr(DEPENDABOT_LOGIN, ["package-lock.json"])).toBe(true);
+  });
+  it("作者不是 dependabot / 未設 → false", () => {
+    expect(isDependabotManifestOnlyPr("metaWuming", ["package.json"])).toBe(false);
+    expect(isDependabotManifestOnlyPr("dependabot", ["package.json"])).toBe(false);
+    expect(isDependabotManifestOnlyPr(undefined, ["package.json"])).toBe(false);
+    expect(isDependabotManifestOnlyPr("", ["package.json"])).toBe(false);
+  });
+  it("dependabot 但 diff 含其他檔 → false", () => {
+    expect(isDependabotManifestOnlyPr(DEPENDABOT_LOGIN, ["package.json", "src/foo.ts"])).toBe(false);
+    expect(isDependabotManifestOnlyPr(DEPENDABOT_LOGIN, [".github/workflows/ci.yml"])).toBe(false);
+    expect(isDependabotManifestOnlyPr(DEPENDABOT_LOGIN, ["sub/package.json"])).toBe(false);
+  });
+  it("空 diff → false", () => {
+    expect(isDependabotManifestOnlyPr(DEPENDABOT_LOGIN, [])).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
 // CLI e2e:fixture repo
 
-function runCli(args: string[], cwd: string): { code: number | null; stderr: string; stdout: string } {
-  const r = spawnSync("npx", ["tsx", SCRIPT, ...args], { encoding: "utf-8", cwd });
+function runCli(
+  args: string[],
+  cwd: string,
+  prAuthor?: string,
+): { code: number | null; stderr: string; stdout: string } {
+  // 預設清掉 PR_AUTHOR_LOGIN,避免外部環境值影響判定
+  const env = { ...process.env };
+  delete env.PR_AUTHOR_LOGIN;
+  if (prAuthor !== undefined) env.PR_AUTHOR_LOGIN = prAuthor;
+  const r = spawnSync("npx", ["tsx", SCRIPT, ...args], { encoding: "utf-8", cwd, env });
   return { code: r.status, stderr: r.stderr, stdout: r.stdout };
 }
 
@@ -1042,5 +1076,70 @@ describe("CLI e2e", () => {
     const r = runCli(["--base=nonexistent", `--root=${dir}`], dir);
     expect(r.code).toBe(2);
     expect(r.stderr).toContain("找不到 base");
+  });
+});
+
+describe("CLI e2e — dependabot npm PR 豁免", () => {
+  function mkManifestFixture(extraFile?: string): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "check-progress-codex-dependabot-"));
+    const git = (args: string[]) => execFileSync("git", args, { cwd: dir, stdio: ["ignore", "pipe", "pipe"] });
+    git(["init", "-q", "-b", "main"]);
+    git(["config", "user.email", "test@example.com"]);
+    git(["config", "user.name", "Test"]);
+    fs.writeFileSync(path.join(dir, "package.json"), "{}\n");
+    fs.writeFileSync(path.join(dir, "package-lock.json"), "{}\n");
+    git(["add", "package.json", "package-lock.json"]);
+    git(["commit", "-q", "-m", "init"]);
+    git(["checkout", "-q", "-b", "dependabot/npm_and_yarn/foo-2.0.0"]);
+    fs.writeFileSync(path.join(dir, "package.json"), '{"devDependencies":{"foo":"^2.0.0"}}\n');
+    fs.writeFileSync(path.join(dir, "package-lock.json"), '{"lockfileVersion":3}\n');
+    const toAdd = ["package.json", "package-lock.json"];
+    if (extraFile !== undefined) {
+      fs.mkdirSync(path.dirname(path.join(dir, extraFile)), { recursive: true });
+      fs.writeFileSync(path.join(dir, extraFile), "export const x = 1;\n");
+      toAdd.push(extraFile);
+    }
+    git(["add", ...toAdd]);
+    git(["commit", "-q", "-m", "依賴 bump foo from 1.0.0 to 2.0.0"]);
+    return dir;
+  }
+
+  it("作者 dependabot[bot] + 只動 manifest → exit 0", () => {
+    const dir = mkManifestFixture();
+    const r = runCli(["--base=main", `--root=${dir}`], dir, DEPENDABOT_LOGIN);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("dependabot 依賴更新豁免");
+  });
+
+  it("🔴 同樣 diff 但作者不是 dependabot → exit 2", () => {
+    const dir = mkManifestFixture();
+    const r = runCli(["--base=main", `--root=${dir}`], dir, "someone");
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("動了非 docs 檔");
+  });
+
+  it("🔴 同樣 diff 但沒傳 PR_AUTHOR_LOGIN → exit 2", () => {
+    const dir = mkManifestFixture();
+    const r = runCli(["--base=main", `--root=${dir}`], dir);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("動了非 docs 檔");
+  });
+
+  it("ci.yml 的 Step 4 Codex Review Evidence Check 把 PR 作者經 env 傳給 checker", () => {
+    // 守 CI wiring:env 行被刪或拼錯時,本機測試全綠但 dependabot PR 會悄悄回到被擋
+    const ci = fs.readFileSync(path.resolve(__dirname, "../.github/workflows/ci.yml"), "utf-8");
+    const start = ci.indexOf("- name: Step 4 Codex Review Evidence Check");
+    expect(start).toBeGreaterThanOrEqual(0);
+    const next = ci.indexOf("\n      - name:", start + 1);
+    const step = ci.slice(start, next === -1 ? undefined : next);
+    expect(step).toContain("PR_AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}");
+    expect(step).toContain("npm run check:progress-codex");
+  });
+
+  it("🔴 作者 dependabot[bot] 但 diff 多動 src 檔 → exit 2", () => {
+    const dir = mkManifestFixture("src/foo.ts");
+    const r = runCli(["--base=main", `--root=${dir}`], dir, DEPENDABOT_LOGIN);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("src/foo.ts");
   });
 });
