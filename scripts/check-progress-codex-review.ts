@@ -10,6 +10,9 @@
  *
  * 判準(fail-closed;Step 4 Codex R1 收 4 P1 修版):
  *   1. base..HEAD 沒動 progress.md → exit 0(no-op,本 PR 不是 sprint 收尾)
+ *      ——但 diff 含非 docs 檔時只有兩個例外能過,其餘 exit 2:
+ *      每個 commit 含 `[trivial]` 且無 super-sensitive 檔;或 PR 作者(env
+ *      PR_AUTHOR_LOGIN)= dependabot[bot] 且 diff 只動根目錄 package.json / package-lock.json
  *   2. 動了 progress.md:讀 HEAD 版最上方 entry 與 base 版最上方 entry 的 heading
  *      (即 `📅 YYYY-MM-DD ⓝ — 標題`)。若兩者相同 → **exit 2**(P1-2 修:本 sprint
  *      借用主線繼承的 entry、沒寫自己的憑證)

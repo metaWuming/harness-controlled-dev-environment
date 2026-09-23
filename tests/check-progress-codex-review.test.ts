@@ -1122,6 +1122,18 @@ describe("CLI e2e — dependabot npm PR 豁免", () => {
     const dir = mkManifestFixture();
     const r = runCli(["--base=main", `--root=${dir}`], dir);
     expect(r.code).toBe(2);
+    expect(r.stderr).toContain("動了非 docs 檔");
+  });
+
+  it("ci.yml 的 Step 4 Codex Review Evidence Check 把 PR 作者經 env 傳給 checker", () => {
+    // 守 CI wiring:env 行被刪或拼錯時,本機測試全綠但 dependabot PR 會悄悄回到被擋
+    const ci = fs.readFileSync(path.resolve(__dirname, "../.github/workflows/ci.yml"), "utf-8");
+    const start = ci.indexOf("- name: Step 4 Codex Review Evidence Check");
+    expect(start).toBeGreaterThanOrEqual(0);
+    const next = ci.indexOf("\n      - name:", start + 1);
+    const step = ci.slice(start, next === -1 ? undefined : next);
+    expect(step).toContain("PR_AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}");
+    expect(step).toContain("npm run check:progress-codex");
   });
 
   it("🔴 作者 dependabot[bot] 但 diff 多動 src 檔 → exit 2", () => {
