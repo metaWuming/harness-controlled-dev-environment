@@ -75,6 +75,18 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-09-23 ㉛ — **LESSONS:新增 CI gate 要先確認 bot 開的 PR 過得了**
+
+> **緣起**:㉚(#106)教訓 ⑮ 只寫在 progress entry,Owner 指示補進 LESSONS.md。
+> **改動**(1 檔 + 本 entry):`.claude/memory/LESSONS.md` 新增 2026-09-23 條目——情境(#95 gate 擋 #103 #104)、根因(只列人/AI 繞過路徑,沒列會開 PR 的 bot)、可操作避免法(列 actor 清單、bot 豁免用認證身分 + 檔案範圍、補跑被跳過的測試)。
+> **審查**:LESSONS 的 SOP / 守門規則段屬治理文件,依 SOP 不走 docs-only 車道。**Codex round 1**(gpt-6-sol):no actionable findings,收斂。Step 4.5:無程式 / 設定改動,人工判定 CSO_NOT_REQUIRED。Step 5 sanity skip:單檔散文、無 code 消費、Codex 已收斂。
+> **驗證**:check:doc-size / check:doc-refs / check:progress-codex 綠。
+> **⭐ 發現**:`LESSONS.md` 不在 check-progress-codex-review 的 DOCS 白名單,所以只改 LESSONS 的 PR 也必須附 entry。和 SOP「LESSONS 規則段屬治理」一致,本次不改。
+> **⏭️ 下一棒候選**(hint 非 truth):#103 #104 已留言 `@dependabot rebase`,等 CI 綠後由 Owner 合併。
+> 📊 成本:CC ~15min / 跨模型 review 1 round / 0 P1 / 0 P2
+
+---
+
 📅 2026-09-23 ㉚ — **CTRL-CI-018 加 dependabot npm 依賴更新 PR 豁免**
 
 > **緣起**:Owner 問 #103(eslint / @types/node)、#104(vitest 4→5)兩個 dependabot PR 要不要處理。核實:兩者 CI 都只卡在 Step 4 Codex Review Evidence Check(step 19,「動了非 docs 檔但沒動 progress.md」),step 20-21(source-term scan、vitest)被跳過。根因是 #95(2026-09-15)導入本 gate 後 dependabot PR 寫不出 progress entry,之後每週都會擋(#94 是 gate 前合的)。本機補跑兩 PR 的 vitest 皆 1407 passed。Owner 選「CI 對 dependabot 豁免」。

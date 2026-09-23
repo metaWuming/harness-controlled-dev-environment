@@ -68,6 +68,29 @@ type: note
 
 <!-- 教訓從這裡開始,新的在最上面 -->
 
+## [2026-09-23] 新增 CI gate 沒考慮 bot 開的 PR → 每個 dependabot PR 都被擋
+
+**情境**
+#95(2026-09-15)導入 CTRL-CI-018「Step 4 Codex Review Evidence Check」:diff 動非 docs 檔就必須同時寫 progress entry。一週後 dependabot 開的 #103(eslint / @types/node)、#104(vitest 4→5)CI 全紅,Owner 看到才發現。
+
+**錯誤/誤判**
+gate 的判準只假設「PR 由跑完 SOP 的 AI/人開出」。dependabot 寫不出 progress entry,也不會在 commit 加 `[trivial]`,所以每個依賴更新 PR 必定被擋。更糟的是這步排在 vitest 之前,CI 停下後測試根本沒跑,連「這次升級安不安全」都看不到。
+
+**為什麼會發生**
+設計 gate 時只列了「人/AI 的繞過路徑」,沒列「會開 PR 的非人類 actor」。repo 裡 `.github/dependabot.yml` 早就存在,但沒人把它和新 gate 對照。
+
+**之後該怎麼避免**
+- 新增或收緊任何 PR 層 CI gate 前,先列出**所有會開 PR 的 actor**:人、AI session、dependabot(npm / github-actions)、其他 GitHub App。逐一問「這個 actor 過得了嗎?過不了是刻意的嗎?」
+- 快速清單:`cat .github/dependabot.yml`、`gh pr list --state all --author app/dependabot --limit 5`
+- 豁免 bot 時,用 GitHub 認證的身分(`github.event.pull_request.user.login`,經 step env 傳入)**加**檔案範圍限制,不要只靠 branch 名或 commit 訊息——兩者都能被人偽造
+- 發現 CI 在某步停下時,補跑被跳過的後續步驟(尤其是測試),再判斷 PR 本身有沒有問題
+
+**相關檔案/連結**
+- `scripts/check-progress-codex-review.ts`(`isDependabotManifestOnlyPr`)、`.github/workflows/ci.yml`
+- CTRL-CI-018 notes (5)(6)(7);#95 導入 gate、#106 加 dependabot 豁免;progress ㉚
+
+---
+
 ## [2026-09-17] Skill 姿態把 turn 變 text-only → 事實上的 pause,SOP 指引 CSO 降級路徑必須改成 Agent
 
 **情境**
