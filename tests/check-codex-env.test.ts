@@ -72,15 +72,20 @@ describe("checkCodexEnv 純函式", () => {
     expect(r.kind).toBe("unset");
   });
 
-  it("env=gpt-5.6-sol → ok", () => {
-    const r = checkCodexEnv({ GSTACK_CODEX_MODEL: "gpt-5.6-sol" }, defaultArgs);
+  it("env=gpt-6-sol → ok", () => {
+    const r = checkCodexEnv({ GSTACK_CODEX_MODEL: "gpt-6-sol" }, defaultArgs);
     expect(r.kind).toBe("ok");
-    if (r.kind === "ok") expect(r.value).toBe("gpt-5.6-sol");
+    if (r.kind === "ok") expect(r.value).toBe("gpt-6-sol");
   });
 
-  it("env=gpt-6-astra → ok", () => {
-    const r = checkCodexEnv({ GSTACK_CODEX_MODEL: "gpt-6-astra" }, defaultArgs);
-    expect(r.kind).toBe("ok");
+  it("允許清單剛好只有 gpt-6-sol(多加任何 model 都要轉紅)", () => {
+    expect(DEFAULT_ALLOWED_MODELS).toEqual(["gpt-6-sol"]);
+  });
+
+  // 2026-09-23 Owner 拍板:Step 4 Codex 一律 gpt-6-sol,舊預設與 gstack 預設都不放行
+  it.each(["gpt-6-astra", "gpt-5.6-sol"])("env=%s → invalid(只放行 gpt-6-sol)", (model) => {
+    const r = checkCodexEnv({ GSTACK_CODEX_MODEL: model }, defaultArgs);
+    expect(r.kind).toBe("invalid");
   });
 
   it("env 值不在允許清單 → invalid", () => {
@@ -105,7 +110,7 @@ describe("checkCodexEnv 純函式", () => {
 
   it("--env override 抓對指定 env var", () => {
     const r = checkCodexEnv(
-      { OTHER_MODEL: "gpt-5.6-sol", GSTACK_CODEX_MODEL: "gpt-999-wrong" },
+      { OTHER_MODEL: "gpt-6-sol", GSTACK_CODEX_MODEL: "gpt-999-wrong" },
       { envName: "OTHER_MODEL", allowedValues: DEFAULT_ALLOWED_MODELS },
     );
     expect(r.kind).toBe("ok");
@@ -116,9 +121,9 @@ describe("checkCodexEnv 純函式", () => {
 // CLI e2e
 
 describe("check-codex-env CLI e2e", () => {
-  it("env=gpt-5.6-sol → exit 0", () => {
+  it("env=gpt-6-sol → exit 0", () => {
     const r = spawnSync("npx", ["tsx", SCRIPT], {
-      env: { ...process.env, GSTACK_CODEX_MODEL: "gpt-5.6-sol" },
+      env: { ...process.env, GSTACK_CODEX_MODEL: "gpt-6-sol" },
       encoding: "utf-8",
     });
     expect(r.status).toBe(0);
@@ -144,7 +149,7 @@ describe("check-codex-env CLI e2e", () => {
     });
     expect(r.status).toBe(2);
     expect(r.stderr).toContain("不在允許清單");
-    expect(r.stderr).toContain("gpt-5.6-sol");
+    expect(r.stderr).toContain("gpt-6-sol");
   });
 
   it("--allow-value=<experimental> + env=experimental → exit 0", () => {
@@ -161,7 +166,7 @@ describe("check-codex-env CLI e2e", () => {
 
   it("未知參數 → exit 2", () => {
     const r = spawnSync("npx", ["tsx", SCRIPT, "--unknown"], {
-      env: { ...process.env, GSTACK_CODEX_MODEL: "gpt-5.6-sol" },
+      env: { ...process.env, GSTACK_CODEX_MODEL: "gpt-6-sol" },
       encoding: "utf-8",
     });
     expect(r.status).toBe(2);

@@ -98,6 +98,10 @@ Sprint <name> = <一句話目的>
 
 ```bash
 _REPO_ROOT=$(git rev-parse --show-toplevel) && cd "$_REPO_ROOT"
+# model 一律顯式指定(plan-mode-checklist Step 4),不靠 ~/.codex/config.toml 預設。
+# 用 check:codex-env 驗 GSTACK_CODEX_MODEL 有設且在允許清單(與 pre-push 同一份清單);
+# 在建暫存檔之前檢查——之後才擋會留下含完整 diff 的暫存檔
+npm run --silent check:codex-env || { echo "❌ GSTACK_CODEX_MODEL 未通過 check:codex-env、abort"; exit 1; }
 _PROMPT_FILE=$(mktemp)
 TMPERR=$(mktemp)
 
@@ -146,6 +150,7 @@ else
 fi
 
 $_TIMEOUT codex exec -s read-only "$(cat "$_PROMPT_FILE")" \
+  -c "model=\"$GSTACK_CODEX_MODEL\"" \
   -c 'model_reasoning_effort="medium"' \
   -c 'web_search="cached"' < /dev/null 2>"$TMPERR"
 # 保留 exit code、清完 temp 檔再 return

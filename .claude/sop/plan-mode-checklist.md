@@ -151,6 +151,19 @@ Step 6/7 收尾照走。
 - [ ] **Codex model 選擇**:gstack 預設 model 隨 gstack 版本更新可能改變(訂閱 rolling default)。
       **導入者可透過 env var `GSTACK_CODEX_MODEL=<model>` 明確指定**(建議設在 `~/.zshrc` 或
       shell profile,不進 repo);想省成本可挑輕量 model、想加深度可挑重量 model。
+      本模板 `check:codex-env` 預設清單只放行 `gpt-6-sol`。要用別的 model:改 `scripts/check-codex-env.ts`
+      的 `DEFAULT_ALLOWED_MODELS`(pre-push 與 scope note 範本呼叫時都不帶 `--allow-value`,
+      `--allow-value` 只適用手動單次執行)。
+      **不論走哪條路都要顯式指定 model,不靠預設值**:
+      - gstack `/codex`:env var `GSTACK_CODEX_MODEL`
+      - shell 直接呼 `codex review`:`codex review --base origin/<主線> -c 'model="<model>"' -c 'review_model="<model>"'`
+        (`codex review` 不吃 `-m`;`review_model` 是 review 專用的 model 設定,要跟 `model` 一起給才確定生效)
+      - `codex exec`:`codex exec -m <model> ...`;帶 scope note 的範本(`codex-review-scope-note-template.md`)
+        從 `GSTACK_CODEX_MODEL` 帶入 model,並在建暫存檔前先跑 `check:codex-env`
+      - 保底:`~/.codex/config.toml` 的 `model` 與 `review_model` 也設同一個 model
+      ⚠️ 機器守門只有一道:pre-push 的 `check:codex-env`(opt-in,`ENABLE_CODEX_ENV_CHECK=1`),
+      **只驗 env var**,而且在 push 時才跑。shell 直接呼 `codex review` / `codex exec` 用哪個 model,
+      靠上面的旗標與 config.toml;progress entry 要寫出實際 model(Codex 輸出開頭的 `model:` 行)。
       ⚠️ **effort 目前 gstack review-mode 硬寫 `high`**——無 `GSTACK_CODEX_EFFORT` env var,
       想要 `medium` 只能改 skill 檔(會被下次 `/gstack-upgrade` 覆蓋)或等上游支援。
       現階段接受 `high`(單一 review 輪成本略高、迭代次數會降)。

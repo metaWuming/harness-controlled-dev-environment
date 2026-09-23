@@ -3,9 +3,10 @@
  * scripts/check-codex-env.ts — SOP-tune v2 (g) Codex env verify script
  *
  * SOP checklist 明列:本 harness 導入者若跑 Codex 跨模型 review,建議設
- * `GSTACK_CODEX_MODEL` 環境變數指定 model(預設清單 `gpt-5.6-sol` / `gpt-6-astra`)。
- * gstack 預設 `gpt-6-astra` 對 review 任務較貴、`gpt-5.6-sol` 通常足夠。過往靠人記,
- * 現在改機器化守門。
+ * `GSTACK_CODEX_MODEL` 環境變數指定 model(預設清單只有 `gpt-6-sol`;2026-09-23 起取代舊清單
+ * `gpt-5.6-sol` / `gpt-6-astra`)。gstack 未設 env 時會退回自己的預設 model。過往靠人記,
+ * 現在改機器化守門。導入者要用其他 model:改本清單(pre-push 與 scope note 範本呼叫時都不帶
+ * `--allow-value`,該參數只適用手動單次執行)。
  *
  * 用途:
  *   本機 pre-push hook / 手動跑,驗 GSTACK_CODEX_MODEL 是否設定且值在允許清單。
@@ -29,7 +30,7 @@
 import { detectInvocation, reportIfNotMain } from "./lib/invoked-as-main";
 
 // SOP checklist 明列的兩個 model(導入者可用 --allow-value 加自家 experimental)
-export const DEFAULT_ALLOWED_MODELS: readonly string[] = ["gpt-5.6-sol", "gpt-6-astra"];
+export const DEFAULT_ALLOWED_MODELS: readonly string[] = ["gpt-6-sol"];
 
 /** env var 名字,預設 GSTACK_CODEX_MODEL(可用 --env 參數 override 給測試)。 */
 const DEFAULT_ENV_NAME = "GSTACK_CODEX_MODEL";
@@ -114,7 +115,7 @@ async function main(): Promise<number> {
     console.error(`✗ ${result.envName} 未設定`);
     console.error("");
     console.error("  修法(對 ~/.zshrc 加一行):");
-    console.error(`    export ${result.envName}=gpt-5.6-sol   # SOP 預設,對 review 任務足夠`);
+    console.error(`    export ${result.envName}=gpt-6-sol   # SOP Step 4 預設 model`);
     console.error("");
     console.error("  然後 `source ~/.zshrc` 或開新 terminal 讓變數生效。");
     console.error("");
@@ -126,7 +127,7 @@ async function main(): Promise<number> {
   console.error(`  允許值:${result.allowedValues.join(", ")}`);
   console.error("");
   console.error("  修法(對 ~/.zshrc 改成):");
-  console.error(`    export ${result.envName}=gpt-5.6-sol   # SOP 預設`);
+  console.error(`    export ${result.envName}=gpt-6-sol   # SOP Step 4 預設 model`);
   console.error("");
   console.error("  若確實要用 experimental model,加 --allow-value=<value> 明確 opt-in。");
   return 2;
