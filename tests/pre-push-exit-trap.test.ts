@@ -27,4 +27,15 @@ describe("pre-push EXIT trap", () => {
     });
     expect(r.status, r.stderr).toBe(0);
   });
+
+  it("🔴 對照：刪除 main 仍擋（exit 1）——EXIT trap 不可把擋下改成放行（例如有人把 return 0 改成 exit 0）", () => {
+    const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf-8" }).trim();
+    const r = spawnSync("bash", [hook, "origin", "https://example.invalid/x.git"], {
+      cwd: repoRoot,
+      encoding: "utf-8",
+      input: `(delete) ${Z40} refs/heads/main ${sha}\n`,
+      env: { ...process.env, ENABLE_PRE_PUSH_CI_MIRROR: "0", ENABLE_CODEX_ENV_CHECK: "0" },
+    });
+    expect(r.status, r.stderr).toBe(1);
+  });
 });

@@ -482,12 +482,13 @@
       "owner": "developer",
       "failureBehavior": "block",
       "evidence": "hook stderr",
-      "degradation": "本機無 gitleaks → 該段略過並提示;CI CTRL-CI-001 兜底",
+      "degradation": "本機沒裝 gitleaks 時擋下;設 SKIP_GITLEAKS_CHECK=1 才略過並提示;CI CTRL-CI-001 兜底",
       "tested": [
         "unit"
       ],
       "testRefs": [
-        "tests/check-hooks.test.ts"
+        "tests/check-hooks.test.ts",
+    "tests/pre-push-exit-trap.test.ts"
       ],
       "bypass": "--no-verify",
       "notes": null
