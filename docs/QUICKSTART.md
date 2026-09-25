@@ -116,7 +116,7 @@ npm install && npm run setup-hooks
 | `gh: command not found` | 先 `brew install gh` 再 `gh auth login` |
 | CI 的 Source-term scan 紅了 | 那是模板的去識別化 gate(掃「來源專案識別詞」)。新專案不需要 → 跟 AI 說「照 ADOPTION.md §6 移除去識別化 gate」;或把 `scripts/deny-terms.txt` 換成你要防的詞 |
 | hooks 沒生效 | 每台機器、每次重新 clone 都要跑一次 `npm run setup-hooks` |
-| 本機沒裝 gitleaks | `brew install gitleaks`(沒裝 pre-push 會提示放行,不會擋) |
+| 本機沒裝 gitleaks | 執行 `brew install gitleaks`；未安裝時 pre-push 預設擋下推送。若須暫時略過本機秘密掃描，執行 `SKIP_GITLEAKS_CHECK=1 git push …`；`git push --no-verify` 會略過整個 hook。 |
 | `npm install` 警告 engine 不符 | 模板要求 **Node ≥ 22.13**(eslint 10 的實際下限)。`nvm use 22` 或升級 Node |
 | CI 的 `npm audit` 紅了 | 那是 high/critical 硬 gate,不是誤報。先 `npm audit fix`;若提示需 major 升級,**先查 peer 範圍再升**(例:`npm view typescript-eslint peerDependencies.typescript` 沒放寬就別跟著升 TypeScript major) |
 | dependabot 推 `@types/node` major | **預設擋掉了**(`.github/dependabot.yml` 有 ignore 規則)。它要對齊 `engines.node` 的下限,不是追最新——types 比 runtime 新會讓程式碼 typecheck 過但 runtime 沒那個 API |
