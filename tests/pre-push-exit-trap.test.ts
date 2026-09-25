@@ -22,6 +22,8 @@ describe("pre-push EXIT trap", () => {
       cwd: repoRoot,
       encoding: "utf-8",
       input: `(delete) ${Z40} refs/heads/tmp-exit-trap ${sha}\n`,
+      // 關掉開發者 shell 可能常駐的選用關卡（CI mirror 會再跑一次 Vitest；Codex env 檢查看本機設定）
+      env: { ...process.env, ENABLE_PRE_PUSH_CI_MIRROR: "0", ENABLE_CODEX_ENV_CHECK: "0" },
     });
     expect(r.status, r.stderr).toBe(0);
   });
