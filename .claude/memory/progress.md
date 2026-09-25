@@ -75,6 +75,16 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-09-25 ㉜ — **pre-push：EXIT trap 不再把成功的 push 改成失敗（下游專案回饋）**
+
+> **緣起**:下游專案在同步本模板時踩到:`set -e` 下 `cleanup_trusted_config` 的 `&&` 串在沒建立 trusted_config 時回 1,EXIT trap 把 `exit 0` 改成 1——沒裝 gitleaks＋`SKIP_GITLEAKS_CHECK=1`、或只刪除 ref 的 push 一律靜默失敗。本機重現 exit=1。
+> **改動**(5 檔 + 本 entry):`scripts/git-hooks/pre-push` 函式結尾 `return 0`、`rm` 失敗留警告;新 `tests/pre-push-exit-trap.test.ts`(刪除一般分支 → 0;對照:刪除 main → 1,防有人改成 `exit 0` 變放行);目錄 CTRL-HOOK-003 測試欄與 SKIP 敘述更正;QUICKSTART 未裝 gitleaks 那列更正。
+> **審查**:**Codex round 4**(gpt-6-sol／high):R1 2P2(測試依賴 gitleaks 位置、註解漏 `set -e`)→ R2 1P2(測試繼承 mirror 開關)→ R3 0 → Fresh 後 R4 1P2 散文(QUICKSTART),收斂。Fresh 1 輪 1 CRITICAL(缺本 entry)＋7 INFO(對照測試、rm 警告、目錄已修;pre-commit 同形、BASH_ENV、CHANGELOG 接受)。
+> **驗證**:新測試修前紅、修後綠;check:catalog 綠。
+> 📊 成本:CC ~1h / Codex 4 rounds（2P2 → 1P2 → 0 → 1P2 散文，收斂） / 0 P1 / 4 P2
+
+---
+
 📅 2026-09-23 ㉛ — **LESSONS:新增 CI gate 要先確認 bot 開的 PR 過得了**
 
 > **緣起**:㉚(#106)教訓 ⑮ 只寫在 progress entry,Owner 指示補進 LESSONS.md。
