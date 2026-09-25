@@ -176,7 +176,10 @@ resolve_trusted_gitleaks_config() {
 # shellcheck disable=SC2329  # 由 trap EXIT/INT/TERM/HUP 呼叫,shellcheck 抓不到
 cleanup_trusted_config() {
   [ -n "${trusted_config:-}" ] && [ "$trusted_config" != "/dev/null" ] && \
-    rm -f "$trusted_config"
+    { rm -f "$trusted_config" || echo "⚠️  無法刪除暫存 gitleaks config：$trusted_config" >&2; }
+  # 🔴 在 `set -e` 下，未建立 `trusted_config` 時，清理函式的 `&&` 串回傳 1，使 EXIT trap 將原本成功的退出改為 1；明確 `return 0` 可避免此情況。
+  # （未建立的情況：沒裝 gitleaks＋SKIP_GITLEAKS_CHECK=1、或整批 push 只有刪除 ref；下游專案先踩到。）
+  return 0
 }
 trap 'cleanup_trusted_config' EXIT
 trap 'exit 130' INT
