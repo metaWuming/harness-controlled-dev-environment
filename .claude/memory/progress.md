@@ -81,7 +81,8 @@ type: note
 > **改動**(4 檔 + 本 entry):`scripts/check-codex-env.ts` 預設清單只放行 gpt-6.1-sol(說明與錯誤訊息同步);`tests/check-codex-env.test.ts` 改新 model,前一代改列不放行;
 > SOP Step 4「Codex model 選擇」段補 effort high 與 CLI 版本、各呼叫路徑帶 `model_reasoning_effort="high"`;scope note 範本 effort medium → high。
 > **審查**:**Codex round 1**(gpt-6.1-sol／high,`codex review --base origin/main -c model -c review_model -c model_reasoning_effort`):no actionable findings,收斂。Step 4.5:只動檢查清單與文件,人工判定 CSO_NOT_REQUIRED。Step 5 sanity skip:清單換值 + 對應測試、Codex 已收斂。
-> **驗證**:check-codex-env 測試 21 passed;typecheck 綠。
+> **CI 修正**:Dependency audit 因新公布的 brace-expansion 漏洞(GHSA-q2hr-2g5m-vwhr 等 high,eslint 傳遞依賴)轉紅 → `npm audit fix` 升 5.0.9 → 5.0.12,只動 lockfile;Codex round 1 審的是修正前的 diff,lockfile 未另送審。
+> **驗證**:check-codex-env 測試 21 passed;typecheck / lint 綠;npm audit 0 vulnerabilities。
 > **⏭️ 下一棒候選**(hint 非 truth):無。
 > 📊 成本:CC ~20min / 跨模型 review 1 round / 0 P1 / 0 P2
 
