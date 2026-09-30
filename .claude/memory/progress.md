@@ -75,6 +75,18 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-09-30 ㉝ — **port Team W Sprint CM2:Codex review model 預設改 gpt-6.1-sol、effort 一律 high(需 Codex CLI ≥ 0.159.2)**
+
+> **緣起**:Owner 2026-09-30 指示 Step 4 Codex review 全域改新一代 gpt-6.1-sol、effort high,並確認 Team W 引擎與本母 repo 一致。實測 Codex CLI 0.158.0 以 ChatGPT 帳號登入時新 model 回「not supported」,升級 0.159.2 後正常。
+> **改動**(4 檔 + 本 entry):`scripts/check-codex-env.ts` 預設清單只放行 gpt-6.1-sol(說明與錯誤訊息同步);`tests/check-codex-env.test.ts` 改新 model,前一代改列不放行;
+> SOP Step 4「Codex model 選擇」段補 effort high 與 CLI 版本、各呼叫路徑帶 `model_reasoning_effort="high"`;scope note 範本 effort medium → high。
+> **審查**:**Codex round 1**(gpt-6.1-sol／high,`codex review --base origin/main -c model -c review_model -c model_reasoning_effort`):no actionable findings,收斂。Step 4.5:只動檢查清單與文件,人工判定 CSO_NOT_REQUIRED。Step 5 sanity skip:清單換值 + 對應測試、Codex 已收斂。
+> **驗證**:check-codex-env 測試 21 passed;typecheck 綠。
+> **⏭️ 下一棒候選**(hint 非 truth):無。
+> 📊 成本:CC ~20min / 跨模型 review 1 round / 0 P1 / 0 P2
+
+---
+
 📅 2026-09-25 ㉜ — **pre-push：EXIT trap 不再把成功的 push 改成失敗（下游專案回饋）**
 
 > **緣起**:下游專案在同步本模板時踩到:`set -e` 下 `cleanup_trusted_config` 的 `&&` 串在沒建立 trusted_config 時回 1,EXIT trap 把 `exit 0` 改成 1——沒裝 gitleaks＋`SKIP_GITLEAKS_CHECK=1`、或只刪除 ref 的 push 一律靜默失敗。本機重現 exit=1。
@@ -142,32 +154,7 @@ type: note
 
 ---
 
-📅 2026-09-18 ㉘ — **Sprint I(port Team W Sprint P.1):pre-push CI mirror 機器化(opt-in)**
-
-> **緣起**:Team W 下游 Sprint P Step 6 push 撞 CI 紅在 `check:progress-codex` marker 格式,等 CI ~15 min 才發現、修完再等一輪 —— 一個 sprint 累積 30-45 min 純浪費。Owner 拍板「請把這件事情機器化」。SOP Step 6 早明講「push 前跑完整本地 gate」但只靠人記,常漏。Team W Sprint P.1(PR #67)在下游先做完;本 sprint port 到母 repo 讓所有 adopter 受益。
-> **shipped 設計**(1 commit):
->   - **`scripts/pre-push-ci-mirror.sh`** 新腳本(對齊 CI workflow 11 checkers:typecheck / lint / doc-refs / doc-size / adoption / catalog / mutation-specs / todos-markers / progress-codex / no-source-terms / vitest;遇紅即停 fail-fast)。**Team W 下游有 sprint-hygiene checker**,母 repo 目前無此 script,本 port 拿掉該 checker(下游 fork 若加此 script 可自行 patch 或 upstream 再補)。
->   - **`scripts/git-hooks/pre-push`** 加第 4 段呼叫 pre-push-ci-mirror.sh(對稱 §3 Codex env gate 的 opt-in 姿態)。
->   - **`package.json`** 加 `check:pre-push` npm script(手動呼叫路徑)。
->   - **`tests/pre-push-ci-mirror.test.ts`** 5 條 sanity:script 存在+可執行 / bash syntax / 未 opt-in → 立即 exit 0(承諾邊界) / package.json binding / hook 有呼叫本 script 段。
->   - **PR-time gate skip 邏輯**:progress-codex 若 `base..HEAD` 無 commit skip(對稱 CI `if: pull_request`)。
-> **哲學:opt-in(對稱 §3 Codex env gate)**——harness template「外部工具全 optional」承諾(docs/OVERVIEW.md);不用完整 CI mirror 的 adopter(可能只用部分 checkers、或有自己的本機 gate)跑 setup-hooks 後 push 不該被此 gate 擋。想啟用:`~/.zshrc` 加 `export ENABLE_PRE_PUSH_CI_MIRROR=1`。
-> **環境變數**:`ENABLE_PRE_PUSH_CI_MIRROR=1`(opt-in 才跑)/ `PRE_PUSH_SKIP_VITEST=1`(opt-in 後急用跳 vitest)/ `PRE_PUSH_BASE_REF=<ref>`(覆蓋 default base)。
-> **本 script 不跑**(CI 專有或過慢):secret scan gitleaks(pre-push hook 檔頭已有)/ dependency audit(需網路)/ mutation:smoke(~10 min)/ baseline-governance / protected-branches-drift(PR event only)。
-> **審查總結**:
->   > 無 Codex CLI 環境;降級 Claude /code-review 路徑。
->   > **Step 4 Claude /code-review round 1**(補做,原本被跳):4 findings —— F1(progress marker 說「待跑」但 entry 有收斂 marker、可能誤放行 checker;**本輪就是修**)/ F2(BASE_REF fallback origin/main 對 GitFlow adopter 誤選)/ F3(rev-list 靜默 skip PR-time gate)/ F4(script 缺席+opt-in enabled → fail-open)。**F1-F4 全修**:F1 補做 review round;F2 加 harness.config deliveryBranches[0] fallback + 拿不到 fail-closed;F3 加 `git rev-parse --verify` 前置驗、fail-closed 附教修法訊息;F4 opt-in enabled + script 缺席 → warn(不 fail 但明說)。round 2 未跑(4 條全散文級 + fail-closed 加固,SOP 紀律不消耗確認輪)。
->   > **Step 4.5 CSO gate**:上游 template repo 路徑表刻意空(SOP L237-239 明例),以人工自問代替:diff 是 process infrastructure(shell script + hook + 純函式 test + bookkeeping),無 secret handling / auth / 金流 / PII 域。判定 CSO_NOT_REQUIRED,未觸發高風險車道。
->   > **Step 5 sanity**:opt-in 姿態的 unit test 通過(未 opt-in exit 0 + F3 fail-closed base ref 驗證 + F4 script 缺席 warn 三條斷言全綠)。
-> **驗證**:typecheck / lint / vitest 7/7 綠(原 5 + F3/F2 修 test 各 1)/ 跨模型 review 1 rounds、收斂 0 P1。
-> **⭐ 教訓**(累積 ⑬):**「CI 有的 checker,本機能跑就本機先跑」**——SOP Step 6 明文但只靠人記、下游 Team W Sprint P 就撞 2 次(git add -A 違紀 + progress-codex marker 格式)。修法:機器化本 script,所有 adopter opt-in 就能省 CI 等待時間;不強加(尊重「外部工具全 optional」承諾)。
-> **⏭️ 下一棒候選**(hint 非 truth,起手 git 核實):Team W 4 棒 auto-continuous(Sprint Q/R/S)推進;母 repo 端無 defer,可等下 sprint Owner 拍板。
-> **check:claims**:未跑(本 sprint 無新宣稱句)
-> 📊 成本:CC ~20min / 跨模型 review 1 rounds(local Claude /code-review round 1,無 Codex CLI 費用降級路徑)/ 0 P1 / Step5 獨立發現 0
-> 📐 量測(供 EFFORT.md sweep):
->   ① 每輪 model+API effort:Claude /code-review high(claude-opus-4-7 default)
->   ② baseline SHA:`4edfec2`(母 repo main tip = Sprint H merge commit)
->   ③ finding 來源分佈:0(port 過來的 script 下游 Sprint P.1 已 dogfood 過)
+<!-- ㉘ Sprint I 已於 port Team W Sprint CM2(2026-09-30 ㉝)進 archive(依 20 KB 額度慣例) -->
 
 ---
 
