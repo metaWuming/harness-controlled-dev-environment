@@ -4,7 +4,7 @@
  *
  * SOP checklist 明列:本 harness 導入者若跑 Codex 跨模型 review,建議設
  * `GSTACK_CODEX_MODEL` 環境變數指定 model(預設清單只有 `gpt-6.1-sol`,effort high;2026-09-30 起取代
- * 前一代,更早的清單是 `gpt-5.6-sol` / `gpt-6-astra`;需 Codex CLI ≥ 0.159.2)。gstack 未設 env 時會退回自己的預設 model。過往靠人記,
+ * 前一代,更早的清單是 `gpt-5.6-sol` / `gpt-6-astra`;需 Codex CLI ≥ 0.159.1,本機以 0.159.2 實測)。gstack 未設 env 時會退回自己的預設 model。過往靠人記,
  * 現在改機器化守門。導入者要用其他 model:改本清單(pre-push 與 scope note 範本呼叫時都不帶
  * `--allow-value`,該參數只適用手動單次執行)。
  *

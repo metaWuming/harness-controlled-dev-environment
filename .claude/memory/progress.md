@@ -75,9 +75,9 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
-📅 2026-09-30 ㉝ — **port Team W Sprint CM2:Codex review model 預設改 gpt-6.1-sol、effort 一律 high(需 Codex CLI ≥ 0.159.2)**
+📅 2026-09-30 ㉝ — **port Team W Sprint CM2:Codex review model 預設改 gpt-6.1-sol、effort 一律 high(需 Codex CLI ≥ 0.159.1)**
 
-> **緣起**:Owner 2026-09-30 指示 Step 4 Codex review 全域改新一代 gpt-6.1-sol、effort high,並確認 Team W 引擎與本母 repo 一致。實測 Codex CLI 0.158.0 以 ChatGPT 帳號登入時新 model 回「not supported」,升級 0.159.2 後正常。
+> **緣起**:Owner 2026-09-30 指示 Step 4 Codex review 全域改新一代 gpt-6.1-sol、effort high,並確認 Team W 引擎與本母 repo 一致。實測 Codex CLI 0.158.0 以 ChatGPT 帳號登入時新 model 回「not supported」,升級 0.159.2 後正常(官方 changelog 記載 0.159.1 起支援)。
 > **改動**(4 檔 + 本 entry):`scripts/check-codex-env.ts` 預設清單只放行 gpt-6.1-sol(說明與錯誤訊息同步);`tests/check-codex-env.test.ts` 改新 model,前一代改列不放行;
 > SOP Step 4「Codex model 選擇」段補 effort high 與 CLI 版本、各呼叫路徑帶 `model_reasoning_effort="high"`;scope note 範本 effort medium → high。
 > **審查**:**Codex round 1**(gpt-6.1-sol／high,`codex review --base origin/main -c model -c review_model -c model_reasoning_effort`):no actionable findings,收斂。Step 4.5:只動檢查清單與文件,人工判定 CSO_NOT_REQUIRED。Step 5 sanity skip:清單換值 + 對應測試、Codex 已收斂。

@@ -151,7 +151,7 @@ Step 6/7 收尾照走。
 - [ ] **Codex model 選擇**:gstack 預設 model 隨 gstack 版本更新可能改變(訂閱 rolling default)。
       **導入者可透過 env var `GSTACK_CODEX_MODEL=<model>` 明確指定**(建議設在 `~/.zshrc` 或
       shell profile,不進 repo);想省成本可挑輕量 model、想加深度可挑重量 model。
-      本模板 `check:codex-env` 預設清單只放行 `gpt-6.1-sol`(2026-09-30 起;effort 一律 `high`;需 Codex CLI ≥ 0.159.2,
+      本模板 `check:codex-env` 預設清單只放行 `gpt-6.1-sol`(2026-09-30 起;effort 一律 `high`;需 Codex CLI ≥ 0.159.1(官方 changelog;本機以 0.159.2 實測),
       0.158.0 以 ChatGPT 帳號登入會回「model is not supported」)。要用別的 model:改 `scripts/check-codex-env.ts`
       的 `DEFAULT_ALLOWED_MODELS`(pre-push 與 scope note 範本呼叫時都不帶 `--allow-value`,
       `--allow-value` 只適用手動單次執行)。
