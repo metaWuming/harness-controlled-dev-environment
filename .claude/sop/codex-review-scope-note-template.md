@@ -151,7 +151,7 @@ fi
 
 $_TIMEOUT codex exec -s read-only "$(cat "$_PROMPT_FILE")" \
   -c "model=\"$GSTACK_CODEX_MODEL\"" \
-  -c 'model_reasoning_effort="medium"' \
+  -c 'model_reasoning_effort="high"' \
   -c 'web_search="cached"' < /dev/null 2>"$TMPERR"
 # 保留 exit code、清完 temp 檔再 return
 _CODEX_EXIT=$?
