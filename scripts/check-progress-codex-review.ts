@@ -25,6 +25,8 @@
  *      (d) `Claude\s+(?:\/)?code-review\s+round\s+\d+` **AND** 降級 marker
  *          (`無 Codex` / `降級 Claude` 之類)**AND** 收斂 marker(P1-1 修:SOP
  *          明講可降級 Claude /code-review,但需 entry 明講降級 + 收斂憑證)
+ *      (e) 行首 `車道:快速` marker **AND** Claude review round **AND** 收斂 marker
+ *          (ADR 0001:快速車道用 Claude /code-review 1 輪,不需降級 marker)
  *   4. 都不含 → exit 2
  *
  *   收斂 marker(擇一):`no actionable findings` / `zero findings` /
@@ -115,11 +117,14 @@ const CONVERGENCE_RE = /no\s+actionable\s+findings?|zero\s+findings?|(?<!\d)0\s+
 // 前有「本 sprint 為」故不命中)。
 const DOCS_ONLY_MARKER_RE = /^[>\-*\s]*docs-only\s+sprint/im;
 const NO_CODE_MARKER_RE = /^[>\-*\s]*無\s*code\s*改動/im;
+// 快速車道 marker(ADR 0001):行首 `車道:快速`,允許 markdown 粗體與全形冒號。
+// 冒號後緊接「快速」才算,「非快速」與句中提及都不命中。
+const FAST_LANE_MARKER_RE = /^[>\-*\s]*\*{0,2}車道\*{0,2}\s*[:：]\s*\*{0,2}快速/m;
 // PROGRESS_PATH 保留為 local alias 免大量改 consumer 名字;SSOT 在 governance-paths.ts。
 const PROGRESS_PATH = PROGRESS_FILE;
 
 export type CheckResult =
-  | { kind: "ok"; reason: "no-progress-change" | "docs-only" | "has-codex-round" | "has-claude-review-degradation"; matched?: string }
+  | { kind: "ok"; reason: "no-progress-change" | "docs-only" | "has-codex-round" | "has-claude-review-degradation" | "has-claude-review-fast-lane"; matched?: string }
   | { kind: "fail"; reason: "no-entry" | "missing-codex-round" | "missing-convergence-marker" | "claude-review-without-degradation-marker" | "entry-inherited-from-base" | "read-failed" | "diff-failed"; detail?: string };
 
 /**
@@ -276,6 +281,13 @@ export function judgeEntry(body: string): CheckResult {
   // 4. Claude review 降級路徑
   const claudeMatch = body.match(CLAUDE_REVIEW_RE);
   if (claudeMatch) {
+    // 快速車道(ADR 0001):SOP 規定快速車道用 Claude /code-review 1 輪,不需降級 marker
+    if (FAST_LANE_MARKER_RE.test(body)) {
+      if (!hasConvergence) {
+        return { kind: "fail", reason: "missing-convergence-marker", detail: `見快速車道 Claude review(${claudeMatch[0]})但缺收斂 marker` };
+      }
+      return { kind: "ok", reason: "has-claude-review-fast-lane", matched: claudeMatch[0] };
+    }
     if (!DEGRADATION_MARKER_RE.test(body)) {
       return { kind: "fail", reason: "claude-review-without-degradation-marker", detail: `見 Claude review(${claudeMatch[0]})但缺降級 marker(entry 需明講「無 Codex」/「降級 Claude」/「Codex CLI 未安裝」之類)` };
     }
@@ -692,6 +704,8 @@ async function main(): Promise<number> {
       console.log(`✅ entry 含 Codex round + 收斂 marker(matched:「${verdict.matched}」)`);
     } else if (verdict.reason === "has-claude-review-degradation") {
       console.log(`✅ entry 走 SOP 允許的 Claude 降級路徑(matched:「${verdict.matched}」),含降級 marker + 收斂 marker`);
+    } else if (verdict.reason === "has-claude-review-fast-lane") {
+      console.log(`✅ entry 標快速車道 + Claude review + 收斂 marker(matched:「${verdict.matched}」)`);
     }
     console.log(`\n最新 entry 前 3 行:\n${bodyPreview}`);
     return 0;
