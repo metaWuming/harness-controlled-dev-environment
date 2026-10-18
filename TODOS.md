@@ -44,10 +44,9 @@ CI 會驗該 PR 有 merge 證據,防打錯號 / 投機性標 ✅。
 
 ## 觀察中(外部證據,2026-10-18 從 TODOS-done.md 移回)
 
-
-- **Canonical item**:P3 D-② SIGTERM race(TODOS 上方 🟢 已加 strikethrough + terminal marker、INSUFFICIENT-EVIDENCE-KEEP-FROZEN current-evidence terminal;canonical 由 A3 defer ⑱ Sprint 14 + A1.1 defer S5 Sprint 16 兩 CLOSED-AS-DEDUPLICATED 引用)
+- **Canonical item**:P3 D-② SIGTERM race(原條目在 `TODOS-done.md`,已加 strikethrough + terminal marker、INSUFFICIENT-EVIDENCE-KEEP-FROZEN current-evidence terminal;canonical 由 A3 defer ⑱ Sprint 14 + A1.1 defer S5 Sprint 16 兩 CLOSED-AS-DEDUPLICATED 引用)
 - **唯一 reopen condition**:**P3 D-② SIGTERM 的新 Linux CI deterministic failing regression**(不泛稱 external event、不宣稱永不再開)
-- **其他 INSUFFICIENT-EVIDENCE terminal items**(A1.1 non-enumerated 13 + A2 ⑰、evidence 散失):**不帶本 ledger 預留的 reopen 條件**;未來若出現新缺陷、走一般 evidence intake
+- **其他 INSUFFICIENT-EVIDENCE terminal items**(A1.1 non-enumerated 13 + A2 ⑰、evidence 散失):**不帶本段預留的 reopen 條件**;未來若出現新缺陷、走一般 evidence intake
 
 ## IDEA
 

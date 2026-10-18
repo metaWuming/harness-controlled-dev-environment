@@ -544,7 +544,7 @@
         "untested"
       ],
       "testRefs": [],
-      "bypass": "typo / 單行修改 / 純格式(commit 訊息含 [trivial]);碰安全面時不適用",
+      "bypass": "typo / 單行 rename / 純格式(commit 訊息含 [trivial]);碰安全面時不適用",
       "notes": "人守;機器只驗其產物(progress entry 由 CTRL-SOP-007 / CTRL-CI-006)"
     },
     {
@@ -569,7 +569,7 @@
         "untested"
       ],
       "testRefs": [],
-      "bypass": "typo / 單行修改 / 純格式(commit 訊息含 [trivial]);碰安全面時不適用",
+      "bypass": "typo / 單行 rename / 純格式(commit 訊息含 [trivial]);碰安全面時不適用",
       "notes": "ADR 0001(2026-10-18)起:第 2 道 review 只留給高風險車道(見 CTRL-SOP-005)"
     },
     {

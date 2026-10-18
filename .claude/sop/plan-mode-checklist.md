@@ -38,9 +38,11 @@ related: GLOSSARY.md / docs/adr/0001-slim-sop-by-risk-lane.md / docs/DEGRADATION
 | 最後全範圍審查 | — | — | 1 次 |
 | 視覺關 | diff 碰 UI 才跑 | 同左 | 同左 |
 
-**例外(不走流程,直接 commit)**:typo、單行修改、純格式。每個 commit 訊息都要含 `[trivial]`,CI 才會放行
-(碰禁區或治理檔時 CI 仍會擋)。Owner 說「快速做就好」→ 走快速車道,不是例外。
-碰到上面自問清單任何一項,就不適用例外。
+**例外(不走流程,直接 commit)**:typo、單行 rename、純格式。每個 commit 訊息都要含 `[trivial]`,CI 才會放行。
+碰到上面自問清單任何一項,就不適用例外。改到禁區或治理檔(`CLAUDE.md`、`.claude/sop/**` 等)時 CI 會擋
+`[trivial]`,改走快速車道並寫 progress entry。
+
+**Owner 說「快速做就好」**:照本節判車道,不跳過安全面與大小門檻。不碰安全面且夠小 → 快速車道;否則照判出的車道走。
 
 ## 1. Plan(標準 / 高風險)
 

@@ -3,6 +3,9 @@ title: Progress Archive — 2026-09(2026-08-31 ①)
 type: archive
 ---
 
+> 🗄️ 2026-10-18:檔內 OVERVIEW、EFFORT、Codex scope note 範本與草稿的路徑,已機械式改指封存後的位置(docs/archive 目錄)。
+> 敘述內容未改;當時這些檔案實際放在 docs 與 .claude/sop 目錄底下。
+
 📅 2026-09-18 ㉘ — **Sprint I(port Team W Sprint P.1):pre-push CI mirror 機器化(opt-in)**
 
 > **緣起**:Team W 下游 Sprint P Step 6 push 撞 CI 紅在 `check:progress-codex` marker 格式,等 CI ~15 min 才發現、修完再等一輪 —— 一個 sprint 累積 30-45 min 純浪費。Owner 拍板「請把這件事情機器化」。SOP Step 6 早明講「push 前跑完整本地 gate」但只靠人記,常漏。Team W Sprint P.1(PR #67)在下游先做完;本 sprint port 到母 repo 讓所有 adopter 受益。
@@ -233,9 +236,6 @@ type: archive
 
 
 # Progress Archive 2026-09
-
-> 🗄️ 2026-10-18:檔內 OVERVIEW、EFFORT、Codex scope note 範本與草稿的路徑,已機械式改指封存後的位置(docs/archive 目錄)。
-> 敘述內容未改;當時這些檔案實際放在 docs 與 .claude/sop 目錄底下。
 
 > 從 `.claude/memory/progress.md` 於 2026-09-02 PR A3 Phase 0 歸檔(主檔 19.8 KB / 20 KB
 > 上限,doc-size CI gate 即將觸發)。本檔為唯讀歷史 snapshot,不回頭編輯。
