@@ -58,21 +58,18 @@ related: GLOSSARY.md / docs/adr/0001-slim-sop-by-risk-lane.md / docs/DEGRADATION
 
 **送審前**:工作樹乾淨、改動已 commit。記下 `REVIEWED=$(git rev-parse HEAD)`。
 
-**第 1 輪**審整支分支(`--base origin/<主線>`)。**第 2 輪起只做增量審查**:base 改成上一輪的
-`REVIEWED`,並把已處理清單一起送進去。每輪之間都要 commit,base 才會前進。
+**第 1 輪**審整支分支(`origin/<主線>...HEAD`)。**第 2 輪起只做增量審查**:範圍改成
+`<上一輪的 REVIEWED>..HEAD`,並把已處理清單一起送進去。每輪之間都要 commit,範圍才會前進。
 
-〔Codex,標準 / 高風險〕顯式指定 model,不靠預設值:
+〔Codex,標準 / 高風險〕顯式指定 model,不靠預設值。⚠️ `codex review` 的 `--base` **不能**和自訂說明
+同時使用(CLI 0.162.1 實測),所以每一輪都只用自訂說明(從 stdin 讀),在說明裡寫審查範圍:
 
 ```bash
-# 第 1 輪
-codex review --base origin/main \
-  -c 'model="<model>"' -c 'review_model="<model>"' -c 'model_reasoning_effort="high"'
-
-# 第 2 輪起:只審新改動,附已處理清單(從 stdin 讀)
-codex review --base "$REVIEWED_PREV" \
+codex review \
   -c 'model="<model>"' -c 'review_model="<model>"' -c 'model_reasoning_effort="high"' - <<'EOF'
-只審這段 diff 裡的新改動。以下 finding 已處理,不要重提;
-除非這次的改動讓它重新成立,並說明是哪一行讓它重新成立:
+審查範圍:`git diff origin/main...HEAD`(第 2 輪起改成 `git diff <上一輪 REVIEWED>..HEAD`)。
+也檢查這次改動影響到、但不在 diff 裡的檔案。
+以下 finding 已處理,不要重提;除非這次的改動讓它重新成立,並說明是哪一行:
 - [R1-1 已修] <一句話>
 - [R1-2 不修,理由] <一句話>
 EOF
