@@ -312,7 +312,7 @@ describe("judgeEntry — 快速車道 Claude review(ADR 0001)", () => {
   });
 
   it("marker 不在行首(句中提到)不算", () => {
-    const r = judgeEntry("> 這次本來想走 **車道**:快速,後來改標準\n> **審查**:Claude code-review round 1,0 P1");
+    const r = judgeEntry("> 討論時有人提過 **車道**:快速,但沒採用\n> **審查**:Claude code-review round 1,0 P1");
     expect(r.kind).toBe("fail");
     if (r.kind === "fail") expect(r.reason).toBe("claude-review-without-degradation-marker");
   });
