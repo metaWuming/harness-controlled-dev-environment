@@ -19,7 +19,7 @@ related: GLOSSARY.md / docs/adr/0001-slim-sop-by-risk-lane.md / docs/DEGRADATION
 
 1. **預判**:自問「預計會不會碰金流、權限、個資、資產轉移、audit trail、CI 設定(`.github/**`)、
    資料庫結構、守門腳本放寬?」會 → **高風險車道**
-2. 不會 → 看預計大小:最多 3 個檔**或**最多 100 行 → **快速車道**;否則 → **標準車道**
+2. 不會 → 看預計大小:最多 3 個檔**而且**最多 100 行 → **快速車道**;否則 → **標準車道**
 3. 判不準 → 往上一級
 4. **複判**(Step 4 送審前,已有 commit 之後):跑 `npx tsx scripts/check-cso-trigger.ts`,並照實際 diff
    重看大小
@@ -38,8 +38,9 @@ related: GLOSSARY.md / docs/adr/0001-slim-sop-by-risk-lane.md / docs/DEGRADATION
 | 最後全範圍審查 | — | — | 1 次 |
 | 視覺關 | diff 碰 UI 才跑 | 同左 | 同左 |
 
-**例外(不走流程,直接 commit)**:typo、純格式、Owner 說「快速做就好」。
-但碰到上面自問清單任何一項,就不適用例外。
+**例外(不走流程,直接 commit)**:typo、單行修改、純格式。每個 commit 訊息都要含 `[trivial]`,CI 才會放行
+(碰禁區或治理檔時 CI 仍會擋)。Owner 說「快速做就好」→ 走快速車道,不是例外。
+碰到上面自問清單任何一項,就不適用例外。
 
 ## 1. Plan(標準 / 高風險)
 
@@ -155,6 +156,7 @@ EOF
   `> 降級 Claude:<原因,例如 Codex CLI 不可用>`,CI 才會放行;只有快速車道免寫這行
 
 - CI 會檢查這條 entry 有 review 紀錄與「0 P1」之類的收斂字樣(`scripts/check-progress-codex-review.ts`)
+- 車道升級時**直接改寫車道行**(例:`> **車道**:標準(預判快速,複判 6 檔)`),不要另加一行
 - 快速車道用 Claude 審時,`> **車道**:快速` 要放在行首,而且同一行不能再出現「標準」或「高風險」,CI 才認得
 - 高風險車道多記一行:命中域、每條探針的 exit code 與綁定 SHA
 - 先 `grep -nE '⚠️ (partial|paused)' .claude/memory/progress.md`:有同 sprint 的未完成 entry 就就地改寫,不另加一條

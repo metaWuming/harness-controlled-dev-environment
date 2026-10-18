@@ -51,7 +51,7 @@ tools: Read, Grep, Glob, Bash
 
 ## 高風險車道（worktree 模式）
 
-呼叫方在高風險 sprint（SOP Step 4.5 判 `CSO_REQUIRED`）會把你派進
+呼叫方在高風險 sprint（SOP「0. 先判車道」判為高風險車道）會把你派進
 **拋棄式 git worktree**（乾淨 checkout），並在 prompt 給你一個目標 SHA
 （review-tip：呼叫方派工當下的 HEAD，不是更早的 baseline）。
 

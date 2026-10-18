@@ -234,6 +234,9 @@ type: archive
 
 # Progress Archive 2026-09
 
+> 🗄️ 2026-10-18:檔內 OVERVIEW、EFFORT、Codex scope note 範本與草稿的路徑,已機械式改指封存後的位置(docs/archive 目錄)。
+> 敘述內容未改;當時這些檔案實際放在 docs 與 .claude/sop 目錄底下。
+
 > 從 `.claude/memory/progress.md` 於 2026-09-02 PR A3 Phase 0 歸檔(主檔 19.8 KB / 20 KB
 > 上限,doc-size CI gate 即將觸發)。本檔為唯讀歷史 snapshot,不回頭編輯。
 > ⚠️ 本檔含 1 處 canonical ADR 引用,`scripts/lib/template-governance.ts` 的

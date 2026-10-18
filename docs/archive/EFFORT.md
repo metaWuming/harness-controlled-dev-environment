@@ -6,6 +6,9 @@ related: .claude/sop/plan-mode-checklist.md / .claude/settings.json / CLAUDE.md 
 
 # Effort 分層策略
 
+> 🗄️ **封存(2026-10-18)**:歷史參考,不是現行規則。檔內相對連結以原位置 `docs/` 為準,可能失效。
+> 現行流程見 `.claude/sop/plan-mode-checklist.md`,改版理由見 `docs/adr/0001-slim-sop-by-risk-lane.md`。
+
 > 本檔把「哪一步該用多少思考力道」明文化。
 > 對應 Anthropic《Prompting Claude Opus 5》的 Effort 與 Thinking 兩節。
 

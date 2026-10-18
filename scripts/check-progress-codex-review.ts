@@ -256,7 +256,7 @@ function collectBody(lines: string[], start: number, end: number): string {
  *   2. 無 code 改動 marker(行首 anchor)→ ok
  *   3. Codex round + 收斂 marker → ok(P1-4 修:光有 round 不夠)
  *   4. Claude review round + 降級 marker + 收斂 marker → ok(P1-1 修:接受 SOP
- *      允許的降級路徑,但需雙重宣告)
+ *      允許的降級路徑,但需雙重宣告);行首「車道:快速」可代替降級 marker(ADR 0001)
  *   5. 其他 → fail
  */
 export function judgeEntry(body: string): CheckResult {
@@ -719,7 +719,8 @@ async function main(): Promise<number> {
   console.error("    (a) 行首 `docs-only sprint` marker(整行以此開頭,允許 `>` `-` `*` prefix)");
   console.error("    (b) 行首 `無 code 改動` marker(同上 anchor)");
   console.error("    (c) `Codex round N` + 收斂 marker(`no actionable findings` / `zero findings` / `0 P1` / `收斂` / 等)");
-  console.error("    (d) `Claude /code-review round N` + 降級 marker(`無 Codex` / `降級 Claude` / 等)+ 收斂 marker");
+    console.error("    (d) `Claude /code-review round N` + 降級 marker(`無 Codex` / `降級 Claude` / 等)+ 收斂 marker");
+  console.error("    (e) 行首 `車道:快速`(同一行不得再出現「標準」/「高風險」)+ `Claude code-review round N` + 收斂 marker");
   console.error("  → SOP Step 4 明講:跨模型 review 是完成憑證(預設 Codex、無 Codex 環境可降級 Claude /code-review)");
   console.error("  → 參考 LESSONS 2026-09-14 / 2026-09-15「跳過 Step 4 跨模型 review」的重複錯誤");
   return 2;

@@ -5,6 +5,9 @@ type: archive
 
 # Progress Archive 2026-08
 
+> 🗄️ 2026-10-18:檔內 OVERVIEW、EFFORT、Codex scope note 範本與草稿的路徑,已機械式改指封存後的位置(docs/archive 目錄)。
+> 敘述內容未改;當時這些檔案實際放在 docs 與 .claude/sop 目錄底下。
+
 > 從 `.claude/memory/progress.md` 於 2026-08-28 批 7 收尾時歸檔(檔案超 20 KB
 > 上限,doc-size CI gate 觸發)。本檔為唯讀歷史 snapshot,不回頭編輯。
 

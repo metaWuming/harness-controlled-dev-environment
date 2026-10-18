@@ -327,7 +327,7 @@ export function formatReportMarkdown(report: HealthReport): string {
               `| 跨模型 review 總輪數 | ${trendBadge(rc.totalRounds, trend.diff.reviewRounds)} | |`,
               `| P1 findings 總數 | ${trendBadge(rc.totalP1, trend.diff.reviewP1)} | |`,
               `| P2 findings 總數 | ${rc.totalP2} | |`,
-              `| Step5 獨立發現數 | ${rc.step5Independent === null ? '_未填(舊格式 cost field)_' : rc.step5Independent} | |`,
+              `| Step5 獨立發現數 | ${rc.step5Independent === null ? '_未填(三車道範本不記此欄)_' : rc.step5Independent} | |`,
             ].join('\n');
 
   return `# Weekly Health Check — ${weekId}
@@ -357,8 +357,8 @@ ${metrics.lessonsNew.entries.length === 0 ? '_本週區間無新增_' : metrics.
   先查是不是 review 步驟被跳過 / 對手模型換了 / effort 調太低。
   ⚠️ **這幾個都是待查方向不是結論**——尤其「effort 調太低」與 finding 數的因果
   尚未被驗證(見 docs/archive/EFFORT.md)。要判斷得**人工合併** effort、來源分佈與任務風險一起讀,不是只看 P1 曲線
-- **Step5 獨立發現連續為 0**:第二道 review 的邊際價值可能已消失,
-  值得開 sprint 討論是否簡化(見 SOP Step 5)。**但要看累積資料,不是單週**
+- **Step5 獨立發現**:ADR 0001(2026-10-18)起第 2 道 review 只在高風險車道跑,
+  新範本不記此欄;舊資料只供參考
 
 ## 怎麼用
 

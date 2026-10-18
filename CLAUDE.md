@@ -1,6 +1,6 @@
 # 專案 CLAUDE.md — AI 協作行為守則(Harness Template)
 
-> Part 1–3 是通用核心;Part 4 導入時填寫(見 `docs/ADOPTION.md`)。「Owner」指專案擁有者(產品決策者)。
+> Part 1–2 是通用核心;Part 4 導入時填寫(見 `docs/ADOPTION.md`)。「Owner」指專案擁有者(產品決策者)。
 > 流程用語見 `GLOSSARY.md`;開發流程見 `.claude/sop/plan-mode-checklist.md`。
 
 ---
@@ -32,7 +32,8 @@
 - **教訓**:踩坑寫進 `.claude/memory/LESSONS.md`(照檔內模板),寫入時告訴 Owner;新 session 開局先讀。
   同一個坑踩第 2 次標 ⚠️,預期還會再踩就做成機器檢查(hook / CI / lint)
 - **流程**:非瑣碎任務照 `.claude/sop/plan-mode-checklist.md` 先判車道再走。
-  typo、純格式、Owner 說「快速做就好」可直接 commit(碰安全面時不適用)
+  typo、單行修改、純格式可直接 commit(訊息含 `[trivial]`;碰安全面時不適用);
+  Owner 說「快速做就好」→ 走快速車道
 - 各道控制措施的強度分級、bypass 與證據以 `docs/CONTROL-CATALOG.md` 為正本
 
 ---
