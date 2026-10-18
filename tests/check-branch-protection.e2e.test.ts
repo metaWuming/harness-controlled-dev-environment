@@ -393,6 +393,14 @@ describe('case 20:trusted workflow structural lock(scoped job block + cross-file
     expect(jobBlockClean).not.toMatch(/github\.ref\b/);
   });
 
+  it('scoped:job block 內每一個 uses: 都是 SHA-pin(持 PAT 的 job 不跑可變 tag)', () => {
+    const yml = readFileSync(bpYmlPath, 'utf-8');
+    const job = findJobBlock(yml, 'branch-protection-check')!;
+    const uses = stripComments(job.block).match(/uses:\s*\S+/g) ?? [];
+    expect(uses.length).toBeGreaterThan(0);
+    for (const u of uses) expect(u).toMatch(/^uses:\s*[\w.-]+\/[\w./-]+@[0-9a-f]{40}$/);
+  });
+
   it('scoped:job block 內 bootstrap setup-node(SHA-pin)+ node-version 22(對齊 engines.node)+ npm ci', () => {
     // Phase 2:node-version 從 '20' 改為 '22' 對齊 package.json engines.node (>=22.13.0)。
     const yml = readFileSync(bpYmlPath, 'utf-8');

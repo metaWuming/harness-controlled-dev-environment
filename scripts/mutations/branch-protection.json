@@ -139,6 +139,12 @@
   },
   {
     "file": ".github/workflows/branch-protection.yml",
+    "find": "      - name: Install dependencies\n        run: npm ci",
+    "replace": "      - name: Install dependencies\n        run: npm install",
+    "label": "P20b 移除 npm ci(改 npm install)→ case 20 「npm ci」bootstrap assertion 轉紅"
+  },
+  {
+    "file": ".github/workflows/branch-protection.yml",
     "find": "uses: actions/setup-node@",
     "replace": "uses: actions/setup-node@v7 #",
     "label": "P20c setup-node 改回可變 tag(拆掉 SHA-pin)→ case 20 「setup-node(SHA-pin)」轉紅"
@@ -152,7 +158,7 @@
   {
     "file": ".github/workflows/branch-protection.yml",
     "find": "      - name: Install dependencies\n        run: npm ci",
-    "replace": "      - name: Install dependencies\n        run: npm install",
-    "label": "P20b 移除 npm ci(改 npm install)→ case 20 「npm ci」bootstrap assertion 轉紅"
+    "replace": "      - name: Extra action\n        uses: some-org/some-action@v1\n      - name: Install dependencies\n        run: npm ci",
+    "label": "P20e 持 PAT 的 job 多加一個可變 tag 的 action → case 20 「每一個 uses: 都是 SHA-pin」轉紅"
   }
 ]
