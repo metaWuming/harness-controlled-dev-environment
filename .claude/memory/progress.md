@@ -30,7 +30,7 @@ type: note
 ```markdown
 📅 YYYY-MM-DD ⓝ — **一句話標題**
 
-> **車道**:快速 / 標準 / 高風險(判定理由一句)
+> **車道**:<快速|標準|高風險>(判定理由一句)
 > **做了什麼**:N 檔,一句話
 > **審查**:Codex round N(或 Claude code-review round N),0 P1;殘留問題:無 / ①… ②…
 > **下一步**(hint 非 truth):…

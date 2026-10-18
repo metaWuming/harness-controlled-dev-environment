@@ -118,8 +118,9 @@ const CONVERGENCE_RE = /no\s+actionable\s+findings?|zero\s+findings?|(?<!\d)0\s+
 const DOCS_ONLY_MARKER_RE = /^[>\-*\s]*docs-only\s+sprint/im;
 const NO_CODE_MARKER_RE = /^[>\-*\s]*無\s*code\s*改動/im;
 // 快速車道 marker(ADR 0001):行首 `車道:快速`,允許 markdown 粗體與全形冒號。
-// 冒號後緊接「快速」才算,「非快速」與句中提及都不命中。
-const FAST_LANE_MARKER_RE = /^[>\-*\s]*\*{0,2}車道\*{0,2}\s*[:：]\s*\*{0,2}快速/m;
+// 冒號後緊接「快速」才算,「非快速」與句中提及都不命中;同一行再出現「標準」/「高風險」
+// (範本原文沒改、或「快速→標準」升級)也不算。
+const FAST_LANE_MARKER_RE = /^[>\-*\s]*\*{0,2}車道\*{0,2}\s*[:：]\s*\*{0,2}快速\*{0,2}(?![^\n]*(?:標準|高風險))/m;
 // PROGRESS_PATH 保留為 local alias 免大量改 consumer 名字;SSOT 在 governance-paths.ts。
 const PROGRESS_PATH = PROGRESS_FILE;
 

@@ -141,14 +141,14 @@ EOF
 ```markdown
 📅 YYYY-MM-DD ⓝ — **一句話標題**
 
-> **車道**:快速 / 標準 / 高風險(判定理由一句)
+> **車道**:<快速|標準|高風險>(判定理由一句)
 > **做了什麼**:N 檔,一句話
 > **審查**:Codex round N(或 Claude code-review round N),0 P1;殘留問題:無 / ①… ②…
 > **下一步**(hint 非 truth):…
 ```
 
 - CI 會檢查這條 entry 有 review 紀錄與「0 P1」之類的收斂字樣(`scripts/check-progress-codex-review.ts`)
-- 快速車道用 Claude 審時,`> **車道**:快速` 要放在行首,CI 才認得
+- 快速車道用 Claude 審時,`> **車道**:快速` 要放在行首,而且同一行不能再出現「標準」或「高風險」,CI 才認得
 - 高風險車道多記一行:命中域、每條探針的 exit code 與綁定 SHA
 - 先 `grep -nE '⚠️ (partial|paused)' .claude/memory/progress.md`:有同 sprint 的未完成 entry 就就地改寫,不另加一條
 - 只寫合併前就知道的事(不寫 PR 號、squash SHA、CI 結果)

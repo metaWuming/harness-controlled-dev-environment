@@ -317,6 +317,18 @@ describe("judgeEntry — 快速車道 Claude review(ADR 0001)", () => {
     if (r.kind === "fail") expect(r.reason).toBe("claude-review-without-degradation-marker");
   });
 
+  it("範本原文「快速 / 標準 / 高風險」沒改就不算快速車道", () => {
+    const r = judgeEntry("> **車道**:快速 / 標準 / 高風險(判定理由一句)\n> **審查**:Claude code-review round 1,0 P1");
+    expect(r.kind).toBe("fail");
+    if (r.kind === "fail") expect(r.reason).toBe("claude-review-without-degradation-marker");
+  });
+
+  it("車道中途升級「快速→標準」不算快速車道", () => {
+    const r = judgeEntry("> **車道**:快速→標準(改到第 4 個檔)\n> **審查**:Claude code-review round 1,0 P1");
+    expect(r.kind).toBe("fail");
+    if (r.kind === "fail") expect(r.reason).toBe("claude-review-without-degradation-marker");
+  });
+
   it("只有快速車道 marker、沒有任何 review round → fail", () => {
     const r = judgeEntry("> **車道**:快速\n> **做了什麼**:改 2 檔,0 P1");
     expect(r.kind).toBe("fail");
