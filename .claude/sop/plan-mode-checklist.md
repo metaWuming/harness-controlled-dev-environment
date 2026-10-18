@@ -39,8 +39,8 @@ related: GLOSSARY.md / docs/adr/0001-slim-sop-by-risk-lane.md / docs/DEGRADATION
 | 視覺關 | diff 碰 UI 才跑 | 同左 | 同左 |
 
 **例外(不走流程,直接 commit)**:typo、單行 rename、純格式。每個 commit 訊息都要含 `[trivial]`,CI 才會放行。
-碰到上面自問清單任何一項,就不適用例外。改到禁區或治理檔(`CLAUDE.md`、`.claude/sop/**` 等)時 CI 會擋
-`[trivial]`,改走快速車道並寫 progress entry。
+碰到上面自問清單任何一項,就不適用例外。CI 擋下 `[trivial]` 時(例如改到 `CLAUDE.md`、`.claude/sop/**`),
+回到本節重新判車道:沒命中自問清單且夠小 → 快速車道;命中 → 高風險車道;碰 `CLAUDE.md` §4.5 禁區 → 先問 Owner。
 
 **Owner 說「快速做就好」**:照本節判車道,不跳過安全面與大小門檻。不碰安全面且夠小 → 快速車道;否則照判出的車道走。
 
