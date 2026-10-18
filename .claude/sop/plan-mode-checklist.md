@@ -123,7 +123,7 @@ EOF
 ## 6. Step 5:第 2 道 review(只有高風險車道)
 
 - 派 `.claude/agents/adversarial-reviewer.md`,`isolation: worktree`,prompt 附 `review-tip SHA`
-  (完整 40 字元 `git rev-parse HEAD`)。它從 diff 出發,不去驗證第 1 道的結論
+  (完整 40 字元 `git rev-parse HEAD`)。worktree 預設從主線開出,agent 會先 `git checkout --detach <SHA>` 再核對(見定義檔)。它從 diff 出發,不去驗證第 1 道的結論
 - 輪數、增量審查、已處理清單、finding 處置,都照 Step 4 的規則
 - 每次 fix 後 HEAD 前進 → 派新的 agent(新 worktree),綁新 SHA
 - **最後全範圍審查**:第 1、2 道都收乾後,對 `origin/<主線>...HEAD` 整段再審 1 次,

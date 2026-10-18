@@ -55,6 +55,9 @@ tools: Read, Grep, Glob, Bash
 **拋棄式 git worktree**（乾淨 checkout），並在 prompt 給你一個目標 SHA
 （review-tip：呼叫方派工當下的 HEAD，不是更早的 baseline）。
 
+- **開工第零步**：Claude Code 的 `isolation: worktree` 預設從主線開出，HEAD 通常不是目標 SHA。
+  工作樹乾淨時，先跑 `git checkout --detach <目標 SHA>` 切過去（commit 物件與主 repo 共用，
+  不需 fetch）。這是唯一允許的寫入動作，只動你自己的拋棄式 worktree；工作樹不乾淨就不要切，直接回報。
 - **開工第一步**：跑 `git rev-parse HEAD`，與呼叫方給的目標 SHA 逐字核對；
   再跑 `git status --porcelain=v1 --untracked-files=all`，輸出必須為空
   （SHA 對了不代表乾淨——tracked 檔被改、多出 untracked 檔都算污染）。
