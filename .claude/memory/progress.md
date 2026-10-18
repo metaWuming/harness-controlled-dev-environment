@@ -44,6 +44,17 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-10-18 ㉞ — **SOP 精簡成三車道,並試點 mattpocock skills(grill-with-docs / to-tickets)**
+
+> **車道**:高風險(CI gate 放寬屬守門腳本放寬;模板 repo 路徑表刻意為空,以自問判定)
+> **做了什麼**:約 40 檔。SOP 606→185 行、CLAUDE.md 276→99 行;CI gate 接受快速車道;OVERVIEW / EFFORT / scope note 封存到 docs/archive/;TODOS 已結案條目搬到 TODOS-done.md;新增 GLOSSARY.md 與 ADR 0001
+> **審查**:Codex round 2,0 P1(R1 的 2 P1 + 2 P2 已修);第 2 道 adversarial-reviewer 3 輪(CRITICAL 0 / 1 / 1,都已修);最後全範圍 Codex 0 P1;安全審 1 MEDIUM 已修。殘留問題:① gate 失敗訊息「單行修」與 SOP「單行 rename」用詞不一 ② CTRL-SOP-005 與 DEGRADATION 的 /review 降級寫法不同 ③ decision-request-template 殘留 Step 1-2 / 3-6 舊編號 ④ 自訂禁區沒同步 TRIVIAL_FORBIDDEN_PATTERNS 時 [trivial] 可過 ⑤ 自然寫法「0 CRITICAL」會被 gate 擋(照範本可過)⑥ 歷史檔引用漂移 ⑦ weekly-health docstring 舊格式 ⑧ ADOPTION「167 probes」舊敘述 ⑨ README「cross-model」措辭
+> **高風險**:命中域 = 誰能通過 CI 關卡;mutation 探針 6 條全 exit 0(綁 1384593);security-reviewer COMPLETE_WITH_FINDINGS(1 MEDIUM 已修)
+> 📊 成本:review 7 rounds / P1 4 個 / P2 3 個
+> **下一步**(hint 非 truth):本次踩到的 4 個工具坑另開快速車道 PR 寫進 LESSONS;下游專案同步另開任務
+
+---
+
 📅 2026-09-30 ㉝ — **port Team W Sprint CM2:Codex review model 預設改 gpt-6.1-sol、effort 一律 high(需 Codex CLI ≥ 0.159.1)**
 
 > **緣起**:Owner 2026-09-30 指示 Step 4 Codex review 全域改新一代 gpt-6.1-sol、effort high,並確認 Team W 引擎與本母 repo 一致。實測 Codex CLI 0.158.0 以 ChatGPT 帳號登入時新 model 回「not supported」,升級 0.159.2 後正常(官方 changelog 記載 0.159.1 起支援)。
