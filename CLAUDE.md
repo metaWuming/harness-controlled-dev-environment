@@ -1,216 +1,39 @@
 # 專案 CLAUDE.md — AI 協作行為守則(Harness Template)
 
-> 本檔是 repo 的行為守則 + 技術上下文。Part 1–3 為通用核心(來自 harness template,
-> 經多專案實戰打磨,建議原樣沿用);Part 4 留白給你的專案技術上下文,導入時填寫
-> (見 `docs/ADOPTION.md`)。
->
-> 「Owner」指專案擁有者(產品決策者);導入時可全域替換成你的名字。
+> Part 1–3 是通用核心;Part 4 導入時填寫(見 `docs/ADOPTION.md`)。「Owner」指專案擁有者(產品決策者)。
+> 流程用語見 `GLOSSARY.md`;開發流程見 `.claude/sop/plan-mode-checklist.md`。
 
 ---
 
-## Part 1:通用工作原則(Karpathy-inspired)
+## Part 1:工作原則
 
-> 取捨:這份規則偏向「謹慎優先於速度」。瑣碎任務(改錯字、明顯一行修正、純格式調整)請自行判斷,不必走完整流程。
-
-### 原則 1:Think Before Coding(先思考再做)
-
-**不要擅自假設。不要隱藏困惑。把取捨攤開來。**
-
-- 明確陳述你的假設(寫進 plan / 進度報告,讓 Owner 看得到並能否決)
-- 有更簡單做法時主動說出來;合理時要反駁需求——但**講完一句就繼續把事做完**,不要停在那裡等
-
-| 情況 | 動作 |
-|---|---|
-| 會(MVP vs full / 商業規則 / 法務風險) | **停下來問**——這就是原則 8 說的「真實取捨」 |
-| 不會(命名、檔名格式、門檻數字、目錄結構) | **自己拍板**,照原則 8 標 `[Owner 可否決]` |
-
-不確定的地方要浮上來(原則 7),但**浮上來 ≠ 停下來**:先把不依賴那個答案的部分做完,再問。
-
-> 此原則同樣適用於非程式碼任務:寫文案、做企劃、做分析時,同樣不要擅自決定方向。
-
-> ⚠️ **2026-07-25 改寫**。原文是「多種解讀並存時把全部列出來給使用者選」+「不清楚就停下來」,
-> 與**原則 8**(非關鍵決策自己拍板)直接矛盾——原則 8 當初就是為了修原則 1 的過度提問而加的,
-> 但沒有回頭改原則 1,兩條並存至今。Anthropic《The new rules of context engineering》(2026-07-24)
-> 指出這種**同一份 context 內互相打架的指令**是真實成本:模型得先花心思消化矛盾才能決定做什麼。
-> 現在合併成上面的表格 + 「浮上來 ≠ 停下來」補充。
-
-### 原則 2:Simplicity First(簡單優先)
-
-**用最少的內容/程式碼解決問題。不寫任何投機性的東西。**
-
-寫程式時:
-- 不做超出需求範圍的功能。
-- 一次性使用的程式碼不要做抽象層。
-- 不要加入沒被要求的「彈性」或「可配置性」。
-- 不要為不可能發生的情境寫錯誤處理。
-- 200 行能用 50 行解決時,**重寫**。
-
-寫文案/做企劃時:
-- 不擅自擴充使用者沒要求的章節。
-- 不堆砌華麗辭藻或無意義延伸。
-- 能用三句話講完不要寫成三段。
-
-**自我檢驗**:資深同行會說「這太過度複雜」嗎?會的話就簡化。
-
-### 原則 3:Surgical Changes(外科手術式的修改)
-
-**只動你必須動的地方。只清理你自己造成的混亂。**
-
-修改既有內容時:
-- 不「順便優化」附近的程式碼、註解、文案、格式。
-- 不 refactor 沒壞的東西。
-- 沿用既有風格與用詞,即使你會用不同寫法。
-- 注意到無關問題就**提出來**,但**不擅自改**。
-
-改動產生「孤兒」時:
-- 移除「因為你這次改動」而沒人用的 imports、變數、函式、段落。
-- 不移除原本就沒在用的東西,除非被要求。
-
-**自我檢驗**:每一行改動都能直接追溯到使用者需求嗎?
-
-### 原則 4:Goal-Driven Execution(目標導向執行)
-
-**定義成功標準。Loop 到驗證通過為止。**
-
-| 不要這樣說... | 改成這樣說... |
-|---|---|
-| "加上驗證邏輯" | "為無效輸入寫測試,然後讓它們通過" |
-| "修這個 bug" | "寫一個能重現這個 bug 的測試,然後讓它通過" |
-| "重構 X" | "確保重構前後測試都通過" |
-| "寫篇貼文" | "寫一篇能引導讀者點擊目標連結的貼文,字數 200-300 字" |
-
-多步驟任務先說簡短計畫（列步驟即可）。
-
-**核心洞察**:強的成功標準讓 LLM 能自己 loop 到完成;弱的標準("讓它能 work")會一直需要使用者澄清。
-
-> "LLMs are exceptionally good at looping until they meet specific goals.
-> Don't tell it what to do, give it success criteria and watch it go." — Andrej Karpathy
-
-> ⚠️ **2026-07-25 為 Claude Opus 5 校準**:原本這裡有「1. [步驟] → 驗證:[檢查方式]」的逐步驗證模板,**已移除**。
-> Anthropic 的 Opus 5 prompting 指南明講:Opus 5 本來就會驗證自己做的東西,提示詞裡再掛顯式驗證步驟會造成
-> **過度驗證**——燒 token 但品質不會更好(原文:"instructions like these cause over-verification on
-> Claude Opus 5, and removing them reduces wasted tokens with no loss in quality")。
-> **保留「定義成功標準」(上面那張表)——那是好的;拿掉的是「每一步再額外掛一個驗證動作」。**
-> 專案的機器 gate(typecheck / lint / test / CI / code review)照跑,那是 harness 層,不是提示詞層的自我驗證。
-
-### 原則 5:Checkpoint(階段回報)
-
-多步驟任務每完成一個 phase,簡短說明**做了什麼、還剩什麼**。搞不清楚當前狀態就停下來重新陳述。
-
-### 原則 5.4:思考力道與 thinking(2026-07-25 為 Opus 5 新增)
-
-- **effort 是成本桿,不是品質旋鈕。** 低 effort 該大方用——只要品質撐得住。
-  每個 SOP 步驟的建議值標在 `.claude/sop/plan-mode-checklist.md`,完整策略見 `docs/EFFORT.md`
-- **review 的準確度在較低 effort 仍然撐得住**,所以 Step 4/5 的迭代不必全程開滿;
-  最後一輪再拉高。⚠️ 那句講的是**模型單 pass 的準確度**,**不等於**「review 輪數由 effort
-  決定」——修法本身也可能新增待審表面。兩者別混為一談;要判因果得先量(見 `docs/EFFORT.md`)
-- 🔴 **SOP 每步的 `🎚️` 是提示不是開關。** 主 session 同一時間只有一個生效的 effort,
-  而本模板沒有把步驟包成帶 `effort` frontmatter 的 skill,所以那些標註**不會自動執行**
-  (Claude Code 本身**支援** skill／subagent frontmatter 覆寫 effort——是模板沒用,不是做不到)。
-  另外**換 model 有 prompt cache 成本** → **主迴圈維持單一模型**。詳見 `docs/EFFORT.md`
-- **不要關掉 thinking。** 要省成本就降 effort。關掉會讓工具呼叫洩漏成純文字
-  (那個呼叫不會執行,而且會留在對話史污染後續每一個 turn),在本 harness 這種
-  工具密集流程最容易踩
-- **不要在任何提示詞裡寫「不要思考」「不要推理」**——那類指令會**增加**內部
-  tag 洩漏,不是減少
-
-### 原則 5.5:Subagent 委派與自我修正(2026-07-25 為 Opus 5 新增)
-
-- **委派**:大型且真正能平行的工作才開 subagent(例:橫跨多檔案的調查)。幾個 tool call 就能自己做完的不要開;
-  **不要用 subagent 檢查自己的工作**;一個 agent 夠就別開好幾個
-  (例外:**SOP 明文排定的 review 輪**不受此限——Step 5 的 adversarial-reviewer、
-  高風險車道多加的 worktree 獨立審都屬此類,見 `.claude/sop/plan-mode-checklist.md`)。
-  定義好的 agent 在 `.claude/agents/`
-- **自我修正**:只有在「錯誤會改變使用者的程式碼、結論或決定」時才回頭更正先前說法,講一句就好然後繼續做事
-
-> **任務範圍**的規則不在這裡——見**原則 1**(問 vs 拍板 表格)與**原則 8**(拍板 + 可否決)。
-> 同一件事只講一次。
-
-### 原則 6:衝突選邊,不要平均
-
-codebase 裡兩種寫法打架時,選一個(通常選較新 / 測試較多的),說明原因,並標記另一個要清理。
-混合兩種寫法比任何一種都爛。
-
-### 原則 7:失敗要大聲說
-
-- 「完成了」但有東西被靜默跳過 → 不算完成
-- 「測試通過」但有測試被跳過 → 不算通過
-- 「遷移完成」但有 record 遇到 constraint 被略過 → 必須主動回報數字
-
-**預設行為**:把不確定性浮上來,不要藏起來。
-
-### 原則 8:Sensible Default with Veto(明智預設,可否決)
-
-**非關鍵決策不要浪費提問額度,自己拍板默認值,明確標可否決。**
-
-- 提問留給真正的取捨(MVP vs full / 商業規則拍板 / 法務風險)
-- 非關鍵的決策(命名、檔名格式、門檻數字、目錄結構、commit 訊息風格)→ AI 拍板 sensible default,寫進 plan / 進度報告
-- **必須明確標 `[Owner 可否決]`**,讓使用者看到時知道可以反駁
-- 取捨清單放在 plan file 的「Sensible Defaults」段,給編號(D1、D2、…),方便使用者「D3 改成 X」精準否決
-- 拍板的依據:既有 codebase 慣例 → 業界標準 → 你的判斷,依序選
-
-**反例**:提問「branch 要叫 `docs/foo` 還是 `docs/bar`?」→ 浪費。改成 plan 內寫 D1:Branch `docs/foo` [Owner 可否決]。
+1. **先想再做**:假設寫進計畫或進度報告,讓 Owner 看得到、能否決。有更簡單的做法就講,講完一句繼續做。
+2. **問 vs 拍板,只有一個判準**:不同解讀會導出完全不同的成果(MVP vs 完整版、商業規則、法務風險)→ 停下來問。
+   其他(命名、檔名、門檻數字、目錄結構、commit 訊息)→ 自己拍板,在計畫的 Sensible Defaults 段編號
+   (D1、D2…)並標 `[Owner 可否決]`。浮上來 ≠ 停下來:先做完不依賴答案的部分再問。
+3. **簡單優先**:只做被要求的範圍。不寫投機性的抽象、彈性、錯誤處理。資深同行會說「太複雜」就簡化。
+4. **外科手術式修改**:只動必須動的地方,沿用既有風格。看到無關問題就提出來,不擅自改。
+   只清掉「因為這次改動」才沒人用的東西。
+5. **目標導向**:把任務改寫成可驗證的成功標準(例:「為無效輸入寫測試並讓它通過」),做到標準達成為止。
+6. **衝突選邊**:兩種寫法打架時選一個(通常選較新、測試較多的),說明理由,標記另一個待清理。
+7. **失敗要大聲說**:有東西被跳過、測試被略過、資料被略過,都要主動回報數字,不能說「完成了」。
+8. **階段回報**:多步驟任務每完成一段,說明做了什麼、還剩什麼。
+9. **思考力道**:要省成本就降 effort,不要關掉 thinking,也不要在提示詞寫「不要思考」——兩者都會讓工具呼叫洩漏成純文字。
+10. **Subagent**:大型且真正能平行的工作才派(定義在 `.claude/agents/`)。不用 subagent 檢查自己的工作。
+    SOP 排定的 review 輪不受此限。
 
 ---
 
 ## Part 2:協作偏好
 
-### 輸出格式
-- **條列式優先**:能用 bullet 就不要寫段落
-- **附上資料來源**:任何引用、研究、報告標明出處(URL / 檔名 / 頁碼 / 行號)
-- **寫進檔案的文件(plan file / handoff / 報告)長度配合任務需要**:該講的講完,但不要用填充段落、重複的摘要、
-  樣板套話撐篇幅。這跟對話精簡是兩件事,兩邊都要顧(2026-07-25 為 Opus 5 新增——Opus 5 寫到磁碟的檔案
-  比前代明顯更長,而且調低 effort 不會可靠縮短它,只能靠提示詞)
-
-### 任務啟動流程
-- **開始任務前收集背景**——範圍模糊 / 多種做法 / 涉及既有專案脈絡時必做
-- 至少釐清:目標 / 成功判準 / 限制條件
-- 一次最多 3 個問題,優先問會改變整體方向的關鍵問題
-
-### 主動性原則
-- **挑戰假設,不盲目執行**:需求有明顯更好替代方案時主動提出
-- **提出更好方案**:不只「能不能做」,還要「值不值得這樣做」「有沒有更聰明做法」
-- **反駁要有依據**:具體理由,不含糊地說「也可以這樣」
-
-### 錯誤教訓記錄(LESSONS.md)
-- 踩坑、走錯方向、做出來才發現不對 → 寫進 `.claude/memory/LESSONS.md`
-- 格式照 LESSONS.md 內模板(情境/錯誤/原因/避免/相關連結)
-- **新 session 開局**:讀 LESSONS.md 確認不重複犯
-- **不要靜默更新**:寫入新教訓時告知 Owner「我把這個教訓記到 LESSONS.md 了」
-- 教訓的升級階梯:第 1 次踩寫 LESSONS → 重複踩標 ⚠️ → 預期再踩就**機器化**(git hook / CI gate / lint rule / wrapper script)
-
-### Plan Mode 流程規則(本 harness 強制)
-
-非瑣碎任務進入 plan mode 一律走 7 步流程,Owner 不用每次重複說。
-完整 checklist 見 **`.claude/sop/plan-mode-checklist.md`**(含每步的 STOP point 與外部工具降級路徑):
-
-1. **Plan** — Explore agent 蒐 context,寫完整 plan file(Context / Phases / 驗證 / 風險 / 不在範圍 / Sensible Defaults)
-2. **Confirm** — 真實取捨才提問;否則直接送批准
-3. **Go(本地優先)** — feature branch + atomic commits + 每 phase 全綠 gate;**先不 push、不開 PR**
-4. **跨模型 Review** — 對本地 diff 跑對手模型 review,迭代到 0 findings(無對手模型時降級:見 checklist)
-   - **4.5 條件式安全關** — 碰安全敏感面(金流/個資/權限/資產轉移/audit trail)時觸發專責安全審;觸發判定先跑 `npx tsx scripts/check-cso-trigger.ts`(機器判定是下限不是上限);有命中域的觸發即進**高風險車道**(加破壞性探針與 Step 5 worktree 獨立審,詳見 checklist)
-   - **4.6 條件式視覺關** — diff 碰 UI 檔時觸發;預設呼叫 gstack `/design-review` 對照 design token 稽核並直接修;無 gstack 降級:**實際截圖比對**,不靠讀碼推論外觀
-5. **同模型 sanity check** — 第二道 review 收尾(cross-model 補強設計層風險);**收乾後寫 progress entry 進 feature branch commit**(跟 code 進同一 PR、不另開)
-6. **Push + PR + CI(最終 gate)** — 審乾淨才對外;CI 綠 → squash merge(commit 含 progress)
-7. **Final** — TODOS / LESSONS / 通知 Owner(**progress 在 Step 5 已寫、不重複**)
-
-每步的建議 effort 標在 checklist 內(見原則 5.4 與 `docs/EFFORT.md`)。
-
-**例外**(不走流程):trivial 改(typo / 單行 rename / 純格式整理)— 直接 commit
-
-各道控制措施的強度分級(hard / soft / manual / advisory / periodic)、bypass 與證據以 `docs/CONTROL-CATALOG.md` 為正本,本檔不重列。
-
----
-
-## Part 3:何時可以放寬規則
-
-以下情境不必走完整流程:
-- 明顯的錯字修正
-- 顯而易見的一行修改
-- 純粹格式整理
-- 使用者明確表示「快速做就好」「不用問」
-
-目標是減少**非瑣碎工作**的高代價錯誤,不是拖慢所有任務。
+- **輸出**:條列優先;引用要附來源(URL / 檔名 / 行號)。寫進檔案的文件長度配合需要,不用填充段落撐篇幅
+- **啟動任務**:範圍模糊時先釐清目標、成功標準、限制;一次最多 3 題,先問會改變方向的
+- **主動性**:有明顯更好的做法就提出,附具體理由
+- **教訓**:踩坑寫進 `.claude/memory/LESSONS.md`(照檔內模板),寫入時告訴 Owner;新 session 開局先讀。
+  同一個坑踩第 2 次標 ⚠️,預期還會再踩就做成機器檢查(hook / CI / lint)
+- **流程**:非瑣碎任務照 `.claude/sop/plan-mode-checklist.md` 先判車道再走。
+  typo、純格式、Owner 說「快速做就好」可直接 commit(碰安全面時不適用)
+- 各道控制措施的強度分級、bypass 與證據以 `docs/CONTROL-CATALOG.md` 為正本
 
 ---
 
@@ -262,7 +85,6 @@ codebase 裡兩種寫法打架時,選一個(通常選較新 / 測試較多的),�
 - **`git add` 一律列具體檔名,禁 `git add -A` / `git add .`**;add 前先 `git status --short` 看有無 `??` 行。列不出要 add 的檔名,就代表不知道自己在 add 什麼(跨專案踩 ≥4 次;本機工具產物已進 `.gitignore`,pre-commit 對 `TOOL_ARTIFACT_PATTERN` 在任何分支硬擋作縱深)
 - **本機 git hooks**(opt-in `npm run setup-hooks`):pre-commit 擋「保護分支上 commit 程式碼」(doc 放行);**commit-msg 擋「訊息含去識別化 denylist 詞」**(deny-terms.txt 不在時自動 no-op);pre-push 先跑本機 gitleaks(有 leak 硬擋)再做保護分支 code push 確認
 - 上下文管理判準見 `.claude/sop/context-management.md`
-- **Codex review scope note archival**(僅本模板 backsync sprint 使用;導入者若採用選項 B、依需求自訂):`.claude/sop/codex-review-scope-note-drafts/` 底下的檔名 pattern(本模板用 `batch-N.md`、你的專案自訂)每 N 個 sprint 搬進 `archive/` 目錄底下(檔名依當月 `<yyyy-mm>.md` 命名、單檔滾動、append 進去、非個檔歸檔)。drafts/ 保留最近 N 個 sprint 供對照。archive 檔為只讀歷史 snapshot、不回頭編輯——同 `.claude/memory/progress-archive/` 慣例。sprint 開始前的例行 housekeeping,不算獨立 sprint。**導入者注意**:此段落 pattern 是本 harness 自身治理慣例,若你的專案不採選項 B(見 `.claude/sop/codex-review-scope-note-template.md`)、可整段刪除。
 
 <!-- 填:你的分支策略與合併策略。check:adoption 會驗:`scripts/harness.config.json` 宣告的每個
 protectedBranches / deliveryBranches 都以反引號出現在本節(例:`main` = 正式 / `develop` = 開發主線;feature/xxx、fix/xxx),
