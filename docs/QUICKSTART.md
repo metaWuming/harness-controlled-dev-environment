@@ -1,7 +1,7 @@
 ---
 title: QUICKSTART — 從模板開新專案的操作備忘
 type: guide
-related: docs/ADOPTION.md / docs/EFFORT.md
+related: docs/ADOPTION.md
 ---
 
 # 從模板開新專案 — 操作備忘
@@ -74,7 +74,7 @@ npm install && npm run setup-hooks
 2. **禁區清單**(CLAUDE.md §4.5)——哪些檔案 AI 動之前必須先問你
 3. **effortLevel**(`.claude/settings.json`)——實作為主的專案設 `xhigh`;
    文件 / 規劃為主設 `high` 或 `medium`。**這條直接決定每次 session 的成本與速度**,
-   出貨預設是 `high`(模型原生預設,不改也能跑)。理由與每步建議值見 `docs/EFFORT.md`
+   出貨預設是 `high`(模型原生預設,不改也能跑)
 
 > **專案有 UI 的話再多一項**:CLAUDE.md §4.2 要填 design token 來源檔,
 > 否則 SOP 的 Step 4.6 視覺關沒有對照基準(純後端專案不必,視覺關永遠不觸發)。
@@ -99,13 +99,12 @@ npm install && npm run setup-hooks
 - **take5 / hi5**:全域 skill,直接喊
 - **記憶層**:不用初始化——progress/LESSONS/TODOS 模板已就位,第一個 sprint
   收尾 AI 自然開始寫
-- **effort 分層**:SOP 每步已標建議值(`docs/EFFORT.md`)。⚠️ 那是**提示不是開關**——本模板沒把步驟包成帶 `effort` frontmatter 的 skill,所以不會自動生效;要分步生效可自己包 skill／subagent,或手動 `/effort`。
-  你只要在 Step 4 決定專案預設值就好
+- **effort 分層**:不用設。你只要在 Step 4 決定專案預設值就好
 - **subagent 定義**:`.claude/agents/` 已附兩支(蒐脈絡 / 獨立審 diff);
-  委派規則本身在 `CLAUDE.md` 原則 5.5
+  委派規則本身在 `CLAUDE.md` 原則 10
 
-之後每個 sprint 都是同一套:說需求 → AI 進 plan mode → 7 步 SOP 自動走
-(其中 Step 4.5 安全關、4.6 視覺關是條件式,碰到才觸發)。
+之後每個 sprint 都是同一套:說需求 → AI 先判車道(快速 / 標準 / 高風險)→ 照
+`.claude/sop/plan-mode-checklist.md` 走(安全關只在高風險車道、視覺關只在碰 UI 時觸發)。
 
 ---
 

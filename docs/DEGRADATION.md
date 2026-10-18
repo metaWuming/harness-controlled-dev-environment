@@ -25,12 +25,12 @@ type: guide
 ## 不變的骨架(無論工具在不在)
 
 1. **先本地審乾淨再 push**(review 對本地 diff,不需 PR 存在)
-2. **至少兩道獨立 review**(理想跨模型;退而求其次也要 fresh-context 兩 pass)
+2. **review 道數與輪數照車道**(快速 / 標準 1 道、高風險 2 道,各有輪數上限;理想跨模型,見 `.claude/sop/plan-mode-checklist.md`)
 3. **安全敏感面觸發專責安全視角**(機器判定 `check-cso-trigger` 是下限)
 4. **CI 是最終 gate 不是第一道**(keep quality left)
 5. **收尾寫 progress entry**(記憶層是 harness 的一部分,不是可選裝飾)
-6. **thinking 保持開啟**——這條不是工具依賴,是模型設定。省成本走 effort
-   (見 `docs/EFFORT.md`),不要靠關 thinking。關掉會讓工具呼叫洩漏成純文字並
+6. **thinking 保持開啟**——這條不是工具依賴,是模型設定。省成本走 effort,
+   不要靠關 thinking。關掉會讓工具呼叫洩漏成純文字並
    污染後續 turn,在本流程這種工具密集場景代價最高
 
 ## gstack 定位聲明
