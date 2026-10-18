@@ -133,9 +133,21 @@
   },
   {
     "file": ".github/workflows/branch-protection.yml",
-    "find": "      - name: Setup Node\n        uses: actions/setup-node@v4",
-    "replace": "      - name: Setup Node\n        uses: actions/other-action@v4",
-    "label": "P20a 移除 actions/setup-node@v4 → case 20 「setup-node@v4」bootstrap assertion 轉紅"
+    "find": "      - name: Setup Node\n        uses: actions/setup-node@",
+    "replace": "      - name: Setup Node\n        uses: actions/other-action@",
+    "label": "P20a 移除 actions/setup-node → case 20 「setup-node(SHA-pin)」bootstrap assertion 轉紅"
+  },
+  {
+    "file": ".github/workflows/branch-protection.yml",
+    "find": "uses: actions/setup-node@",
+    "replace": "uses: actions/setup-node@v7 #",
+    "label": "P20c setup-node 改回可變 tag(拆掉 SHA-pin)→ case 20 「setup-node(SHA-pin)」轉紅"
+  },
+  {
+    "file": ".github/workflows/branch-protection.yml",
+    "find": "uses: actions/checkout@",
+    "replace": "uses: actions/checkout@v7 #",
+    "label": "P20d checkout 改回可變 tag(拆掉 SHA-pin)→ case 20 「checkout SHA-pin」轉紅"
   },
   {
     "file": ".github/workflows/branch-protection.yml",
