@@ -23,6 +23,9 @@ type: note
 > 驗證某 sprint 是否已進主線:`git fetch origin` 後
 > `git log -S '<完整 entry heading>' origin/<delivery-branch> -- .claude/memory/progress.md`。
 >
+> 標準 / 高風險車道沒有 Codex、改用 Claude 審查時,審查行之前另起一行,行首寫
+> `> 降級 Claude:<原因>`(規則見 SOP 同段)。
+>
 > ⚠️ **未完成 sprint**(暫停、卡外部、交棒)寫 partial entry 並標「⚠️ partial / paused」,
 > 流程見 `.claude/sop/context-management.md`。sprint 恢復後在同 branch 收尾時,**就地改寫**那條
 > partial entry,不另加一條。
@@ -33,6 +36,7 @@ type: note
 > **車道**:<快速|標準|高風險>(判定理由一句)
 > **做了什麼**:N 檔,一句話
 > **審查**:Codex round N(或 Claude code-review round N),0 P1;殘留問題:無 / ①… ②…
+> 📊 成本:review N rounds / P1 X 個 / P2 X 個
 > **下一步**(hint 非 truth):…
 ```
 

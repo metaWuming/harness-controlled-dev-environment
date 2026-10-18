@@ -230,6 +230,24 @@ describe('collectReviewCost', () => {
     expect(r.totalRounds).toBe(0);
   });
 
+  it('三車道新範本(ADR 0001)的 📊 成本行仍被計入', () => {
+    const content = [
+      '📅 2026-05-20 ① — **新範本**',
+      '> **車道**:標準(5 檔)',
+      '> **做了什麼**:5 檔',
+      '> **審查**:Codex round 2,0 P1;殘留問題:①…',
+      '> 📊 成本:review 2 rounds / P1 0 個 / P2 1 個',
+      '> **下一步**(hint 非 truth):無',
+      '',
+    ].join('\n');
+    const r = collectReviewCost(content, SINCE);
+    expect(r.sprints).toBe(1);
+    expect(r.totalRounds).toBe(2);
+    expect(r.totalP1).toBe(0);
+    expect(r.totalP2).toBe(1);
+    expect(r.step5Independent).toBeNull();
+  });
+
   it('多個 entry 加總,sinceDate 之前的不計', () => {
     const content = [
       '📅 2026-05-20 ② — **本週 B**',

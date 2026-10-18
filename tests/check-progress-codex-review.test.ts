@@ -329,6 +329,12 @@ describe("judgeEntry — 快速車道 Claude review(ADR 0001)", () => {
     if (r.kind === "fail") expect(r.reason).toBe("claude-review-without-degradation-marker");
   });
 
+  it("標準車道照 SOP 範本寫「降級 Claude」行 → ok(走降級通道)", () => {
+    const r = judgeEntry("> **車道**:標準(5 檔)\n> 降級 Claude:Codex CLI 不可用\n> **審查**:Claude code-review round 2,0 P1");
+    expect(r.kind).toBe("ok");
+    if (r.kind === "ok") expect(r.reason).toBe("has-claude-review-degradation");
+  });
+
   it("只有快速車道 marker、沒有任何 review round → fail", () => {
     const r = judgeEntry("> **車道**:快速\n> **做了什麼**:改 2 檔,0 P1");
     expect(r.kind).toBe("fail");

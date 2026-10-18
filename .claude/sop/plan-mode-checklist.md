@@ -15,13 +15,18 @@ related: GLOSSARY.md / docs/adr/0001-slim-sop-by-risk-lane.md / docs/DEGRADATION
 
 ## 0. 先判車道(1 分鐘內做完)
 
-1. 跑 `npx tsx scripts/check-cso-trigger.ts`,再自問一次「有沒有碰金流、權限、個資、資產轉移、
-   audit trail、CI 設定(`.github/**`)、資料庫結構、守門腳本放寬?」
-   - 機器判 `CSO_REQUIRED` 且有命中域,或自問答「有」→ **高風險車道**
-   - 機器判 `CSO_REQUIRED` 但沒有命中域清單(路徑表空 / base 非法)= 工具未導入或壞掉,先修好再判。
-     **模板 repo 本身**的路徑表刻意為空:以自問結果代替,並在 progress entry 記明
-2. 不是高風險 → 看大小:最多 3 個檔**或**最多 100 行 → **快速車道**;否則 → **標準車道**
+開工前還沒有改動可比對,所以先**預判**,送審前再用機器**複判**:
+
+1. **預判**:自問「預計會不會碰金流、權限、個資、資產轉移、audit trail、CI 設定(`.github/**`)、
+   資料庫結構、守門腳本放寬?」會 → **高風險車道**
+2. 不會 → 看預計大小:最多 3 個檔**或**最多 100 行 → **快速車道**;否則 → **標準車道**
 3. 判不準 → 往上一級
+4. **複判**(Step 4 送審前,已有 commit 之後):跑 `npx tsx scripts/check-cso-trigger.ts`,並照實際 diff
+   重看大小
+   - `CSO_REQUIRED` 且有命中域 → 升為**高風險車道**,補做該車道的步驟
+   - `CSO_REQUIRED` 但沒有命中域清單(路徑表空 / base 非法)= 工具未導入或壞掉,先修好再判。
+     **模板 repo 本身**的路徑表刻意為空:以自問結果代替,並在 progress entry 記明
+   - 實際大小超出快速車道 → 升為標準車道
 
 | | 快速 | 標準 | 高風險 |
 |---|---|---|---|
@@ -56,7 +61,7 @@ related: GLOSSARY.md / docs/adr/0001-slim-sop-by-risk-lane.md / docs/DEGRADATION
 
 ## 3. Step 4:跨模型 Review(第 1 道)
 
-**送審前**:工作樹乾淨、改動已 commit。記下 `REVIEWED=$(git rev-parse HEAD)`。
+**送審前**:工作樹乾淨、改動已 commit,並做完「0. 先判車道」的複判。記下 `REVIEWED=$(git rev-parse HEAD)`。
 
 **第 1 輪**審整支分支(`origin/<主線>...HEAD`)。**第 2 輪起只做增量審查**:範圍改成
 `<上一輪的 REVIEWED>..HEAD`,並把已處理清單一起送進去。每輪之間都要 commit,範圍才會前進。
@@ -141,8 +146,13 @@ EOF
 > **車道**:<快速|標準|高風險>(判定理由一句)
 > **做了什麼**:N 檔,一句話
 > **審查**:Codex round N(或 Claude code-review round N),0 P1;殘留問題:無 / ①… ②…
+> 📊 成本:review N rounds / P1 X 個 / P2 X 個
 > **下一步**(hint 非 truth):…
 ```
+
+- `📊 成本` 行由 `npm run health:weekly` 解析成審查趨勢,格式照抄
+- **標準 / 高風險車道沒有 Codex、改用 Claude 審查時**,審查行之前另起一行,行首寫
+  `> 降級 Claude:<原因,例如 Codex CLI 不可用>`,CI 才會放行;只有快速車道免寫這行
 
 - CI 會檢查這條 entry 有 review 紀錄與「0 P1」之類的收斂字樣(`scripts/check-progress-codex-review.ts`)
 - 快速車道用 Claude 審時,`> **車道**:快速` 要放在行首,而且同一行不能再出現「標準」或「高風險」,CI 才認得
