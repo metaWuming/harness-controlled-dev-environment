@@ -44,6 +44,17 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-10-19 ㊱ — **check-branch-protection 測試補上 mutation 探針 P12 / P13 存活缺口**
+
+> **車道**:標準(大小屬快速,依交辦指定走 Codex 審;只動測試與探針 label、不放寬守門。模板 repo 路徑表刻意為空,以自問判定未碰高風險面)
+> **做了什麼**:2 檔。fake gh 只在收到 `--include` 時印 status line + headers(對齊真 gh),移除 flag 會讓 10 個 case 轉紅(P13);新增 case 15d「200 但 body 空」,原版走 parse throw catch、突變版 `JSON.parse(body) || {}` 會落進 assertion path(P12);P12 label 改指 15d。存活原因:壞 JSON 在原版和突變版都丟同一個 SyntaxError,15c 分不出差別
+> **審查**:Codex round 1,0 P1;殘留問題:無
+> **驗證**:合併 #115 後,`scripts/mutations/branch-protection.json` 全 spec 27 條全抓到、exit 0(綁 b68fcab;合併前 24 條全抓到,綁 d21bf4c)。typecheck / lint 綠;全套 vitest 綠(首跑 2 個 check-doc-refs 測試在高負載下逾時,單獨重跑 73/73 綠)
+> 📊 成本:review 1 round / P1 0 個 / P2 0 個
+> **下一步**(hint 非 truth):check-doc-refs G5 測試在全套負載下偶發逾時,另開任務處理
+
+---
+
 📅 2026-10-19 ㉟ — **branch-protection workflow:actions SHA-pin 並升 v7(取代 dependabot #112)**
 
 > **緣起**:Owner 指示處理 dependabot #112(`actions/setup-node` v4 → v7)。核實:#112 CI 紅在 Mutation Spec Drift Check——spec P20a 的 find 與 case 20 斷言都寫死 `setup-node@v4`,bot 改版本號就漂移;另外 README / OVERVIEW 宣稱 actions 一律 SHA-pin,但 branch-protection.yml 仍用可變 tag。Owner 選「另開 PR 取代」。
