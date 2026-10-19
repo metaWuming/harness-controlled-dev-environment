@@ -278,6 +278,70 @@ describe("judgeEntry — Claude 降級路徑(P1-1)", () => {
   });
 });
 
+describe("judgeEntry — 快速車道 Claude review(ADR 0001)", () => {
+  const FAST = "> **車道**:快速(3 檔,不碰安全面)\n> **審查**:Claude code-review round 1,0 P1;殘留問題:無";
+
+  it("行首快速車道 marker + Claude round + 0 P1 → ok", () => {
+    const r = judgeEntry(FAST);
+    expect(r.kind).toBe("ok");
+    if (r.kind === "ok") expect(r.reason).toBe("has-claude-review-fast-lane");
+  });
+
+  it("全形冒號、無粗體也認得", () => {
+    const r = judgeEntry("> 車道：快速\n> 審查:Claude /code-review round 1: no actionable findings");
+    expect(r.kind).toBe("ok");
+    if (r.kind === "ok") expect(r.reason).toBe("has-claude-review-fast-lane");
+  });
+
+  it("快速車道 + Claude round 但無收斂 → fail", () => {
+    const r = judgeEntry("> **車道**:快速\n> **審查**:Claude code-review round 1 抓 2 P1(修法調查中)");
+    expect(r.kind).toBe("fail");
+    if (r.kind === "fail") expect(r.reason).toBe("missing-convergence-marker");
+  });
+
+  it("標準車道不能只用 Claude review(要 Codex 或降級 marker)", () => {
+    const r = judgeEntry("> **車道**:標準\n> **審查**:Claude code-review round 1,0 P1");
+    expect(r.kind).toBe("fail");
+    if (r.kind === "fail") expect(r.reason).toBe("claude-review-without-degradation-marker");
+  });
+
+  it("「非快速」不算快速車道", () => {
+    const r = judgeEntry("> **車道**:非快速\n> **審查**:Claude code-review round 1,0 P1");
+    expect(r.kind).toBe("fail");
+    if (r.kind === "fail") expect(r.reason).toBe("claude-review-without-degradation-marker");
+  });
+
+  it("marker 不在行首(句中提到)不算", () => {
+    const r = judgeEntry("> 討論時有人提過 **車道**:快速,但沒採用\n> **審查**:Claude code-review round 1,0 P1");
+    expect(r.kind).toBe("fail");
+    if (r.kind === "fail") expect(r.reason).toBe("claude-review-without-degradation-marker");
+  });
+
+  it("範本原文「快速 / 標準 / 高風險」沒改就不算快速車道", () => {
+    const r = judgeEntry("> **車道**:快速 / 標準 / 高風險(判定理由一句)\n> **審查**:Claude code-review round 1,0 P1");
+    expect(r.kind).toBe("fail");
+    if (r.kind === "fail") expect(r.reason).toBe("claude-review-without-degradation-marker");
+  });
+
+  it("車道中途升級「快速→標準」不算快速車道", () => {
+    const r = judgeEntry("> **車道**:快速→標準(改到第 4 個檔)\n> **審查**:Claude code-review round 1,0 P1");
+    expect(r.kind).toBe("fail");
+    if (r.kind === "fail") expect(r.reason).toBe("claude-review-without-degradation-marker");
+  });
+
+  it("標準車道照 SOP 範本寫「降級 Claude」行 → ok(走降級通道)", () => {
+    const r = judgeEntry("> **車道**:標準(5 檔)\n> 降級 Claude:Codex CLI 不可用\n> **審查**:Claude code-review round 2,0 P1");
+    expect(r.kind).toBe("ok");
+    if (r.kind === "ok") expect(r.reason).toBe("has-claude-review-degradation");
+  });
+
+  it("只有快速車道 marker、沒有任何 review round → fail", () => {
+    const r = judgeEntry("> **車道**:快速\n> **做了什麼**:改 2 檔,0 P1");
+    expect(r.kind).toBe("fail");
+    if (r.kind === "fail") expect(r.reason).toBe("missing-codex-round");
+  });
+});
+
 describe("judgeEntry — docs-only marker(P1-3 行首 anchor)", () => {
   it("行首 `docs-only sprint` → ok", () => {
     const r = judgeEntry("> docs-only sprint(理由:只改 SOP)");

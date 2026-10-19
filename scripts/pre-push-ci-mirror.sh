@@ -32,7 +32,7 @@
 # **哲學:opt-in,對稱 codex env gate**——
 # 對稱 pre-push hook「Codex env 守門」段(ENABLE_CODEX_ENV_CHECK=1)的姿態:
 # 本 gate 預設 disabled;需要 `ENABLE_PRE_PUSH_CI_MIRROR=1` 明確 opt-in 才跑。
-# 理由:harness template 明文承諾「外部工具全 optional」(docs/OVERVIEW.md);
+# 理由:harness template 明文承諾「外部工具全 optional」(docs/DEGRADATION.md);
 # 不用完整 CI mirror 的 downstream(可能只用部分 checkers,或有自己的本機 gate)
 # 跑 setup-hooks 後 push 不該被此 gate 擋。
 # 想啟用的 adopter:`~/.zshrc` 加 `export ENABLE_PRE_PUSH_CI_MIRROR=1`。

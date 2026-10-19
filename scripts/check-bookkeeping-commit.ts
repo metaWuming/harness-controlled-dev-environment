@@ -2,8 +2,8 @@
 /**
  * scripts/check-bookkeeping-commit.ts — 核對「bookkeeping commit」的機器化守門
  *
- * 「bookkeeping」的定義以 `.claude/sop/plan-mode-checklist.md` Step 5 worktree
- * 條目為唯一正本(那段開頭寫著「本段為唯一正本」)。本腳本是那段話的機器化——
+ * 「bookkeeping」的定義以 `.claude/sop/plan-mode-checklist.md` 「bookkeeping 的定義」
+ * 段為唯一正本(那段標題寫著「唯一正本」)。本腳本是那段話的機器化——
  * SOP 現在寫的是「這個 commit 的 diff 只允許狀態簿記」,這句話用人工分類會漂,
  * 於是提出一個純檔名判準:
  *

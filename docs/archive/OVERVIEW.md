@@ -1,5 +1,8 @@
 # Harness 模板深度總覽
 
+> 🗄️ **封存(2026-10-18)**:歷史參考,不是現行規則。檔內相對連結以原位置 `docs/` 為準,可能失效。
+> 現行流程見 `.claude/sop/plan-mode-checklist.md`,改版理由見 `docs/adr/0001-slim-sop-by-risk-lane.md`。
+
 > **這份文件的定位**：概念層 + 完整流程 + 13 gates 對照 + 5 張流程圖 —— 給想懂全貌的讀者（Owner、評估採用者、新加入的開發者）。
 >
 > **不是**：導入教學（那是 [`docs/QUICKSTART.md`](QUICKSTART.md)）；也不是行為規則正本（那是 [`../CLAUDE.md`](../CLAUDE.md) 與 [`../.claude/sop/plan-mode-checklist.md`](../.claude/sop/plan-mode-checklist.md)）。
