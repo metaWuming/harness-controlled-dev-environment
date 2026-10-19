@@ -10,8 +10,18 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 const WORKFLOW_DIR = path.resolve(__dirname, "../.github/workflows");
-const USES_RE = /^\s*(?:-\s*)?(['"]?)uses\1\s*:\s*(['"]?)([^'"\s#]+)\2/;
+const USES_RE = /^\s*(?:-\s*)?(['"]?)uses\1\s*:\s*(.*)$/;
 const SHA_RE = /^[0-9a-f]{40}$/;
+
+/** 依 YAML 規則取出 scalar 值:有引號取到結尾引號;沒引號時只有「空白 + #」才是註解 */
+export function yamlScalar(raw: string): string {
+  const q = raw[0];
+  if (q === "'" || q === "\"") {
+    const end = raw.indexOf(q, 1);
+    return end === -1 ? raw.slice(1) : raw.slice(1, end);
+  }
+  return raw.split(/\s+#/)[0].trim();
+}
 
 /** 回傳沒有固定到 40 字元 SHA 的 `uses:` 目標(行號從 1 起算) */
 export function findUnpinned(content: string): { line: number; target: string }[] {
@@ -19,7 +29,7 @@ export function findUnpinned(content: string): { line: number; target: string }[
   content.split("\n").forEach((text, i) => {
     const m = text.match(USES_RE);
     if (!m) return;
-    const target = m[3];
+    const target = yamlScalar(m[2]);
     if (target.startsWith("./") || target.startsWith("docker://")) return;
     const ref = target.split("@")[1] ?? "";
     if (!SHA_RE.test(ref)) out.push({ line: i + 1, target });
@@ -37,12 +47,16 @@ describe("findUnpinned", () => {
       "      - 'uses': actions/setup-node@v7",
       "        uses: 'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1'",
       "        \"uses\": \"actions/checkout@main\"",
+      "        uses: \"actions/setup-node@main#mutable\"",
+      "        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1#mutable",
     ].join("\n");
     expect(findUnpinned(sample)).toEqual([
       { line: 1, target: "actions/checkout@v7" },
       { line: 3, target: "some/action" },
       { line: 5, target: "actions/setup-node@v7" },
       { line: 7, target: "actions/checkout@main" },
+      { line: 8, target: "actions/setup-node@main#mutable" },
+      { line: 9, target: "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1#mutable" },
     ]);
   });
 });
