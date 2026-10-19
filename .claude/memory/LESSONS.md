@@ -74,7 +74,7 @@ type: note
 #115 高風險車道跑 `scripts/mutate.ts --spec scripts/mutations/branch-protection.json`,`--cmd` 只列兩支相關測試檔。
 
 **錯誤/誤判**
-其中一支寫成不存在的 `tests/check-branch-protection.test.ts`(正確是 `tests/branch-protection.test.ts`)。結果 5 條打 `scripts/lib/branch-protection.ts` 的探針「存活」,差點被當成覆蓋缺口去補測試。
+其中一支寫成不存在的 `tests/check-branch-protection.test.ts`(正確是 `tests/branch-protection.test.ts`)。結果 3 條打 `scripts/lib/branch-protection.ts` 的探針(P2 / P3 / P4)「存活」,差點被當成覆蓋缺口去補測試。改正檔名後這 3 條都被抓到;同一輪另有 2 條(P12 / P13)改正後仍存活,是真缺口,#116 補上。
 
 **為什麼會發生**
 vitest 把路徑參數當過濾字串。只要還有一個參數對得上檔案,對不上的那個就被靜默略過、不報錯;對照組照樣綠,mutate 不會判無法判定。
@@ -114,10 +114,10 @@ vitest 把路徑參數當過濾字串。只要還有一個參數對得上檔案,
 #114 試點時在背景跑全套 vitest。
 
 **錯誤/誤判**
-`tests/mutate.test.ts` 裡用 `head -c 4000000` 的案例一直在等輸入,整套測試卡了 2 小時沒有新輸出,也沒有被發現。
+`tests/mutate.test.ts` 裡用 `head -c 4000000` 的案例一直在等輸入,整套測試卡住、沒有新輸出,過了 2 小時才發現。
 
 **為什麼會發生**
-背景程序繼承了沒關的 stdin,測試裡的子程序讀不到 EOF 就一直等。
+背景程序繼承了沒關的 stdin,有程序一直在等 stdin 的輸入。確切是哪個程序在等,當時沒有追查;加 `< /dev/null` 之後就不再卡住。
 
 **之後該怎麼避免**
 - 背景跑測試一律加 `< /dev/null`(例:`npx vitest run < /dev/null`)
@@ -131,7 +131,7 @@ vitest 把路徑參數當過濾字串。只要還有一個參數對得上檔案,
 ## [2026-10-18] `mutate.ts` 的 `--find` / `--replace` 含 `{n,m}` → 被 shell 大括號展開,探針判無法判定
 
 **情境**
-#114 試點用 `npx` / `npm run mutate` 跑單條探針,樣本是含 `{n,m}` 量詞的 regex 原文。
+#114 試點用 `npx` / `npm run mutate` 跑單條探針,`--find` / `--replace` 的字串含 `{n,m}`。
 
 **錯誤/誤判**
 參數經過 npx / npm 那層 shell 時被大括號展開,樣本變了、在檔案裡找不到,mutate 回 exit 2(無法判定)。另外用預設的整套測試當 `--cmd`,機器忙時對照組因逾時變紅,也判 exit 2。
