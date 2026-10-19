@@ -74,7 +74,7 @@ type: note
 #115 高風險車道跑 `scripts/mutate.ts --spec scripts/mutations/branch-protection.json`,`--cmd` 只列兩支相關測試檔。
 
 **錯誤/誤判**
-其中一支寫成不存在的 `tests/check-branch-protection.test.ts`(正確是 `tests/branch-protection.test.ts`)。結果 3 條打 `scripts/lib/branch-protection.ts` 的探針(P2 / P3 / P4)「存活」,差點被當成覆蓋缺口去補測試。改正檔名後這 3 條都被抓到;同一輪另有 2 條(P12 / P13)改正後仍存活,是真缺口,#116 補上。
+其中一支把 `tests/branch-protection.test.ts` 多寫了 `check-` 前綴,變成不存在的檔名。結果 3 條打 `scripts/lib/branch-protection.ts` 的探針(P2 / P3 / P4)「存活」,差點被當成覆蓋缺口去補測試。改正檔名後這 3 條都被抓到;同一輪另有 2 條(P12 / P13)改正後仍存活,是真缺口,#116 補上。
 
 **為什麼會發生**
 vitest 把路徑參數當過濾字串。只要還有一個參數對得上檔案,對不上的那個就被靜默略過、不報錯;對照組照樣綠,mutate 不會判無法判定。
