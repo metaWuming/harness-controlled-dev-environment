@@ -69,7 +69,7 @@
     "file": "scripts/check-branch-protection.ts",
     "find": "    try {\n      protection = parseBranchProtection(res.body);\n    } catch (e) {",
     "replace": "    try {\n      protection = res.body ? JSON.parse(res.body) || {} : {};\n    } catch (e) {",
-    "label": "P12 JSON malformed 走 assertion path(非 parse throw catch)→ case 15c 轉紅"
+    "label": "P12 JSON malformed 走 assertion path(非 parse throw catch)→ case 15d(空 body)轉紅"
   },
   {
     "file": "scripts/check-branch-protection.ts",

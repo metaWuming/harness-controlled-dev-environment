@@ -1,7 +1,7 @@
 // tests/check-branch-protection.e2e.test.ts — Sprint 19 C1 e2e
 //
 // CLI adapter wiring + fake gh executable + workflow structural lock。
-// 14 case:8 / 8b(CRLF) / 9 / 10 / 11a / 11b / 11c / 12 / 13 / 14 / 15a / 15b / 15c / 20(workflow structural lock)。
+// case:8 / 8b(CRLF) / 9 / 10 / 11a / 11b / 11c / 12 / 13 / 14 / 15a / 15b / 15c / 15d / 16a / 16b / 20(workflow structural lock)。
 
 import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -23,23 +23,30 @@ function makeFakeGh(): FakeGh {
   const logPath = path.join(dir, 'call.log');
   const script = `#!/bin/sh
 echo call >> "${logPath}"
+# 忠實模擬真 gh:有 --include 才印 status line + headers;沒有就只印 body(P13 探針靠這個轉紅)
+include=0
+for a in "$@"; do [ "$a" = "--include" ] && include=1; done
+out() {
+  if [ "$include" = 1 ]; then printf "$@"; else printf "$@" | awk 'body{print} /^\\r?$/{body=1}'; fi
+}
 mode="\${FAKE_GH_MODE:-ok}"
 case "$mode" in
-  ok) printf 'HTTP/2.0 200 OK\\n\\n{"required_status_checks":{"contexts":["ci"]},"enforce_admins":{"enabled":true},"required_pull_request_reviews":{}}\\n' ;;
-  ok-crlf) printf 'HTTP/2.0 200 OK\\r\\nContent-Type: application/json\\r\\n\\r\\n{"required_status_checks":{"contexts":["ci"]},"enforce_admins":{"enabled":true},"required_pull_request_reviews":{}}\\n' ;;
-  missing-A) printf 'HTTP/2.0 200 OK\\n\\n{"enforce_admins":{"enabled":true},"required_pull_request_reviews":{}}\\n' ;;
+  ok) out 'HTTP/2.0 200 OK\\n\\n{"required_status_checks":{"contexts":["ci"]},"enforce_admins":{"enabled":true},"required_pull_request_reviews":{}}\\n' ;;
+  ok-crlf) out 'HTTP/2.0 200 OK\\r\\nContent-Type: application/json\\r\\n\\r\\n{"required_status_checks":{"contexts":["ci"]},"enforce_admins":{"enabled":true},"required_pull_request_reviews":{}}\\n' ;;
+  missing-A) out 'HTTP/2.0 200 OK\\n\\n{"enforce_admins":{"enabled":true},"required_pull_request_reviews":{}}\\n' ;;
   nonzero-nostatus) exit 1 ;;
-  status-401-stderr) printf 'HTTP/2.0 401 Unauthorized\\n\\nbody\\n' 1>&2 ; exit 1 ;;
-  status-403-stdout) printf 'HTTP/2.0 403 Forbidden\\n\\nbody\\n' ; exit 1 ;;
-  status-404-stderr) printf 'HTTP/2.0 404 Not Found\\n\\nbody\\n' 1>&2 ; exit 1 ;;
-  status-5xx-stdout) printf 'HTTP/2.0 502 Bad Gateway\\n\\nbody\\n' ; exit 1 ;;
-  malformed-json) printf 'HTTP/2.0 200 OK\\n\\n{malformed\\n' ;;
+  status-401-stderr) out 'HTTP/2.0 401 Unauthorized\\n\\nbody\\n' 1>&2 ; exit 1 ;;
+  status-403-stdout) out 'HTTP/2.0 403 Forbidden\\n\\nbody\\n' ; exit 1 ;;
+  status-404-stderr) out 'HTTP/2.0 404 Not Found\\n\\nbody\\n' 1>&2 ; exit 1 ;;
+  status-5xx-stdout) out 'HTTP/2.0 502 Bad Gateway\\n\\nbody\\n' ; exit 1 ;;
+  malformed-json) out 'HTTP/2.0 200 OK\\n\\n{malformed\\n' ;;
+  empty-body) out 'HTTP/2.0 200 OK\\n\\n' ;;
   multi-main-ok-develop-missingA)
     branch=$(echo "$*" | grep -o '/branches/[^/]*/protection' | sed 's|/branches/||;s|/protection||')
     if [ "$branch" = "main" ]; then
-      printf 'HTTP/2.0 200 OK\\n\\n{"required_status_checks":{"contexts":["ci"]},"enforce_admins":{"enabled":true},"required_pull_request_reviews":{}}\\n'
+      out 'HTTP/2.0 200 OK\\n\\n{"required_status_checks":{"contexts":["ci"]},"enforce_admins":{"enabled":true},"required_pull_request_reviews":{}}\\n'
     else
-      printf 'HTTP/2.0 200 OK\\n\\n{"enforce_admins":{"enabled":true},"required_pull_request_reviews":{}}\\n'
+      out 'HTTP/2.0 200 OK\\n\\n{"enforce_admins":{"enabled":true},"required_pull_request_reviews":{}}\\n'
     fi
     ;;
 esac
@@ -204,6 +211,13 @@ describe('check-branch-protection e2e — CLI adapter wiring + fake gh + status 
     const r = run({ fakeGhMode: 'malformed-json', ghToken: 'x', githubRepository: 'ownerx/repox' });
     expect(r.code).toBe(2);
     expect(r.stderr).toMatch(/非 valid JSON/);
+  });
+  it('case 15d:200 但 body 空 → 走 parse throw catch、不落 assertion path', () => {
+    // P12 探針:把 parse 換成 `JSON.parse(body) || {}` 時,空 body 會變 {} 掉進 assertion fail
+    const r = run({ fakeGhMode: 'empty-body', ghToken: 'x', githubRepository: 'ownerx/repox' });
+    expect(r.code).toBe(2);
+    expect(r.stderr).toMatch(/非 valid JSON/);
+    expect(r.stderr).not.toMatch(/assertion fail/);
   });
   // ─── case 16:loadHarnessConfigOrFail wrapper 前置守門(config 缺 / 壞)
   //     wrapper 在讀 config 階段就 exit 2、不呼 gh(對稱 case 11a token preflight)
