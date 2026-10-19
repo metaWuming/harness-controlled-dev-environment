@@ -44,6 +44,17 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-10-19 ㉟ — **check-branch-protection 測試補上 mutation 探針 P12 / P13 存活缺口**
+
+> **車道**:標準(大小屬快速,依交辦指定走 Codex 審;只動測試與探針 label、不放寬守門。模板 repo 路徑表刻意為空,以自問判定未碰高風險面)
+> **做了什麼**:2 檔。fake gh 只在收到 `--include` 時印 status line + headers(對齊真 gh),移除 flag 會讓 10 個 case 轉紅(P13);新增 case 15d「200 但 body 空」,原版走 parse throw catch、突變版 `JSON.parse(body) || {}` 會落進 assertion path(P12);P12 label 改指 15d。存活原因:壞 JSON 在原版和突變版都丟同一個 SyntaxError,15c 分不出差別
+> **審查**:Codex round 1,0 P1;殘留問題:無
+> **驗證**:`scripts/mutations/branch-protection.json` 24 條全抓到、exit 0(綁 d21bf4c);上一棒說的 27 條是 deps/branch-protection-actions-v7 分支的數字,多出的 3 條尚未進 main。typecheck / lint 綠;全套 vitest 綠(首跑 2 個 check-doc-refs 測試在高負載下逾時,單獨重跑 73/73 綠)
+> 📊 成本:review 1 round / P1 0 個 / P2 0 個
+> **下一步**(hint 非 truth):deps/branch-protection-actions-v7 合併後,在 main 重跑該 spec 確認 27 條全抓到
+
+---
+
 📅 2026-10-18 ㉞ — **SOP 精簡成三車道,並試點 mattpocock skills(grill-with-docs / to-tickets)**
 
 > **車道**:高風險(CI gate 放寬屬守門腳本放寬;模板 repo 路徑表刻意為空,以自問判定)
