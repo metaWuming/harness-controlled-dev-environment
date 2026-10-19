@@ -44,6 +44,17 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-10-19 ㊲ — **actions/setup-node 升 v7.1.0(取代 dependabot #112),並補 workflow SHA-pin 測試**
+
+> **車道**:高風險(CI 設定)
+> **做了什麼**:3 檔。ci.yml、branch-protection.yml 的 setup-node 升到 949feb2(已核對官方 tag v7.1.0、在上游 main);新增 tests/workflow-actions-sha-pin.test.ts——原本 ci.yml 拆掉 SHA-pin 整套測試仍綠(探針存活)
+> **審查**:Codex round 3,0 P1(R1 2 P2、R2 1 P2 已修);第 2 道 adversarial 3 輪,0 CRITICAL(INFO 修 5);最後全範圍 Codex 2 P1(YAML 跳脫繞過)已修,增量複審 0 P1。殘留問題:① docker:// 不驗 digest ② 不驗 SHA 來源 ③ composite action 不掃 ④ YAML alias / flow mapping / 跨行值 / 單獨 \r 誤擋或漏檢 ⑤ 新測試沒有探針規格與目錄條目 ⑥ branch-protection.yml 是排程 workflow,合併後才實際跑到
+> **高風險**:命中域 = CI 設定;探針 7 條全 exit 0(綁 c745062);SHA 來源以 GitHub API 核對 tag
+> 📊 成本:review 8 rounds / P1 2 個 / P2 3 個
+> **下一步**(hint 非 truth):合併後手動觸發一次 branch-protection workflow;審查說明先寫威脅模型,可避免審查追混淆寫法
+
+---
+
 📅 2026-10-19 ㊱ — **check-branch-protection 測試補上 mutation 探針 P12 / P13 存活缺口**
 
 > **車道**:標準(大小屬快速,依交辦指定走 Codex 審;只動測試與探針 label、不放寬守門。模板 repo 路徑表刻意為空,以自問判定未碰高風險面)
