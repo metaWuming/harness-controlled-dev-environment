@@ -13,6 +13,7 @@ import * as path from "node:path";
 const WORKFLOW_DIR = path.resolve(__dirname, "../.github/workflows");
 const USES_RE = /^\s*(?:-\s*)?(['"]?)uses\1\s*:\s*(.*)$/;
 const SHA_RE = /^[0-9a-f]{40}$/;
+const LINE_SPLIT = /\r?\n/;
 
 /** 依 YAML 規則取出 scalar 值:有引號取到結尾引號;沒引號時只有「空白 + #」才是註解 */
 function yamlScalar(raw: string): string {
@@ -27,7 +28,7 @@ function yamlScalar(raw: string): string {
 /** 回傳沒有固定到 40 字元 SHA 的 `uses:` 目標(行號從 1 起算) */
 function findUnpinned(content: string): { line: number; target: string }[] {
   const out: { line: number; target: string }[] = [];
-  content.split(/\r?\n/).forEach((text, i) => {
+  content.split(LINE_SPLIT).forEach((text, i) => {
     const m = text.match(USES_RE);
     if (!m) return;
     const target = yamlScalar(m[2]);
@@ -39,7 +40,7 @@ function findUnpinned(content: string): { line: number; target: string }[] {
 }
 
 describe("findUnpinned", () => {
-  it("可變 tag 與缺 ref 都抓到,SHA 與本地 action 放行", () => {
+  it.each(["\n", "\r\n"])("可變 tag 與缺 ref 都抓到,SHA 與本地 action 放行(換行 %j)", (eol) => {
     const sample = [
       "      - uses: actions/checkout@v7",
       "        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0",
@@ -50,7 +51,7 @@ describe("findUnpinned", () => {
       "        \"uses\": \"actions/checkout@main\"",
       "        uses: \"actions/setup-node@main#mutable\"",
       "        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1#mutable",
-    ].join("\r\n");
+    ].join(eol);
     expect(findUnpinned(sample)).toEqual([
       { line: 1, target: "actions/checkout@v7" },
       { line: 3, target: "some/action" },
@@ -67,7 +68,7 @@ describe(".github/workflows 全部 actions 固定 SHA", () => {
 
   it("至少有 1 個 workflow、且至少有 1 行 uses:(避免空集合假綠)", () => {
     expect(files.length).toBeGreaterThan(0);
-    const total = files.reduce((n, f) => n + fs.readFileSync(path.join(WORKFLOW_DIR, f), "utf8").split("\n").filter((l) => USES_RE.test(l)).length, 0);
+    const total = files.reduce((n, f) => n + fs.readFileSync(path.join(WORKFLOW_DIR, f), "utf8").split(LINE_SPLIT).filter((l) => USES_RE.test(l)).length, 0);
     expect(total).toBeGreaterThan(0);
   });
 
