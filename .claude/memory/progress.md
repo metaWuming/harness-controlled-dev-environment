@@ -44,14 +44,37 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
-📅 2026-10-19 ㉟ — **check-branch-protection 測試補上 mutation 探針 P12 / P13 存活缺口**
+📅 2026-10-19 ㊱ — **check-branch-protection 測試補上 mutation 探針 P12 / P13 存活缺口**
 
 > **車道**:標準(大小屬快速,依交辦指定走 Codex 審;只動測試與探針 label、不放寬守門。模板 repo 路徑表刻意為空,以自問判定未碰高風險面)
 > **做了什麼**:2 檔。fake gh 只在收到 `--include` 時印 status line + headers(對齊真 gh),移除 flag 會讓 10 個 case 轉紅(P13);新增 case 15d「200 但 body 空」,原版走 parse throw catch、突變版 `JSON.parse(body) || {}` 會落進 assertion path(P12);P12 label 改指 15d。存活原因:壞 JSON 在原版和突變版都丟同一個 SyntaxError,15c 分不出差別
 > **審查**:Codex round 1,0 P1;殘留問題:無
-> **驗證**:`scripts/mutations/branch-protection.json` 24 條全抓到、exit 0(綁 d21bf4c);上一棒說的 27 條是 deps/branch-protection-actions-v7 分支的數字,多出的 3 條尚未進 main。typecheck / lint 綠;全套 vitest 綠(首跑 2 個 check-doc-refs 測試在高負載下逾時,單獨重跑 73/73 綠)
+> **驗證**:合併 #115 後,`scripts/mutations/branch-protection.json` 全 spec 27 條全抓到、exit 0(綁 __SHA__;合併前 24 條全抓到,綁 d21bf4c)。typecheck / lint 綠;全套 vitest 綠(首跑 2 個 check-doc-refs 測試在高負載下逾時,單獨重跑 73/73 綠)
 > 📊 成本:review 1 round / P1 0 個 / P2 0 個
-> **下一步**(hint 非 truth):deps/branch-protection-actions-v7 合併後,在 main 重跑該 spec 確認 27 條全抓到
+> **下一步**(hint 非 truth):check-doc-refs G5 測試在全套負載下偶發逾時,另開任務處理
+
+---
+
+📅 2026-10-19 ㉟ — **branch-protection workflow:actions SHA-pin 並升 v7(取代 dependabot #112)**
+
+> **緣起**:Owner 指示處理 dependabot #112(`actions/setup-node` v4 → v7)。核實:#112 CI 紅在 Mutation Spec Drift Check——spec P20a 的 find 與 case 20 斷言都寫死 `setup-node@v4`,bot 改版本號就漂移;另外 README / OVERVIEW 宣稱 actions 一律 SHA-pin,但 branch-protection.yml 仍用可變 tag。Owner 選「另開 PR 取代」。
+> **改動**(7 檔 + 本 entry):
+>   - `.github/workflows/branch-protection.yml`:checkout → v7.0.1、setup-node → v7.0.0,改 SHA-pin(與 ci.yml 同 SHA)
+>   - `tests/check-branch-protection.e2e.test.ts`:case 20 改驗 40 碼 SHA;新增「job 內每一個 `uses:` 都要 SHA-pin」
+>   - `scripts/mutations/branch-protection.json`:P20a find 去掉版本號;新增 P20c / P20d(拆掉 SHA-pin)、P20e(多加可變 tag action)
+>   - `docs/ADOPTION.md`、`scripts/control-catalog.json` + render `docs/CONTROL-CATALOG.md`:全量 probe 數 167 → 170
+> **審查**:
+>   > **Codex round 1**(gpt-6.1-sol／high,`codex review --base origin/main -c model -c review_model -c model_reasoning_effort`,baseline `57c93dc`):no actionable findings
+>   > **Step 4.5**:模板 repo、表空為設計(`check:cso` fail-closed REQUIRED、無命中域);人工判定——此 job 的 env 帶 admin-read PAT,換 action 等於換能碰到 PAT 的第三方程式碼 → 人工視同 CSO_REQUIRED、走高風險車道,命中域 = 「branch-protection.yml 持 PAT 的 job 跑哪些第三方 action」。security-reviewer:COMPLETE_CLEAN(`git ls-remote` 核對兩個 SHA = 官方 tag;v7 的 persist-credentials 只存 contents:read 的 GITHUB_TOKEN、不碰 PAT;cache 寫入屬 main scope)
+>   > **Step 5 worktree 獨立審**(adversarial-reviewer,detached worktree @ `57c93dc91bd77c8d8afc2c0509eee1695276ff10`):0 CRITICAL / 8 INFO。修 3 條(probe 數 167 → 170、斷言「每一個 uses: 都 SHA-pin」+ P20e、probe 排序);不修:兩檔 SHA 無交叉斷言(conf 3)、TODOS.md:207 為 #85 歷史交付紀錄、本 entry 待寫(即本條);揭露:**dependabot 升 workflow 的 PR 仍會卡 CTRL-CI-018**(`isDependabotManifestOnlyPr` 只豁免 package.json / lockfile,㉚ 候選 ② 已預告)——放寬豁免屬安全取捨,交 Owner 決定,不在本 PR;本 workflow 只在排程跑,v7 的實際執行要等合併後第一次 UTC 00:00 run
+>   > **Codex round 2**(gpt-6.1-sol／high,`--base 57c93dc`,含 Step 5 修正):no actionable findings,收斂
+>   > **mutation 探針**(`scripts/mutate.ts --spec scripts/mutations/branch-protection.json --cmd 'npx vitest run tests/check-branch-protection.e2e.test.ts tests/branch-protection.test.ts'`,綁 SHA `9621c777beeea689023195a9d2926257362e3c32`):命中域 14 條(打 branch-protection.yml 的 P14a–P20e,另抽成只含這 14 條的 spec 單獨跑)exit 0、全部抓到;全 spec 27 條中 25 條抓到,**P12 / P13 存活**——兩條都打 `scripts/check-branch-protection.ts`,本 PR 沒動該檔也沒動對應測試,屬 main 既有覆蓋缺口,列下一棒候選、不在本 PR 補。第一次跑時 `--cmd` 把 `tests/branch-protection.test.ts` 寫錯檔名,vitest 靜默略過不存在的檔 → 5 條打 lib 的探針假存活;改正後重跑
+> **驗證**:tsc / eslint 綠;全套 vitest 39 files / 1422 passed / 4 skipped;check:mutation-specs(170 條樣本對得上)/ check:catalog 綠
+> **⭐ 教訓**:① 只跑相關測試時,`--cmd` 裡的測試檔名寫錯不會報錯(vitest 把它當過濾字串),探針會假存活——下指令前先 `ls` 確認檔名
+> **⏭️ 下一棒候選**(hint 非 truth):⓪ 補 P12 / P13 存活的測試缺口(JSON malformed 走 assertion path、移除 `gh api --include`);① Owner 決定 dependabot github-actions PR 是否也要 CTRL-CI-018 豁免(現況:每次都要人工補 entry 或另開 PR);② 合併後看 branch-protection.yml 第一次排程 run 是否綠;③ #112 在 main 升到 v7 後應由 dependabot 自動關閉,沒關就手動關
+> **check:claims**:`--base=origin/main` 命中 4 處,留 A 4 條:CONTROL-CATALOG.md:52 與 control-catalog.json:998 的「唯一」是既有句子(本 PR 只改 probe 數);測試與 P20e label 的「每一個」——測試真的逐一檢查 job block 內所有 `uses:`
+> 📊 成本:CC ~45min / 跨模型 review 2 rounds / 0 P1 / 0 P2 / Step5 獨立發現 8 INFO(修 3)
+> 📐 量測:Codex round 1..2 gpt-6.1-sol／high;baseline `57c93dc`;來源分佈 既有缺陷 2(TODOS 歷史、SHA 無交叉斷言)・漏改 consumer 1(probe 數文件)・baseline 後引入 0,其餘 5 為揭露 / 強化建議
 
 ---
 
@@ -124,27 +147,7 @@ type: note
 
 ---
 
-📅 2026-09-23 ㉙ — **port Team W Sprint CM:Codex review model 預設改 gpt-6-sol + 各呼叫路徑顯式指定**
-
-> **緣起**:Owner 在 Team W 拍板 Step 4 Codex review 不論走 gstack / `codex review` / `codex exec` 都顯式指定 `gpt-6-sol`,並指示 upstream 到母 repo。
-> **shipped**(2 commits):
->   - `scripts/check-codex-env.ts`:預設清單只放行 `gpt-6-sol`(取代 `gpt-5.6-sol` / `gpt-6-astra`);檔頭說明導入者改清單的方法
->   - `tests/check-codex-env.test.ts`:對齊新清單 + 精確斷言 `DEFAULT_ALLOWED_MODELS`
->   - `.claude/sop/plan-mode-checklist.md` Step 4:每條路徑的顯式指定寫法(model 以 `<model>` 泛化,不寫死)+ 守門範圍說明(pre-push opt-in、只驗 env)
->   - `docs/archive/codex-review-scope-note-template.md`:建暫存檔前先跑 `check:codex-env`;`codex exec` 帶 `-c model=$GSTACK_CODEX_MODEL`
-> **與 Team W 版差異**:母 repo 無 `reviewer-a.md`(引擎專屬);pre-push 母 repo 版註解本來就不提 model、不動;checklist 保留模板「導入者自選 model」語氣,不寫「一律」
-> **審查總結**:
->   > **Codex round 1**(gpt-6-sol,`codex review --base origin/main -c model -c review_model`):1 P2 修(說明寫可加 `--allow-value`,但 pre-push / 範本呼叫都不帶 → 改為「改清單」)
->   > **Codex round 2**(gpt-6-sol):**0 findings,收斂**
->   > **Step 4.5 CSO gate**:模板 repo 路徑表刻意空(fail-closed REQUIRED 為設計),以人工自問代替:diff 是守門清單收窄 + SOP 文件,無 secret / auth / 金流 / PII 域。同一改動在 Team W 已過 `security-review` 0 findings、mutate exit 0。判定 CSO_NOT_REQUIRED
->   > **Step 5 sanity**:同內容在 Team W 已跑 worktree 獨立審(0 CRITICAL / 6 INFO,相關修正已一併 port);母 repo 側 check-codex-env 20/20 綠
-> **驗證**:typecheck / lint 綠;check-codex-env 20/20
-> **⭐ 教訓**(累積 ⑭):**「port 到模板時,說明要對齊模板的實際呼叫方式」**——Team W 版可寫死 model,模板版改成泛化;順手寫的 `--allow-value` 替代方案在 pre-push / 範本兩個呼叫點都用不到,Codex round 1 抓到
-> **⏭️ 下一棒候選**(hint 非 truth):無母 repo 側 defer;Team W 側 F3(CI 不驗 progress 寫的 model)若日後做,可再 upstream
-> **check:claims**:命中既有檔 2 處(`tests/pre-push-ci-mirror.test.ts:46`,非本 sprint 改動),本 sprint 新增唯一性斷言有精確測試,保留
-> 📊 成本:CC ~20min / 跨模型 review 2 rounds / 0 P1 / 1 P2 / Step5 沿用下游
-> 📐 量測:Codex round 1..2 gpt-6-sol;baseline `87146e4`(母 repo main tip);來源分佈 baseline 後引入 1(round 1 P2)
-
+<!-- ㉙ port Team W Sprint CM 已於 ㉟(2026-10-19,branch-protection actions SHA-pin)進 archive(依 20 KB 額度慣例) -->
 ---
 
 <!-- ㉘ Sprint I 已於 port Team W Sprint CM2(2026-09-30 ㉝)進 archive(依 20 KB 額度慣例) -->
@@ -164,4 +167,4 @@ type: note
 <!-- ㉒ port SOP-tune v2 已於本 sprint(loadHarnessConfigOrFail wrapper)進 archive(依 20 KB 額度慣例) -->
 <!-- ⑳ governance sprint CI-016 已於 port Team W Sprint CM(2026-09-23 ㉙)進 archive(依 20 KB 額度慣例) -->
 
-> 更早的 entries 見 [progress-archive/progress-2026-09.md](progress-archive/progress-2026-09.md)
+> 更早的 entries 見 [progress-archive/progress-2026-10.md](progress-archive/progress-2026-10.md)、[progress-archive/progress-2026-09.md](progress-archive/progress-2026-09.md)
