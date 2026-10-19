@@ -382,23 +382,31 @@ describe('case 20:trusted workflow structural lock(scoped job block + cross-file
     expect(jobBlockClean).toMatch(/GH_TOKEN:\s*\$\{\{\s*secrets\.BRANCH_PROTECTION_TOKEN\s*\}\}/);
   });
 
-  it('scoped:job block 內 checkout ref: main、無 PR-controlled ref', () => {
+  it('scoped:job block 內 checkout SHA-pin + ref: main、無 PR-controlled ref', () => {
     const yml = readFileSync(bpYmlPath, 'utf-8');
     const job = findJobBlock(yml, 'branch-protection-check')!;
     const jobBlockClean = stripComments(job.block);
-    expect(jobBlockClean).toMatch(/uses:\s*actions\/checkout@v4/);
+    expect(jobBlockClean).toMatch(/uses:\s*actions\/checkout@[0-9a-f]{40}\s/);
     expect(jobBlockClean).toMatch(/ref:\s*main/);
     expect(jobBlockClean).not.toMatch(/github\.head_ref/);
     expect(jobBlockClean).not.toMatch(/github\.event\.pull_request\.head/);
     expect(jobBlockClean).not.toMatch(/github\.ref\b/);
   });
 
-  it('scoped:job block 內 bootstrap setup-node@v4 + node-version 22(對齊 engines.node)+ npm ci', () => {
+  it('scoped:job block 內每一個 uses: 都是 SHA-pin(持 PAT 的 job 不跑可變 tag)', () => {
+    const yml = readFileSync(bpYmlPath, 'utf-8');
+    const job = findJobBlock(yml, 'branch-protection-check')!;
+    const uses = stripComments(job.block).match(/uses:\s*\S+/g) ?? [];
+    expect(uses.length).toBeGreaterThan(0);
+    for (const u of uses) expect(u).toMatch(/^uses:\s*[\w.-]+\/[\w./-]+@[0-9a-f]{40}$/);
+  });
+
+  it('scoped:job block 內 bootstrap setup-node(SHA-pin)+ node-version 22(對齊 engines.node)+ npm ci', () => {
     // Phase 2:node-version 從 '20' 改為 '22' 對齊 package.json engines.node (>=22.13.0)。
     const yml = readFileSync(bpYmlPath, 'utf-8');
     const job = findJobBlock(yml, 'branch-protection-check')!;
     const jobBlockClean = stripComments(job.block);
-    expect(jobBlockClean).toMatch(/uses:\s*actions\/setup-node@v4/);
+    expect(jobBlockClean).toMatch(/uses:\s*actions\/setup-node@[0-9a-f]{40}\s/);
     expect(jobBlockClean).toMatch(/node-version:\s*['"]22['"]/);
     expect(jobBlockClean).toMatch(/run:\s*npm ci/);
   });

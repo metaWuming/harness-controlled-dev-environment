@@ -258,9 +258,9 @@ CTRL-CI-013 只驗 mutation spec 的 `find` 樣本仍能對得上 source(**drift
 
 ### 5.3 三份 mutation evidence 分工(Sprint 21 引入)
 
-- **Drift**(CTRL-CI-013):CI 驗 spec find 樣本對 source(全 14 spec / 167 probes、不 apply)
+- **Drift**(CTRL-CI-013):CI 驗 spec find 樣本對 source(全 14 spec / 170 probes、不 apply)
 - **Kill Smoke**(CTRL-CI-016 = 本節):CI 對 pinned 6 條 smoke probe 真 apply mutation + assert killed
-- **Full manual**(Step 4.5):PR 高風險車道時、開發者對全 167 probes 手動跑 `mutate.ts`(HEAD-bound、完整 apply/test/restore/verify)
+- **Full manual**(Step 4.5):PR 高風險車道時、開發者對全 170 probes 手動跑 `mutate.ts`(HEAD-bound、完整 apply/test/restore/verify)
 
 ## 6. CI
 
