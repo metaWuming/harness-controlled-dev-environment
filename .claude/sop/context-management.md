@@ -38,9 +38,8 @@ related: CLAUDE.md Part 2 / .claude/sop/plan-mode-checklist.md
 ——不再有「後半段開始退化」這回事。三點要跟著改:
 
 1. **「回應變慢」不再是 context 將盡的訊號。** 回應速度現在主要受**實際生效的 effort
-   設定**影響(＝ session 層級的單一值,`.claude/settings.json` / `/config`;**不是** SOP
-   各步的 `🎚️` 記號——那是「審查深度提示」,沒有機制在執行它,見
-   `plan-mode-checklist.md` 檔頭)。把回應速度當 context 餘量的代理指標會誤判。
+   設定**影響(＝ session 層級的單一值,`.claude/settings.json` / `/config`;SOP 不分步設定
+   effort)。把回應速度當 context 餘量的代理指標會誤判。
    **唯一可靠的訊號是「已經被 compact 過」**——上表已據此收斂。
 2. **交棒門檻應該往後拉。** 過去「聊很久了、保險起見先交棒」的直覺,現在多半是
    **過早交棒**:交棒本身有成本(寫 HANDOFF、新 session 重新建立脈絡、
@@ -64,5 +63,5 @@ related: CLAUDE.md Part 2 / .claude/sop/plan-mode-checklist.md
 - ❌ 把「壓縮後的摘要記憶」當 ground truth——**hint 非 truth**,接手 session 起手一律 git 核實
 - ❌ 為了省 context 跳過 progress doc——省下的 token 會用十倍代價在下個 session 重考古
 - ❌ **為了省 context 而 fan-out**:派 subagent 是有成本的,不是免費的 context 節流閥。
-  幾個工具呼叫就能自己做完的事直接做(委派規則見 `CLAUDE.md` 原則 5.5)
+  幾個工具呼叫就能自己做完的事直接做(委派規則見 `CLAUDE.md` 原則 10)
 - ❌ **憑「感覺聊很久了」就交棒**:見上方大視窗校準第 2 點,過早交棒是淨損失

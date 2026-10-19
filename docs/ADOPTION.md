@@ -56,8 +56,7 @@ type: guide
 - [ ] `.claude/settings.json`:`effortLevel` 對齊你的 repo 型態
       (實作為主 → `xhigh`;文件 / 規劃為主 → `high` 或 `medium`)。
       出貨值 `high` = 模型原生預設,不改也能跑
-- [ ] 讀一次 [`EFFORT.md`](EFFORT.md):理解「effort 是成本桿不是品質旋鈕」
-      與「**不要關 thinking**」兩條;跑幾個 sprint 後回來重校每步建議值
+- [ ] 記住兩條:effort 是成本桿不是品質旋鈕;**不要關 thinking**(要省成本就降 effort)
 - [ ] `.claude/agents/`:兩支預設 agent(`explore-scoped` 蒐脈絡 /
       `adversarial-reviewer` 獨立審 diff)可直接用;要調語氣或加專屬 agent 就改這裡
 - [ ] 你的專案有 UI → 確認 `CLAUDE.md` §4.2 填了 design token 來源檔,
