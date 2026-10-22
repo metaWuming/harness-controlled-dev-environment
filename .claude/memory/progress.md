@@ -44,6 +44,15 @@ type: note
 
 <!-- entry 從這裡開始,新的在最上面 -->
 
+📅 2026-10-22 ㊴ — **CI setup-node 加 check-latest(Node.js 10-21 安全更新)**
+
+> **車道**:高風險(CI 設定 `.github/**`),Owner 2026-10-22 對此改動明確授權降級 Claude /code-review 1 輪(不跑 Codex)
+> **做了什麼**:2 處 setup-node 加 `check-latest: true`,CI 每次抓最新 22.x 修補版(22.23.4 修 4 個 High CVE)
+> **審查**:降級 Claude /code-review round 1(low,Owner 2026-10-22 授權降級,不跑 Codex),0 P1 / 0 CRITICAL;殘留問題:無。本機跑讀 workflow 的測試全過
+> 降級 Claude /code-review:Owner 2026-10-22 對此改動授權,不跑 Codex
+> 📊 成本:review 1 round / P1 0 個 / P2 0 個
+> **下一步**(hint 非 truth):合併後看 CI log 的 Node 版本 ≥ 22.23.4
+
 📅 2026-10-19 ㊳ — **LESSONS:新增 #114 / #115 踩到的 4 個工具坑**
 
 > **車道**:快速(只動 LESSONS + progress,LESSONS 淨增 80 行;不碰安全面。模板 repo 路徑表刻意為空,以自問判定;㉚ 歸檔屬 bookkeeping,不計入大小)
